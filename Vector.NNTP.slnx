@@ -2,6 +2,13 @@
   <Configurations>
     <Platform Name="x64" />
   </Configurations>
+  <Folder Name="/Docs/">
+    <File Path="nntp-security-ordering.md" />
+    <File Path="proxy-deployment.md" />
+    <File Path="rfc-index.md" />
+    <File Path="session-state.md" />
+    <File Path="storage-protocol.md" />
+  </Folder>
   <Project Path="MessageBus/MessageBus.csproj" Id="bb35d90a-ca94-43f1-9ad9-a3809ce22971">
     <Platform Project="x64" />
   </Project>
