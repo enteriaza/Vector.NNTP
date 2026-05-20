@@ -1,0 +1,20 @@
+---
+description: Target amd64/x64 only — no ARM or x86 MSBuild platforms or solution configurations.
+alwaysApply: true
+---
+
+# x64-only build surface
+
+VectorNNTPD **targets amd64/x64 only**. ARM (including ARM64) and **x86** are **out of scope** for compilation and packaging in this repository.
+
+## Enforcement
+
+- **`Directory.Build.props`** sets **`Platforms`** to **`x64`** and **`PlatformTarget`** to **`x64`** for all MSBuild projects inheriting repo-wide props.
+- **`VectorNNTPD.Server.sln`** must expose **only** **`Debug|x64`** and **`Release|x64`** solution configurations — no **Any CPU**, **x86**, **ARM**, or **ARM64** entries.
+
+## Agent constraints
+
+- Do **not** add x86 or ARM solution configuration mappings, RID defaults (`win-x86`, `linux-arm64`, etc.), or multi-platform publishing matrices unless the user explicitly expands scope.
+- Align runtime identifiers and deployment docs with **x64/amd64** (`.NET` terms: **`win-x64`**, **`linux-x64`** where applicable).
+
+This complements **`architecture-and-contracts.mdc`** (product ARM/x64 narrative): builds here remain **x64-only** regardless of longer-term product scope.

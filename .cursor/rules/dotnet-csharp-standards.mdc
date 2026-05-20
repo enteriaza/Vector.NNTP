@@ -1,0 +1,58 @@
+---
+description: C# language version, naming, async, tests, and analyzer enforcement for VectorNNTPD
+globs: "**/*.cs"
+alwaysApply: false
+---
+
+# C# and .NET standards
+
+Canonical narrative (line length, regions, naming, logging, XML examples): **`CONTRIBUTING.md`**. **Reliability, testing, and exception policy:** **`reliability-testing-exceptions.mdc`** and **`CONTRIBUTING.md`** (Reliability bar, Error handling). This rule file captures build-enforced C# essentials for agents.
+
+## Runtime and language
+
+- **TFM**: `net8.0` (LTS runtime). **Language**: C# 13 via `<LangVersion>13</LangVersion>` in `Directory.Build.props`. Compiling C# 13 against `net8.0` requires a **compatible SDK** (for example the .NET 9 SDK); the runtime deployed remains .NET 8 unless the team retargets.
+- Keep **`Nullable` enable** and **`ImplicitUsings` enable** unless the solution explicitly changes policy. Prefer **global usings** for common namespaces to avoid **IDE0005** (redundant usings) when implicit usings already import them.
+
+## Explicit types (no `var`)
+
+- **Never** use **`var`** for locals, `using` declarations, deconstruction, or any construct where the language allows an explicit type. Always write the **full type** (including `ReadOnlySpan<T>`, tuple types, `KeyValuePair<,>`, etc.).
+- This is enforced via **`.editorconfig`** (`csharp_style_var_* = false:error`) and **`EnforceCodeStyleInBuild`**, so violations fail the build.
+
+## Naming (project + StyleCop)
+
+| Element | Convention |
+|--------|--------------|
+| Types, methods, properties, events, constants | `PascalCase` |
+| Parameters, locals | `camelCase` |
+| **Private instance fields** | `_camelCase` (see `.editorconfig` naming rules). StyleCop **SA1309** is set to **none** so underscores are allowed. |
+| Interfaces | `I` + `PascalCase` |
+| Async methods | Suffix with `Async`; avoid `async void` outside UI. |
+
+## Async, cancellation, and I/O
+
+- Use **`async`/`await`** for I/O-bound NNTP work; avoid `.Result` / `.Wait()` on hot paths.
+- Thread **`CancellationToken`** through public and long-running APIs; honor host shutdown.
+
+## Testing
+
+- **nUnit** for unit tests. Prefer **fake / in-memory transports** over real sockets for most tests; invest in **RFC compliance** and **performance regressions** (benchmarks, allocation checks) as first-class quality signals.
+
+## Analyzer enforcement
+
+- **`TreatWarningsAsErrors`**, **`AnalysisLevel` latest**, **`EnforceCodeStyleInBuild` true** (see `Directory.Build.props` and `.editorconfig`). **StyleCop.Analyzers** is enabled with `stylecop.json` linked via **`AdditionalFiles`** so settings load reliably.
+- Always fix **IDE0001**, **IDE0003**, and **IDE0052** when editing code (see **`ide-simplify-names-and-dead-code.mdc`**); **IDE0003** must not override **SA1101** `this.` requirements documented in the next bullet.
+- **IDE0065** (usings placement) and StyleCop **`usingDirectivesPlacement`** must agree: use **`outsideNamespace`** in `stylecop.json` and place `using` directives **outside** the namespace block (or rely on implicit/global usings when explicit lines are redundant).
+- **`.editorconfig`** sets **`dotnet_diagnostic.SA1309.severity = none`** so private fields may use a leading underscore; StyleCop **SA1101** still requires **`this.`** when invoking instance members (including generated **LoggerMessage** calls).
+- **CA1848** is a warning in **`.editorconfig`**; with **`TreatWarningsAsErrors`**, use **`LoggerMessage`** / **`[LoggerMessage]`** instead of `LogInformation`/`LogDebug` extension overloads where CA1848 applies.
+- **`var`** is disallowed project-wide; see **Explicit types (no `var`)** above.
+
+## Examples
+
+```csharp
+// Prefer documenting private members when behavior is non-obvious.
+/// <summary>Parses a single NNTP command line into verb and arguments.</summary>
+private static bool TryParseCommand(ReadOnlySpan<byte> line, out NntpVerb verb, out ReadOnlySpan<byte> arguments)
+{
+    // ...
+}
+```

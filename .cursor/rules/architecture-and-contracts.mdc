@@ -1,0 +1,48 @@
+---
+description: Architecture, throughput, storage boundaries, and contracts for VectorNNTPD
+alwaysApply: true
+---
+
+# Architecture and contracts
+
+Product narrative, deployment, storage, AUTH, and throughput goals are also spelled out in **`CONTRIBUTING.md`** (project scope). This file keeps the architecture contract concise for agents.
+
+## Product roles (two servers, full RFC intent)
+
+- **NNTPD (transit)**: NNTP **MODE STREAM** transit server; aim for **full RFC coverage** relevant to streaming feeds, peering, and transit semantics.
+- **NNRPD (reader)**: NNTP **MODE READER** reader server; aim for **full RFC coverage** for reader commands, overview, and reader policy.
+
+Treat **RFC compliance** as a tracked, testable surface (golden transcripts, edge cases, error codes), not an informal goal.
+
+## Deployment and platform
+
+- **Supported**: Windows services and **Linux + systemd**. **Out of scope** for this repo’s first-class story: **Docker/containers**, **ARM** targets. Document x64/amd64 assumptions where relevant.
+
+## Storage
+
+- **No local article spool** in the NNTP/NNRP host process: **persistence is delegated** to separate **distributed storage worker** services running on multiple machines. Host code talks to storage through **narrow contracts** (clients, RPC, or message contracts — implementation TBD), not ad hoc network calls scattered in protocol handlers.
+
+## Authentication and policy
+
+- **Transit (NNTPD)**: **DNS-based peer/access policy** comparable in spirit to **INN/Diablo**-style usage (exact mechanics live behind interfaces). **Reader (NNRPD / nnrpd)**: **AUTH** via **RADIUS** (client and DI wiring in **`VectorNNTPD.Auth`**, consumed by the **nnrpd** host). Design **pluggable authentication** so additional models can be added in **`VectorNNTPD.Auth`** without protocol-layer churn.
+
+## Throughput
+
+- The socket and framing pipeline must be designed so that **sustained wire rates beyond 40 Gbps** are achievable on suitable hardware (batching, buffer management, minimized copies, efficient scheduling). Prove with **benchmarks and profiling**, not assumptions.
+
+## Layering
+
+1. **Host** — composition, DI, options binding, systemd/Windows service lifetime.
+2. **Protocol / application** — NNTP command dispatch, session state, RFC-visible behavior.
+3. **Infrastructure** — sockets/TLS, RADIUS and other AUTH adapters, DNS/policy clients, gateways to **distributed storage workers**.
+
+## Design rules (recap)
+
+- **SRP**, **no god classes**, **narrow interfaces** at storage, auth, DNS/policy, and clock/time boundaries.
+- **Constructor injection**; avoid service-locator patterns.
+
+## Anti-patterns
+
+- Protocol handlers that embed storage wire format, RADIUS, or DNS logic inline instead of injected abstractions.
+- Blocking waits, ignored `CancellationToken`, silent or empty **`catch`** blocks, and **unobserved** task exceptions on server paths.
+- Shipping **critical** protocol, storage, or AUTH changes **without** tests that cover success, failure, and cancellation paths (**see `reliability-testing-exceptions.mdc`**).

@@ -1,0 +1,34 @@
+---
+description: Reliability bar, testing expectations, and mandatory exception handling for VectorNNTPD
+alwaysApply: true
+---
+
+# Reliability, testing, and exceptions
+
+VectorNNTPD is **high-performance, critical infrastructure**. The process **must not** crash, leak unbounded memory, or enter states that risk **significant corruption** of feeds, spool metadata, or peer relationships.
+
+## Testing (non-negotiable)
+
+- **Thoroughly test** new behavior: unit tests for pure logic; protocol tests with **fakes** or harness transports; integration tests where boundaries warrant it.
+- **RFC and error-path coverage** are as important as happy paths: malformed lines, mid-stream disconnects, partial writes, and cancellation during I/O.
+- **Performance-sensitive** code paths need **benchmarks** or allocation checks when changes could regress throughput or latency.
+- Do not merge **untested** critical paths (session lifecycle, storage RPC, AUTH, article identity, streaming state machines).
+
+## Exceptions — every path must be deliberate
+
+- **Never** swallow exceptions with empty `catch` blocks or broad `catch (Exception)` without **logging**, **metrics**, and a **documented** recovery or rethrow strategy.
+- Distinguish **expected** failures (client errors, timeouts, protocol violations) from **bugs** and **environment** failures; handle each with the correct NNTP response, retry policy, or fatal host policy.
+- **`OperationCanceledException`**: handle explicitly where shutdown vs timeout must differ; do not treat all cancels as generic failures without context.
+- **Async / tasks**: ensure exceptions from **`Task`**, **`Task.Run`**, event callbacks, and **`async void` (avoid)** cannot escape unobserved — use **`await`**, **`ContinueWith`** with fault handling, or host-level **`TaskScheduler.UnobservedTaskException`** only as a last-resort safety net, not a substitute for local handling.
+- **Top-level session loops** must catch, log, translate to protocol or session teardown, and **never** allow an unhandled exception to tear down the whole server unless that is an explicit, documented policy for that failure class.
+
+## Resources and memory
+
+- **`using` / `IAsyncDisposable`**: every socket, stream, lease, and pooled buffer has a clear owner and disposal path.
+- **No unbounded** queues, dictionaries, or caches without **backpressure** or eviction; long-lived servers must survive days/weeks under load without monotonic memory growth from leaks.
+
+## Configuration and startup
+
+- Invalid configuration **fails fast at startup** (`ValidateOnStart`, clear errors). Runtime misconfiguration should be detectable, logged, and bounded — not silent partial operation that corrupts data.
+
+Long-form detail: **`CONTRIBUTING.md`** (Reliability bar and Error handling patterns).

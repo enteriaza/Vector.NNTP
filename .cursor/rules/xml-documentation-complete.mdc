@@ -1,0 +1,39 @@
+---
+description: Comprehensive XML documentation on every type and member (public, internal, protected, private); align with CONTRIBUTING and StyleCop.
+alwaysApply: true
+---
+
+# Comprehensive XML documentation
+
+**Every** hand-authored **`.cs`** surface must ship **complete, meaningful XML documentation**, regardless of accessibility:
+
+- **Types:** classes, records, structs, interfaces, enums, delegates (including nested types).
+- **Members:** constructors, methods, operators, properties, indexers, fields (including **`private`** and **`const`** where applicable), events.
+- **Generics:** document **`typeparam`** / **`typeparamref`** where type parameters exist.
+- **Test projects, `Program.cs`, DI extensions, options classes, helpers:** same bar as production code unless the file is **generated** under **`obj/`** / **`bin/`** (never hand-document generated output).
+
+## Required XML depth
+
+Follow **`CONTRIBUTING.md` → XML documentation standards** and **`stylecop.json`** (`documentInternalElements`, `documentPrivateElements`, `documentPrivateFields`). At minimum:
+
+1. **`<summary>`** on every documented member and type (purpose and responsibility in plain language).
+2. **`<remarks>`** where behavior, threading, lifecycle, performance, protocol edges, or non-obvious invariants matter (use numbered `<list type="number">` for multi-step flows when helpful).
+3. **`<param>`** / **`<typeparam>`** / **`<returns>`** wherever applicable.
+4. **`<exception>`** for every documented thrown exception type that callers must handle or expect.
+5. **`<example>`** when usage is non-obvious or when demonstrating safe patterns (configuration, DI registration, cancellation, logging).
+
+## Forbidden placeholder docs
+
+Never ship meaningless boilerplate such as bare **“Gets or sets…”**, **“TODO”**, **“Summary”**, or empty stubs. Documentation must explain **why** the API exists and **how** callers should use it safely.
+
+## Overrides and inheritance
+
+Use **`<inheritdoc />`** on overrides **only** when the base contract fully describes behavior; add **`<remarks>`** for NNTP/session/threading nuances the base type does not cover.
+
+## Cross-references
+
+Prefer **`<see cref="…"/>`** / **`<paramref>`** / **`<typeparamref>`** so IDE consumers and DocFX-style pipelines resolve symbols correctly.
+
+## Relation to file headers
+
+XML docs complement (they do not replace) the **two-part file header** policy in **`CONTRIBUTING.md`** and **`project-structure-and-docs.mdc`**.

@@ -1,0 +1,16 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="MessageBus/MessageBus.csproj" Id="bb35d90a-ca94-43f1-9ad9-a3809ce22971">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="NNRPD/NNRPD.csproj" Id="bdbc6013-04c9-4ef7-bdd7-77de3b7af46f">
+    <BuildDependency Project="MessageBus/MessageBus.csproj" />
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="NNTPD/NNTPD.csproj">
+    <BuildDependency Project="MessageBus/MessageBus.csproj" />
+    <Platform Project="x64" />
+  </Project>
+</Solution>

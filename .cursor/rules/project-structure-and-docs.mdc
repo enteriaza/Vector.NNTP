@@ -1,0 +1,35 @@
+---
+description: File headers, XML documentation, licensing, solution layout, and tooling files
+alwaysApply: true
+---
+
+# Project structure, headers, and documentation
+
+## Canonical docs
+
+- Long-form human and agent rules: **`CONTRIBUTING.md`** (line length, regions, naming including RADIUS exception, XML depth, **two-part file headers**, logging, DI, errors, build tooling).
+- This rule file stays short; defer detail to **`CONTRIBUTING.md`**.
+
+## License
+
+- The project is distributed under the **Apache License, Version 2.0**. The full text lives in **`LICENSE`** at the repository root. Third-party notices belong in **`NOTICE`** when the team adds bundled dependencies that require attribution.
+
+## File headers (summary)
+
+1. **StyleCop XML copyright** first — inner line must match **`copyrightText`** in **`stylecop.json`** (see **`CONTRIBUTING.md` → File header comments** for template and synopsis rules).
+2. Keep **`stylecop.json`** at repo root and linked via **`AdditionalFiles`** in **`Directory.Build.props`**.
+3. Auto-generated files under **`obj/`** / **`bin/`** are excluded; do not hand-edit generated headers there.
+
+## XML documentation (public and private)
+
+- **`GenerateDocumentationFile`** is enabled; StyleCop documents **exposed**, **internal**, and **private** members. Requirements and **`<remarks>`** style: **`CONTRIBUTING.md` → XML documentation standards**.
+- Agents: apply **`xml-documentation-complete.mdc`** for the full bar on every type and member (including tests and hosts).
+
+## Solution layout
+
+- Keep **host projects** thin (DI, configuration, hosted-service registration). Split **protocol core**, **infrastructure adapters**, and **host** into separate assemblies when size or test isolation demands it.
+- Maintain **`.editorconfig`** for charset, indentation, and analyzer categories aligned with **strict IDE + CA** builds.
+
+## Configuration
+
+- Prefer **`IOptions<T>`** / **`IOptionsMonitor<T>`** with validated options types for server settings. Never commit secrets; use user secrets or environment configuration for development.

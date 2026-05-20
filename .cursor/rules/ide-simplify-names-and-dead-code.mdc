@@ -1,0 +1,28 @@
+---
+description: Resolve IDE0001, IDE0003, and IDE0052 whenever touching C# code; build treats them as errors via TreatWarningsAsErrors.
+alwaysApply: true
+---
+
+# IDE simplification and dead-code hygiene
+
+Whenever you edit or generate **C#** in this repository, **resolve** these diagnostics as part of the same change set (do not leave new occurrences behind):
+
+## IDE0001 (simplify name)
+
+- Removes **redundant namespace or type qualification** when a simpler name already resolves correctly (for example fully qualified types where `using` directives make short names unambiguous).
+- Prefer clarity: simplify names **without** obscuring intent or introducing ambiguity across assemblies.
+
+## IDE0003 (simplify member access / qualification)
+
+- Aligns member access with **`.editorconfig`** `dotnet_style_qualification_*` preferences.
+- **StyleCop SA1101** still requires **`this.`** when invoking instance members where the repo mandates explicit qualification (including patterns called out in **`dotnet-csharp-standards.mdc`**). If IDE0003 ever conflicts with SA1101, **follow SA1101** and resolve the clash by adjusting nearby style or applying a **documented, narrowly scoped suppression** rather than stripping required `this.` prefixes.
+
+## IDE0052 (remove unread private member)
+
+- Flags **private fields or properties** that are written but **never read**: remove them, or **use** them legitimately (observability, invariants, future-proof APIs documented in remarks).
+- Do **not** “fix” by widening accessibility solely to silence the analyzer unless product design explicitly calls for it.
+
+## Enforcement
+
+- **`.editorconfig`** sets **`dotnet_diagnostic.IDE0001|IDE0003|IDE0052.severity = warning`**. With **`TreatWarningsAsErrors`** in **`Directory.Build.props`**, these are **build-blocking**.
+- After substantive edits, run **`dotnet build`** (solution or affected projects) and clear any remaining violations before finishing.
