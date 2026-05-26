@@ -244,3 +244,85 @@ are not emitted to log output.
 
 - Distinguish between global shutdown cancellation and individual worker cancellation using linked `CancellationTokenSource`.
 - Always check `stoppingToken.IsCancellationRequested` in `catch (OperationCanceledException)` to differentiate timeout from shutdown.
+
+## Vector.NNTP.Utilities library standards
+
+[`Vector.NNTP.Utilities/README.md`](Vector.NNTP.Utilities/README.md) is the quick namespace map; this section is the contribution contract for that assembly.
+
+### Scope and dependencies
+
+- References **BCL** and **`Microsoft.Extensions.Logging.Abstractions`** only. Do not add RabbitMQ, Certes, or other domain packages.
+- Add a new **public** namespace when a folder would exceed ~5 unrelated types or mixes hot-path binary operations with cold diagnostics.
+- Add **`Vector.NNTP.Utilities.Internal`** helpers only when a pattern appears in **2+ call sites** or when isolating throws from a hot loop (see Internal folder policy below).
+
+### Hot path vs cold path
+
+Every Utilities `.cs` synopsis header must declare one of:
+
+```
+// HOT PATH: no LINQ; no allocations on success; no closures; no boxing; prefer Span/stackalloc; throws extracted + NoInlining where documented.
+// COLD PATH: diagnostics/formatting/startup validation; readability over micro-optimization; allocations acceptable.
+```
+
+| HOT | COLD |
+|-----|------|
+| `EncodingUtilities`, `DnsWireFormatUtilities`, `DnsWireQueryBuilder`, `DnsWireNameReader`, `AsciiSpanUtilities`, `LengthLimitedReadStream`, `RetryUtilities`, `EwmaUtilities`, `HostParsingUtilities`, `IPUtilities` | `FormattingUtilities`, `EnvironmentUtilities`, `AssemblyInfoUtilities`, `DnsValidationUtilities`, `CredentialPlaceholderDetector`, `FileIOUtilities`, `DisposalUtilities`, `TaskUtilities` |
+
+Public types must include `<remarks><para><b>Performance:</b> HOT PATH …</para></remarks>` or the cold-path equivalent.
+
+### Allocation rules
+
+- **stackalloc** for bounded buffers (DNS label splits, small wire packets). Follow `DnsWireQueryBuilder` — stack when `packetLength <= MaxStackAllocQuerySize`, heap fallback otherwise.
+- **ArrayPool** for temporary copy buffers: rent in `try`, return in `finally` via `Internal.PoolingHelpers` (buffers are not cleared on return; callers overwrite via reads).
+- Error strings and diagnostic formatting may allocate; keep them off success paths in HOT types.
+
+### Span and Memory
+
+- Overload order: **Span/Memory → string → async**; optional parameters last.
+- Add Span overloads when callers already hold spans; keep string APIs for configuration and logging.
+- Do not introduce extension methods by default.
+
+### Throw helpers
+
+- **Cold entry validation:** BCL helpers (`ArgumentNullException.ThrowIfNull`, `ArgumentException.ThrowIfNullOrEmpty`, `ArgumentOutOfRangeException.ThrowIfNegative`).
+- **Hot or duplicated throws:** `Vector.NNTP.Utilities.Internal.ThrowHelpers` and `SpanValidationHelpers`.
+- Extract throws from hot loops; mark throw methods with `[DoesNotReturn]` and `[MethodImpl(MethodImplOptions.NoInlining)]` when the throw would block inlining of the caller.
+- Domain-specific messages (DNS label errors, response limit exceeded) stay in the owning type — do not genericize.
+
+### Async and cancellation
+
+- Use `*Async` suffix on asynchronous public APIs.
+- Document whether cancellation **propagates** (`OperationCanceledException`) or maps to **return false** (`TaskUtilities.DelayOrCancelledAsync`, swallow-and-return helpers).
+- Use `ConfigureAwait(false)` in library code unless a synchronization context is required (see repo-wide async guidance).
+
+### Thread safety
+
+- Document thread safety on every public type in XML `<remarks>`.
+- Stateless static helpers: safe for concurrent use.
+- Instance types: document single-reader / caller-synchronised contracts explicitly.
+- `Random.Shared` and immutable static caches (`FrozenSet`, cached delegates) are thread-safe; document them in type remarks.
+
+### Logging
+
+- Use `[LoggerMessage]` partial methods in companion `*.Logging.cs` files (see Logging Standards above).
+- ASCII-only message strings in `[LoggerMessage]` attributes.
+
+### Nullable reference types
+
+- Follow the repo nullable section above. Do not use `!` without a documented invariant in `<remarks>`.
+
+### Benchmarking expectations
+
+- Changes to **HOT PATH** types require regression checks: `dotnet test Vector.NNTP.slnx -p:Platform=x64` plus a PR note when throughput or allocation behavior could change.
+- Add BenchmarkDotNet coverage when introducing new SIMD or pooling paths (project TBD).
+
+### Internal folder policy
+
+| Add to `Internal/` when | Do not add when |
+|-------------------------|-----------------|
+| Same throw message in 2+ types | Only one consumer exists |
+| Same span-length check in 2+ encode paths | Message or semantics differ by domain |
+| ArrayPool rent/return duplicated | A one-line BCL call suffices |
+| Disposed guard shared by instance types | A generic `Validate<T>` or catch-all `Guard` would result |
+
+Current internal types: `ThrowHelpers`, `SpanValidationHelpers`, `GuardUtilities`, `PoolingHelpers`. Defer `AsyncHelpers` / `ExceptionUtilities` until a second consumer appears.

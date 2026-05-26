@@ -59,6 +59,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Vector.NNTP.Encryption.Dns;
+using Vector.NNTP.Utilities.IO;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {

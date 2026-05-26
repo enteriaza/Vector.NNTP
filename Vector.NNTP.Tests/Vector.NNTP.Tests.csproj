@@ -30,9 +30,16 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Vector.NNTP.Encryption\Vector.NNTP.Encryption.csproj" />
+    <ProjectReference Include="..\Vector.NNTP.Filters\Vector.NNTP.Filters.csproj" />
     <ProjectReference Include="..\Vector.NNTP.MessageBus\Vector.NNTP.MessageBus.csproj" />
     <ProjectReference Include="..\Vector.NNTP.NNRPD\Vector.NNTP.NNRPD.csproj" />
     <ProjectReference Include="..\Vector.NNTP.NNTPD\Vector.NNTP.NNTPD.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="TestData\YEnc\sabctools\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

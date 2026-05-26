@@ -18,6 +18,10 @@
   <Project Path="Vector.NNTP.Utilities/Vector.NNTP.Utilities.csproj" Id="2f1f2212-1f4c-4f20-9c3f-60041f6a386f">
     <Platform Project="x64" />
   </Project>
+  <Project Path="Vector.NNTP.Filters/Vector.NNTP.Filters.csproj" Id="0f07bdcc-6c7d-4ea7-b8f9-14b5e7b253b9">
+    <BuildDependency Project="Vector.NNTP.Utilities/Vector.NNTP.Utilities.csproj" />
+    <Platform Project="x64" />
+  </Project>
   <Project Path="Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj" Id="bb35d90a-ca94-43f1-9ad9-a3809ce22971">
     <Platform Project="x64" />
   </Project>

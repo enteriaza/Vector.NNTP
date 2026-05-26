@@ -8,11 +8,15 @@
     <RootNamespace>Vector.NNTP.Utilities</RootNamespace>
     <AssemblyName>Vector.NNTP.Utilities</AssemblyName>
     <Description>Shared utility and helper library for Vector NNTP components.</Description>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Certes" Version="3.0.4" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Vector.NNTP.Tests" />
   </ItemGroup>
 
 </Project>

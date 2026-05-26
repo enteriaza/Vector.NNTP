@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <!-- x64-only build surface: see .cursor/rules/x64-platform-only.mdc -->
+    <Platform>x64</Platform>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!--
+      XML-doc generation remains enabled (GenerateDocumentationFile=true).
+      These NoWarn entries suppress specific XML-doc compiler diagnostics so they do not fail the build under TreatWarningsAsErrors:
+        - CS1591: missing XML comment (we require XML docs via StyleCop rules, not CS1591)
+        - CS1574/CS1580/CS1734: unresolved/mismatched <see cref="..."/> / <paramref> references
+        - CS0419: ambiguous cref reference resolution
+    -->
+    <NoWarn>$(NoWarn);CS1591;CS1574;CS0419;CS1580;CS1734</NoWarn>
+  </PropertyGroup>
+</Project>

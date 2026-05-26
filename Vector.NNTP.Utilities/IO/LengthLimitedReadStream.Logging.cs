@@ -1,6 +1,7 @@
 // <copyright file="LengthLimitedReadStream.Logging.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
+// COLD PATH: diagnostics/formatting/startup validation; readability over micro-optimization; allocations acceptable.
 // LengthLimitedReadStream.Logging.cs -- Source-generated [LoggerMessage] partial methods for LengthLimitedReadStream.
 //
 // Uses the [LoggerMessage] source generator pattern mandated by CONTRIBUTING.md for compile-time validation,
@@ -38,13 +39,13 @@
 //   Fully compatible with Linux and Windows.  [LoggerMessage] source-generated methods use only BCL logging
 //   abstractions.  No platform-specific APIs.
 
-namespace Vector.NNTP.Encryption.Certificates
+namespace Vector.NNTP.Utilities.IO
 {
-
-    internal sealed partial class LengthLimitedReadStream
+    /// <summary>
+    /// Source-generated <see cref="LoggerMessage"/> partial methods for <see cref="LengthLimitedReadStream"/>.
+    /// </summary>
+    public sealed partial class LengthLimitedReadStream
     {
-        #region Logging Methods -- Limit Enforcement (300-309)
-
         /// <summary>
         /// Logs that the cumulative byte limit has been reached or exceeded, immediately before the
         /// <see cref="InvalidOperationException"/> is thrown by <see cref="ThrowLimitExceeded"/>.
@@ -56,8 +57,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Warning"/> because exceeding the response size limit
         /// indicates a potential security concern (compromised or MITM'd API endpoint) or an unexpectedly large
-        /// legitimate response.  The caller (<see cref="AcmeCertificateProvider"/>'s
-        /// <c>SendCloudflareRequestAsync</c>) catches the resulting <see cref="InvalidOperationException"/> and may
+        /// legitimate response.  The caller's <c>SendCloudflareRequestAsync</c> (or equivalent) catches the resulting <see cref="InvalidOperationException"/> and may
         /// log it at a higher level if needed.  Warning provides structured context (<c>Operation</c>,
         /// <c>MaxBytes</c>, <c>TotalBytesRead</c>) that is captured by Serilog sinks even if the exception message
         /// is not parsed as structured data.</para>
@@ -75,8 +75,5 @@ namespace Vector.NNTP.Encryption.Certificates
             Message = "Certificates: Cloudflare API {Operation} response exceeded the {MaxBytes:N0}-byte safety limit " +
                       "at {TotalBytesRead:N0} bytes read -- possible compromised endpoint")]
         private partial void LogLimitExceeded(string operation, long maxBytes, long totalBytesRead);
-
-        #endregion
     }
-
 }

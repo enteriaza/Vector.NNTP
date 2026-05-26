@@ -40,7 +40,7 @@ using Certes.Acme.Resource;
 using System.Security.Cryptography.X509Certificates;
 
 using Vector.NNTP.Encryption.Acme;
-using Vector.NNTP.Utilities.Cryptography;
+using Vector.NNTP.Encryption.Certificates.Acme;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
@@ -112,7 +112,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             // Build and submit the CSR directly via Finalize() rather than the Generate() convenience method.  Generate()
             // re-fetches the order status internally and throws "Fail to finalize order" if it sees a transient
             // non-Ready state -- a race condition when the server has already begun processing a prior finalize request.
-            byte[] csrBytes = HashingUtilities.CreateCsr(orderDomains, privateKey);
+            byte[] csrBytes = CertificateKeyUtilities.CreateCsr(orderDomains, privateKey);
 
             // Certes' Finalize() does not accept a CancellationToken -- check before the outbound ACME request.
             ct.ThrowIfCancellationRequested();
@@ -140,7 +140,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
                 ct).ConfigureAwait(false);
 
             string? pfxPassword = options.PfxExportPassword;
-            byte[] pfxBytes = HashingUtilities.BuildPfxFromChain(certChain, privateKey, pfxPassword);
+            byte[] pfxBytes = CertificateKeyUtilities.BuildPfxFromChain(certChain, privateKey, pfxPassword);
             await store.SaveCertificateAsync(pfxBytes, ct).ConfigureAwait(false);
 
             return new X509Certificate2(pfxBytes, pfxPassword, CertificateDefaults.PfxKeyStorageFlags);

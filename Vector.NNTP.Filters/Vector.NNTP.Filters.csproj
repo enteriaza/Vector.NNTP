@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Vector.NNTP.Filters</RootNamespace>
+    <AssemblyName>Vector.NNTP.Filters</AssemblyName>
+    <Description>Shared filters and parsers for Vector NNTP components (date parsing, yEnc validation, postfilter pipeline).</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableLoggerMessageGenerator>true</EnableLoggerMessageGenerator>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Blake3" Version="1.0.0" />
+    <PackageReference Include="DnsClient" Version="1.8.0" />
+    <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Vector.NNTP.Utilities\Vector.NNTP.Utilities.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Vector.NNTP.Tests" />
+    <InternalsVisibleTo Include="Vector.NNTP.NNRPD" />
+    <InternalsVisibleTo Include="Vector.NNTP.NNTPD" />
+  </ItemGroup>
+
+</Project>
+

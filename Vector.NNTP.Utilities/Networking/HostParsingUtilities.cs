@@ -1,89 +1,116 @@
 // <copyright file="HostParsingUtilities.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
+// HOT PATH: no LINQ; no allocations on success; no closures; no boxing; prefer Span/stackalloc; throws extracted + NoInlining where documented.
 // HostParsingUtilities.cs -- Shared host string parsing helpers for configuration validation.
+//
+// Thread safety:
+//   All methods are static and stateless. Safe for concurrent use from any thread.
 
 using System.Net;
 using System.Runtime.CompilerServices;
 
-namespace Vector.NNTP.Utilities.Networking;
-
-/// <summary>
-/// Host string parsing helpers for configuration validation: port suffix detection, URI scheme detection, and IPv6
-/// bracket stripping.
-/// </summary>
-public static class HostParsingUtilities
+namespace Vector.NNTP.Utilities.Networking
 {
     /// <summary>
-    /// Returns <see langword="true"/> when a host string appears to contain a <c>":port"</c> suffix.
+    /// Host string parsing helpers for configuration validation: port suffix detection, URI scheme detection, and IPv6
+    /// bracket stripping.
     /// </summary>
-    /// <param name="host">Host string to inspect.</param>
-    /// <returns><see langword="true"/> if the host appears to contain a port suffix.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool HasPortSuffix(string? host)
+    /// <remarks>
+    /// <para><b>Thread safety:</b> All methods are <see langword="static"/> and stateless.</para>
+    /// </remarks>
+    public static class HostParsingUtilities
     {
-        if (string.IsNullOrEmpty(host))
+        /// <summary>
+        /// Returns <see langword="true"/> when a host string appears to contain a <c>":port"</c> suffix.
+        /// </summary>
+        /// <param name="host">Host string to inspect.</param>
+        /// <returns><see langword="true"/> if the host appears to contain a port suffix.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool HasPortSuffix(string? host)
         {
-            return false;
-        }
-
-        if (IPAddress.TryParse(host, out _))
-        {
-            return false;
-        }
-
-        int lastColon = host.LastIndexOf(':');
-        if (lastColon < 0 || lastColon == host.Length - 1)
-        {
-            return false;
-        }
-
-        ReadOnlySpan<char> afterColon = host.AsSpan(lastColon + 1);
-        foreach (char c in afterColon)
-        {
-            if (c is < '0' or > '9')
+            if (string.IsNullOrEmpty(host))
             {
                 return false;
             }
+
+            return HasPortSuffix(host.AsSpan());
         }
 
-        return true;
-    }
-
-    /// <summary>
-    /// Returns <see langword="true"/> when a host string contains a URI scheme separator (<c>"://"</c>).
-    /// </summary>
-    /// <param name="host">Host string to inspect.</param>
-    /// <returns><see langword="true"/> if a scheme separator is present.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool HasUriScheme(string? host)
-    {
-        if (string.IsNullOrEmpty(host))
+        /// <summary>
+        /// Returns <see langword="true"/> when a host span appears to contain a <c>":port"</c> suffix.
+        /// </summary>
+        /// <param name="host">Host span to inspect.</param>
+        /// <returns><see langword="true"/> if the host appears to contain a port suffix.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool HasPortSuffix(ReadOnlySpan<char> host)
         {
-            return false;
+            if (host.IsEmpty)
+            {
+                return false;
+            }
+
+            if (IPAddress.TryParse(host, out _))
+            {
+                return false;
+            }
+
+            int lastColon = host.LastIndexOf(':');
+            if (lastColon < 0 || lastColon == host.Length - 1)
+            {
+                return false;
+            }
+
+            ReadOnlySpan<char> afterColon = host[(lastColon + 1)..];
+            foreach (char c in afterColon)
+            {
+                if (c is < '0' or > '9')
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
-        return host.Contains("://", StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Strips RFC 3986 IPv6 literal brackets (<c>"[::1]"</c> -&gt; <c>"::1"</c>). Returns the input unchanged for
-    /// non-bracketed inputs.
-    /// </summary>
-    /// <param name="host">Host string.</param>
-    /// <returns>Unwrapped host string, or <see langword="null"/> if input is <see langword="null"/>.</returns>
-    public static string? StripIPv6Brackets(string? host)
-    {
-        if (host is null)
+        /// <summary>
+        /// Returns <see langword="true"/> when a host string contains a URI scheme separator (<c>"://"</c>).
+        /// </summary>
+        /// <param name="host">Host string to inspect.</param>
+        /// <returns><see langword="true"/> if a scheme separator is present.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool HasUriScheme(string? host)
         {
-            return null;
+            if (string.IsNullOrEmpty(host))
+            {
+                return false;
+            }
+
+            return host.Contains("://", StringComparison.Ordinal);
         }
 
-        if (host.Length >= 2 && host[0] == '[' && host[^1] == ']')
+        /// <summary>
+        /// Strips RFC 3986 IPv6 literal brackets (<c>"[::1]"</c> -&gt; <c>"::1"</c>). Returns the input unchanged for
+        /// non-bracketed inputs.
+        /// </summary>
+        /// <param name="host">Host string.</param>
+        /// <returns>Unwrapped host string, or <see langword="null"/> if input is <see langword="null"/>.</returns>
+        public static string? StripIPv6Brackets(string? host)
+            => host is null ? null : StripIPv6Brackets(host.AsSpan());
+
+        /// <summary>
+        /// Strips RFC 3986 IPv6 literal brackets from a host span.
+        /// </summary>
+        /// <param name="host">Host span.</param>
+        /// <returns>Unwrapped host string.</returns>
+        public static string StripIPv6Brackets(ReadOnlySpan<char> host)
         {
-            return host[1..^1];
-        }
+            if (host.Length >= 2 && host[0] == '[' && host[^1] == ']')
+            {
+                return host[1..^1].ToString();
+            }
 
-        return host;
+            return host.ToString();
+        }
     }
 }
