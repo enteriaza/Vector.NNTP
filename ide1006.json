@@ -1,0 +1,20 @@
+[
+  {
+    "DocumentId": {
+      "ProjectId": {
+        "Id": "e8634dc7-e3fd-4b90-a8ba-e0c7ba9844d2"
+      },
+      "Id": "5fd1892e-5dfd-44d8-9a66-d60ef2b2e180"
+    },
+    "FileName": "RabbitMqBackgroundScaler.cs",
+    "FilePath": "C:\\Users\\chrisk\\source\\repos\\Vector.NNTP\\MessageBus\\Connections\\RabbitMqBackgroundScaler.cs",
+    "FileChanges": [
+      {
+        "LineNumber": 67,
+        "CharNumber": 33,
+        "DiagnosticId": "IDE1006",
+        "FormatDescription": "warning IDE1006: Naming rule violation: Prefix \u0027_\u0027 is not expected"
+      }
+    ]
+  }
+]

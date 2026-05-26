@@ -8,6 +8,7 @@
             "args": [
                 "build",
                 "${workspaceFolder}/NNTPD/NNTPD.csproj",
+                "-p:Platform=x64",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -20,6 +21,7 @@
             "args": [
                 "publish",
                 "${workspaceFolder}/NNTPD/NNTPD.csproj",
+                "-p:Platform=x64",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -33,7 +35,8 @@
                 "watch",
                 "run",
                 "--project",
-                "${workspaceFolder}/NNTPD/NNTPD.csproj"
+                "${workspaceFolder}/NNTPD/NNTPD.csproj",
+                "-p:Platform=x64"
             ],
             "problemMatcher": "$msCompile"
         }

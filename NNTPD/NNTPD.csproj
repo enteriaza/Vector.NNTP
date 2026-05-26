@@ -275,10 +275,20 @@
 		<PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
 		<PackageReference Include="Serilog.Sinks.Async" Version="2.1.0" />
 		<PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 		<PackageReference Include="Serilog.Expressions" Version="5.0.0" />
 		<PackageReference Include="Serilog.Sinks.File.Archive" Version="1.0.6" />
 
 		<!-- Caching -->
 		<PackageReference Include="StackExchange.Redis" Version="2.13.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MessageBus\MessageBus.csproj" />
+	</ItemGroup>
+
+	<!-- Local host settings (gitignored); copy when present for dotnet run / publish output layout. -->
+	<ItemGroup>
+		<Content Update="NNTPD.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('NNTPD.json')" />
 	</ItemGroup>
 </Project>

@@ -3,6 +3,9 @@
     <Platform Name="x64" />
   </Configurations>
   <Folder Name="/Docs/">
+    <File Path="message-bus-pool.md" />
+    <File Path="message-bus-benchmark-ha.json" />
+    <File Path="message-bus-benchmark-single.json" />
     <File Path="nntp-security-ordering.md" />
     <File Path="proxy-deployment.md" />
     <File Path="rfc-index.md" />
@@ -17,6 +20,14 @@
     <Platform Project="x64" />
   </Project>
   <Project Path="NNTPD/NNTPD.csproj">
+    <BuildDependency Project="MessageBus/MessageBus.csproj" />
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="MessageBus.Benchmarks/MessageBus.Benchmarks.csproj">
+    <BuildDependency Project="MessageBus/MessageBus.csproj" />
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="MessageBus.Tests/MessageBus.Tests.csproj">
     <BuildDependency Project="MessageBus/MessageBus.csproj" />
     <Platform Project="x64" />
   </Project>

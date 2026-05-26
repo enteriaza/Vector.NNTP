@@ -37,3 +37,7 @@ Prefer **`<see cref="…"/>`** / **`<paramref>`** / **`<typeparamref>`** so IDE 
 ## Relation to file headers
 
 XML docs complement (they do not replace) the **two-part file header** policy in **`CONTRIBUTING.md`** and **`project-structure-and-docs.mdc`**.
+
+## MessageBus
+
+For paths under **`MessageBus/`**, follow **`message-bus-documentation.mdc`**: synopsis comment block plus **`TaskUtilities.cs`**-style `<para><b>Section:</b>` type remarks on every type and member.

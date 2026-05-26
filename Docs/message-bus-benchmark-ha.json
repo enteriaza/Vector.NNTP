@@ -1,0 +1,74 @@
+{
+  "Topology": "ha",
+  "Hosts": [
+    "rabbit01a.usenet.ninja",
+    "rabbit01b.usenet.ninja",
+    "rabbit01c.usenet.ninja"
+  ],
+  "Port": 5672,
+  "EnableSsl": false,
+  "ChannelPoolSize": 2048,
+  "RequestedChannelMax": 2048,
+  "StartedAtUtc": "2026-05-26T13:38:46.2210999+00:00",
+  "CompletedAtUtc": "2026-05-26T13:38:51.3544894+00:00",
+  "MachineName": "CHRIS-PC",
+  "ConnectMilliseconds": 655.674,
+  "Results": [
+    {
+      "Concurrency": 1,
+      "TotalMilliseconds": 574.6926,
+      "ChannelsPerSecond": 1.7400606863564974,
+      "P50Milliseconds": 380,
+      "P99Milliseconds": 380,
+      "MaxMilliseconds": 380,
+      "Status": "Pass"
+    },
+    {
+      "Concurrency": 8,
+      "TotalMilliseconds": 565.7928,
+      "ChannelsPerSecond": 14.139451756897579,
+      "P50Milliseconds": 376,
+      "P99Milliseconds": 377,
+      "MaxMilliseconds": 377,
+      "Status": "Pass"
+    },
+    {
+      "Concurrency": 64,
+      "TotalMilliseconds": 755.2036,
+      "ChannelsPerSecond": 84.7453587350484,
+      "P50Milliseconds": 565,
+      "P99Milliseconds": 565,
+      "MaxMilliseconds": 565,
+      "Status": "Fail"
+    },
+    {
+      "Concurrency": 256,
+      "TotalMilliseconds": 758.4304,
+      "ChannelsPerSecond": 337.5392125632095,
+      "P50Milliseconds": 566,
+      "P99Milliseconds": 566,
+      "MaxMilliseconds": 566,
+      "Status": "Fail"
+    },
+    {
+      "Concurrency": 1024,
+      "TotalMilliseconds": 793.2459,
+      "ChannelsPerSecond": 1290.8985725611694,
+      "P50Milliseconds": 563,
+      "P99Milliseconds": 593,
+      "MaxMilliseconds": 600,
+      "Status": "Fail"
+    },
+    {
+      "Concurrency": 2048,
+      "TotalMilliseconds": 1028.2081,
+      "ChannelsPerSecond": 1991.8146919869623,
+      "P50Milliseconds": 657,
+      "P99Milliseconds": 823,
+      "MaxMilliseconds": 828,
+      "Status": "Fail"
+    }
+  ],
+  "OverallStatus": "Fail",
+  "OverallNotes": "Worst p99 CreateChannel 823,0 ms at concurrency 2048; collapse detected=False."
+}

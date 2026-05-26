@@ -1,0 +1,87 @@
+---
+description: MessageBus documentation bar — synopsis file headers and TaskUtilities-style XML depth on every type and member.
+globs:
+  - MessageBus/**/*.cs
+alwaysApply: false
+---
+
+# MessageBus documentation standard
+
+**Gold standard:** `MessageBus/Utilities/TaskUtilities.cs` (synopsis comment block + rich type/member XML). Match that depth on every hand-authored `.cs` file under **`MessageBus/`** (exclude `obj/`, `bin/`, `GlobalUsings.cs`).
+
+Complements **`xml-documentation-complete.mdc`** and **`CONTRIBUTING.md`**; when rules differ on MessageBus specifics, this file wins for paths under **`MessageBus/`**.
+
+## Two-part file header
+
+1. **StyleCop copyright** (when the file already has it — keep on pool, publishing, consuming, health, metrics, exceptions, DI):
+   ```xml
+   // <copyright file="FileName.cs" company="Usenet Ninja">
+   // Copyright (c) Chris Knipe <cknipe@opticnetworks.net>. Licensed under the Apache License, Version 2.0 (see LICENSE).
+   // </copyright>
+   ```
+2. **Synopsis comment block** immediately after copyright (or at file top for Utilities/factory partials that omit copyright):
+   - First line: `// FileName.cs --` one-line purpose.
+   - Use `//` on **consecutive lines** for narrative text; **do not** insert blank lines between every `//` line (match `TaskUtilities.cs`).
+   - One blank line **only** before the first `using` and before `namespace` (and between copyright and synopsis when both are present).
+   - Optional sections (include when applicable; write `Not applicable` only when the section would mislead — omit irrelevant sections on tiny types):
+     - **Thread safety** / **Allocation** / **Logging**
+     - **Cross-platform** (x64 Windows/Linux, .NET 8 BCL)
+     - **SIMD applicability** (usually N/A for I/O and DI)
+     - **Usage** (short examples for DI extensions and public entry points)
+
+## Type-level XML (`///`)
+
+Every type needs:
+
+1. **`<summary>`** — purpose in plain language (not “Represents…” filler).
+2. **`<remarks>`** with `<para><b>SectionName:</b>` paragraphs**, mirroring the synopsis. Prefer these sections when relevant:
+
+| Section | Use when |
+|--------|----------|
+| **Rationale** / **Policy** / **Layering** | Design intent, boundaries vs other types |
+| **Thread safety** | Locks, `Interlocked`, hosted-service loops |
+| **Allocation** / **Hot path** | Per-call allocations, LINQ avoidance, channels |
+| **Lifecycle** | Startup, shutdown, dispose order |
+| **Failure handling** | Exceptions, retries, quarantine |
+| **Cross-platform** | Portable BCL vs OS-specific |
+| **SIMD applicability** | Data-plane helpers only |
+| **Logging** | `[LoggerMessage]` partials, what is intentionally not logged |
+
+Use `<list type="bullet">` or `<list type="number">` for multi-step flows.
+
+## Members
+
+- **Public / internal surface:** `<summary>`, `<param>`, `<typeparam>`, `<returns>`, `<exception>` for every thrown type callers must handle.
+- **Private fields and constants:** `<summary>`; add `<remarks>` when behavior, threading, or sizing is non-obvious (counters, channels, one-shot guards).
+
+### Member spacing (source layout)
+
+Match **`RabbitMQOptionsValidator.cs`** and **`TaskUtilities.cs`**:
+
+- **One blank line** after each field, constant, or property declaration before the next member’s `///` documentation (including the last field in a group before the first method).
+- **One blank line** after a constructor or method’s closing `}` before the next member’s `///` block (e.g. before `/// <inheritdoc />` or `/// <summary>`).
+- **One blank line** after `#endregion` when the next line starts a new documented member region.
+- **Do not** add blank lines between consecutive `//` synopsis lines or consecutive `///` lines within the same XML block.
+- **Properties on options/DTOs:** explain validation, defaults, and operational impact — not “Gets or sets…”.
+- **`[LoggerMessage]` partials:** `<summary>` + `<param>` per template parameter.
+- **`<inheritdoc />`:** only when the base/implemented contract is complete; add `<remarks>` for MessageBus-specific behavior (confirms, slots, at-least-once).
+- **Forbidden:** bare “Gets or sets…”, “Summary”, “TODO”, empty stubs.
+
+## Folder conventions
+
+- **`Utilities/`**, **`RabbitMqConnectionFactory*.cs`**, **`RabbitMQOptions*.cs`:** synopsis at top; copyright optional (match siblings). Highest bar for **Allocation** and **Hot path**.
+- **Pool / publishing / consuming / health:** copyright **and** synopsis.
+- **`Exceptions/`:** copyright, synopsis, type `<remarks>` describing **when** hosts/handlers should catch vs propagate.
+
+## Enforcement
+
+- `MessageBus/.editorconfig` references this rule; `GenerateDocumentationFile` + StyleCop private-element rules apply.
+- After doc edits: `dotnet build MessageBus/MessageBus.csproj` (warnings are errors).
+
+## Agent checklist (MessageBus touch)
+
+1. Add or refresh synopsis block if missing.
+2. Expand type `<remarks>` to `<para><b>…:</b>` sections.
+3. Document undocumented private fields; add method `<exception>` / `<remarks>` where behavior is non-obvious.
+4. Enforce **member spacing**: blank line after each field/constant before the next `///`; blank line after `}` before the next member’s `///`.
+5. Build MessageBus before finishing.

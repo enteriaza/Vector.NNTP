@@ -1,0 +1,50 @@
+---
+description: Require block-scoped C# namespaces (IDE0160); forbid file-scoped namespaces in this repo
+globs: "**/*.cs"
+alwaysApply: false
+---
+
+# Block-scoped namespaces (IDE0160)
+
+All hand-authored **C#** in this repository uses **block-scoped** namespace declarations.
+
+## Required form
+
+```csharp
+namespace MessageBus.Connections
+{
+    public sealed class Example
+    {
+    }
+}
+```
+
+## Forbidden form
+
+Do **not** use file-scoped namespaces:
+
+```csharp
+namespace MessageBus.Connections;  // IDE0161 / wrong for this repo
+
+public sealed class Example
+{
+}
+```
+
+## Analyzer mapping
+
+| Diagnostic | Meaning |
+|------------|---------|
+| **IDE0160** | Convert to **block-scoped** namespace (required) |
+| **IDE0161** | Convert to file-scoped namespace (suppress / do not use) |
+
+## Configuration
+
+- **`MessageBus/.editorconfig`**: `csharp_style_namespace_declarations = block_scoped:warning`
+- **`dotnet format`**: `dotnet format MessageBus/MessageBus.csproj --diagnostics IDE0160`
+
+## Agent constraints
+
+- When creating or refactoring `.cs` files, always wrap namespace contents in `{` `}`.
+- Do not “modernize” to file-scoped namespaces unless the user explicitly changes this rule.
+- After bulk edits, run `dotnet format` with **IDE0160** and verify **IDE0161** does not reintroduce file-scoped style.

@@ -10,7 +10,7 @@
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/NNTPD/bin/Debug/net8.0/win-x64/NNTPD.dll",
+            "program": "${workspaceFolder}/NNTPD/bin/x64/Debug/net8.0/win-x64/NNTPD.dll",
             "args": [],
             "cwd": "${workspaceFolder}/NNTPD",
             // For more information about the 'console' field, see https://aka.ms/VSCode-CS-LaunchJson-Console

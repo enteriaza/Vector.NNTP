@@ -1,0 +1,72 @@
+{
+  "Topology": "single",
+  "Hosts": [
+    "rabbit01a.usenet.ninja"
+  ],
+  "Port": 5672,
+  "EnableSsl": false,
+  "ChannelPoolSize": 2048,
+  "RequestedChannelMax": 2048,
+  "StartedAtUtc": "2026-05-26T13:38:56.7320612+00:00",
+  "CompletedAtUtc": "2026-05-26T13:39:01.6528989+00:00",
+  "MachineName": "CHRIS-PC",
+  "ConnectMilliseconds": 599.9991,
+  "Results": [
+    {
+      "Concurrency": 1,
+      "TotalMilliseconds": 554.8601,
+      "ChannelsPerSecond": 1.8022561002313917,
+      "P50Milliseconds": 366,
+      "P99Milliseconds": 366,
+      "MaxMilliseconds": 366,
+      "Status": "Pass"
+    },
+    {
+      "Concurrency": 8,
+      "TotalMilliseconds": 545.1556,
+      "ChannelsPerSecond": 14.674709385724004,
+      "P50Milliseconds": 363,
+      "P99Milliseconds": 363,
+      "MaxMilliseconds": 363,
+      "Status": "Pass"
+    },
+    {
+      "Concurrency": 64,
+      "TotalMilliseconds": 727.2422,
+      "ChannelsPerSecond": 88.00369395505376,
+      "P50Milliseconds": 544,
+      "P99Milliseconds": 544,
+      "MaxMilliseconds": 544,
+      "Status": "Fail"
+    },
+    {
+      "Concurrency": 256,
+      "TotalMilliseconds": 729.6647,
+      "ChannelsPerSecond": 350.846080398298,
+      "P50Milliseconds": 544,
+      "P99Milliseconds": 546,
+      "MaxMilliseconds": 546,
+      "Status": "Fail"
+    },
+    {
+      "Concurrency": 1024,
+      "TotalMilliseconds": 753.9687,
+      "ChannelsPerSecond": 1358.1465649701372,
+      "P50Milliseconds": 543,
+      "P99Milliseconds": 559,
+      "MaxMilliseconds": 562,
+      "Status": "Fail"
+    },
+    {
+      "Concurrency": 2048,
+      "TotalMilliseconds": 1007.7463,
+      "ChannelsPerSecond": 2032.2575235453605,
+      "P50Milliseconds": 648,
+      "P99Milliseconds": 807,
+      "MaxMilliseconds": 814,
+      "Status": "Fail"
+    }
+  ],
+  "OverallStatus": "Fail",
+  "OverallNotes": "Worst p99 CreateChannel 807,0 ms at concurrency 2048; collapse detected=False."
+}

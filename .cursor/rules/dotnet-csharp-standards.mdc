@@ -12,6 +12,7 @@ Canonical narrative (line length, regions, naming, logging, XML examples): **`CO
 
 - **TFM**: `net8.0` (LTS runtime). **Language**: C# 13 via `<LangVersion>13</LangVersion>` in `Directory.Build.props`. Compiling C# 13 against `net8.0` requires a **compatible SDK** (for example the .NET 9 SDK); the runtime deployed remains .NET 8 unless the team retargets.
 - Keep **`Nullable` enable** and **`ImplicitUsings` enable** unless the solution explicitly changes policy. Prefer **global usings** for common namespaces to avoid **IDE0005** (redundant usings) when implicit usings already import them.
+- Use **block-scoped** namespaces only (`namespace X { ... }`), not file-scoped (`namespace X;`). See **`block-scoped-namespaces.mdc`** and **IDE0160**.
 
 ## Explicit types (no `var`)
 
