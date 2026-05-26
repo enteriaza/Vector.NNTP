@@ -76,7 +76,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             {
                 foreach (IEncodable issuer in chain.Issuers)
                 {
-                    exportCollection.Add(new X509Certificate2(issuer.ToDer()));
+                    _ = exportCollection.Add(new X509Certificate2(issuer.ToDer()));
                 }
 
                 return exportCollection.Export(X509ContentType.Pfx, password)
