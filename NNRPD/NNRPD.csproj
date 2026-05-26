@@ -23,6 +23,7 @@
 		<UserSecretsId>dotnet-NNRPD-edadeda4-d962-4678-9e48-5aa59b530297</UserSecretsId>
 		<AllowUnsafeBlocks>True</AllowUnsafeBlocks>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
+		<EnableLoggerMessageGenerator>true</EnableLoggerMessageGenerator>
 	</PropertyGroup>
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
 	  <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>

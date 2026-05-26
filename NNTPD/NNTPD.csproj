@@ -21,6 +21,8 @@
 	  <Nullable>enable</Nullable>
 	  <ImplicitUsings>enable</ImplicitUsings>
 	  <UserSecretsId>dotnet-NNTPD-71b2c150-8b8b-4a0d-905c-f956310700c4</UserSecretsId>
+	  <GenerateDocumentationFile>true</GenerateDocumentationFile>
+	  <EnableLoggerMessageGenerator>true</EnableLoggerMessageGenerator>
   </PropertyGroup>
 
 	<!-- ── Language Version ─────────────────────────────────────────────

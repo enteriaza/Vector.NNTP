@@ -4,7 +4,6 @@
 
 using MessageBus;
 using MessageBus.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace NNRPD;
