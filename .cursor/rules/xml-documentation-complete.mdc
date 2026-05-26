@@ -40,4 +40,4 @@ XML docs complement (they do not replace) the **two-part file header** policy in
 
 ## MessageBus
 
-For paths under **`MessageBus/`**, follow **`message-bus-documentation.mdc`**: synopsis comment block plus **`TaskUtilities.cs`**-style `<para><b>Section:</b>` type remarks on every type and member.
+For paths under **`Vector.NNTP.MessageBus/`**, follow **`message-bus-documentation.mdc`**: synopsis comment block plus **`TaskUtilities.cs`**-style `<para><b>Section:</b>` type remarks on every type and member.

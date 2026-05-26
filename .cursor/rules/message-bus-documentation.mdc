@@ -1,15 +1,15 @@
 ---
 description: MessageBus documentation bar — synopsis file headers and TaskUtilities-style XML depth on every type and member.
 globs:
-  - MessageBus/**/*.cs
+  - Vector.NNTP.MessageBus/**/*.cs
 alwaysApply: false
 ---
 
 # MessageBus documentation standard
 
-**Gold standard:** `MessageBus/Utilities/TaskUtilities.cs` (synopsis comment block + rich type/member XML). Match that depth on every hand-authored `.cs` file under **`MessageBus/`** (exclude `obj/`, `bin/`, `GlobalUsings.cs`).
+**Gold standard:** `Vector.NNTP.MessageBus/Utilities/TaskUtilities.cs` (synopsis comment block + rich type/member XML). Match that depth on every hand-authored `.cs` file under **`Vector.NNTP.MessageBus/`** (exclude `obj/`, `bin/`, `GlobalUsings.cs`).
 
-Complements **`xml-documentation-complete.mdc`** and **`CONTRIBUTING.md`**; when rules differ on MessageBus specifics, this file wins for paths under **`MessageBus/`**.
+Complements **`xml-documentation-complete.mdc`** and **`CONTRIBUTING.md`**; when rules differ on MessageBus specifics, this file wins for paths under **`Vector.NNTP.MessageBus/`**.
 
 ## Two-part file header
 
@@ -75,8 +75,8 @@ Match **`RabbitMQOptionsValidator.cs`** and **`TaskUtilities.cs`**:
 
 ## Enforcement
 
-- `MessageBus/.editorconfig` references this rule; `GenerateDocumentationFile` + StyleCop private-element rules apply.
-- After doc edits: `dotnet build MessageBus/MessageBus.csproj` (warnings are errors).
+- `Vector.NNTP.MessageBus/.editorconfig` references this rule; `GenerateDocumentationFile` + StyleCop private-element rules apply.
+- After doc edits: `dotnet build Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj` (warnings are errors).
 
 ## Agent checklist (MessageBus touch)
 

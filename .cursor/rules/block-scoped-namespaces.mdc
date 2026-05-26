@@ -11,7 +11,7 @@ All hand-authored **C#** in this repository uses **block-scoped** namespace decl
 ## Required form
 
 ```csharp
-namespace MessageBus.Connections
+namespace Vector.NNTP.MessageBus.Connections
 {
     public sealed class Example
     {
@@ -24,7 +24,7 @@ namespace MessageBus.Connections
 Do **not** use file-scoped namespaces:
 
 ```csharp
-namespace MessageBus.Connections;  // IDE0161 / wrong for this repo
+namespace Vector.NNTP.MessageBus.Connections;  // IDE0161 / wrong for this repo
 
 public sealed class Example
 {
@@ -40,8 +40,8 @@ public sealed class Example
 
 ## Configuration
 
-- **`MessageBus/.editorconfig`**: `csharp_style_namespace_declarations = block_scoped:warning`
-- **`dotnet format`**: `dotnet format MessageBus/MessageBus.csproj --diagnostics IDE0160`
+- **`Vector.NNTP.MessageBus/.editorconfig`**: `csharp_style_namespace_declarations = block_scoped:warning`
+- **`dotnet format`**: `dotnet format Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj --diagnostics IDE0160`
 
 ## Agent constraints
 

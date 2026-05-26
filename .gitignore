@@ -361,5 +361,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/NNRPD/NNRPD.json
-/NNTPD/NNTPD.json
+/Vector.NNTP.NNRPD/NNRPD.json
+/Vector.NNTP.NNTPD/NNTPD.json

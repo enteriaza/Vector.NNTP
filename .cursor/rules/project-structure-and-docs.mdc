@@ -24,7 +24,7 @@ alwaysApply: true
 
 - **`GenerateDocumentationFile`** is enabled; StyleCop documents **exposed**, **internal**, and **private** members. Requirements and **`<remarks>`** style: **`CONTRIBUTING.md` → XML documentation standards**.
 - Agents: apply **`xml-documentation-complete.mdc`** for the full bar on every type and member (including tests and hosts).
-- **`MessageBus/`** assembly: also apply **`message-bus-documentation.mdc`** (synopsis headers + **`TaskUtilities.cs`** XML depth).
+- **`Vector.NNTP.MessageBus/`** assembly: also apply **`message-bus-documentation.mdc`** (synopsis headers + **`TaskUtilities.cs`** XML depth).
 
 ## Solution layout
 

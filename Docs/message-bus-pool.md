@@ -11,7 +11,7 @@ Design sign-off document for the Vector.NNTP `MessageBus` library (Phase 4a).
 | Confirm rate | Matches publish rate | Publisher confirmation tracking enabled |
 | RPC pattern | 64 KiB avg payload, 500 ms p99 SLO | Per RPC transaction scope |
 | Network | LAN, TLS optional | `EnableSsl` from host config |
-| Pool sizing | `MinConnections=1`, `MaxConnections=4`, `ChannelPoolSize=2048` | [NNRPD/NNRPD.json](../NNRPD/NNRPD.json) |
+| Pool sizing | `MinConnections=1`, `MaxConnections=4`, `ChannelPoolSize=2048` | [Vector.NNTP.NNRPD/NNRPD.json](../Vector.NNTP.NNRPD/NNRPD.json) |
 
 ## IPublisherScope semantics (locked)
 
@@ -62,9 +62,9 @@ Unblocking clears stalled automatically. Quarantine signals slot waiters so traf
 
 ## Phase 4a benchmark results (CreateChannel contention)
 
-**Harness:** [MessageBus.Benchmarks](../MessageBus.Benchmarks/) — single TCP, publisher confirms enabled, parallel `CreateChannelAsync` + close per wave.
+**Harness:** Historical standalone benchmark runner (removed; results archived in `Docs/message-bus-benchmark-*.json`) — single TCP, publisher confirms enabled, parallel `CreateChannelAsync` + close per wave.
 
-**Run:** 2026-05-26 (post pool refactor) on `CHRIS-PC` against production hostnames from [NNRPD/NNRPD.json](../NNRPD/NNRPD.json).
+**Run:** 2026-05-26 (post pool refactor) on `CHRIS-PC` against production hostnames from [Vector.NNTP.NNRPD/NNRPD.json](../Vector.NNTP.NNRPD/NNRPD.json).
 
 **Pass criteria (draft):** per-wave **p99 CreateChannel ≤ 500 ms** (RPC SLO proxy); overall cell **Pass** only if worst p99 meets SLO and no collapse (p99 > 4× SLO at concurrency ≥ 256).
 
@@ -112,16 +112,7 @@ Connect time: **656 ms**. Same SLO.
 4. **Post-refactor re-run (2026-05-26):** results are materially unchanged — pool hot-path improvements do not change broker `channel.open` RPC cost.
 5. **Phase 4a sign-off:** ephemeral `IPublisherScope` model remains **not approved** at `ChannelPoolSize=2048` without mitigation — consider multi-TCP pool scaling, channel reuse window, or revised RPC SLO allocation for open+confirm.
 
-### Re-run benchmarks
-
-```bash
-cd MessageBus.Benchmarks
-dotnet run -c Release -- ../NNRPD/NNRPD.json --topology ha --output ../Docs/message-bus-benchmark-ha.json
-dotnet run -c Release -- ../NNRPD/NNRPD.json --topology single --output ../Docs/message-bus-benchmark-single.json
-dotnet run -c Release -- ../NNRPD/NNRPD.json --topology tls --output ../Docs/message-bus-benchmark-tls.json
-```
-
-## Host configuration ([NNRPD/NNRPD.json](../NNRPD/NNRPD.json))
+## Host configuration ([Vector.NNTP.NNRPD/NNRPD.json](../Vector.NNTP.NNRPD/NNRPD.json))
 
 Pool properties bound by the host (MessageBus does not read JSON):
 
@@ -159,7 +150,7 @@ Hosts (NNTPD/NNRPD) bind `RabbitMQ` from JSON. MessageBus consumes `IOptions<Rab
 
 ## Automated tests
 
-[MessageBus.Tests](../MessageBus.Tests/) covers:
+[Vector.NNTP.Tests](../Vector.NNTP.Tests/) (`MessageBus/` test folder) covers:
 
 - `MaxPendingLeaseWaiters` backpressure (`MessageBusUnavailableException`)
 - Blocked connections excluded from slot acquisition (`MessageBusLeaseTimeoutException`)

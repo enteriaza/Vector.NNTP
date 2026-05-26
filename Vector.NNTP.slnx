@@ -12,23 +12,21 @@
     <File Path="session-state.md" />
     <File Path="storage-protocol.md" />
   </Folder>
-  <Project Path="MessageBus/MessageBus.csproj" Id="bb35d90a-ca94-43f1-9ad9-a3809ce22971">
+  <Project Path="Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj" Id="bb35d90a-ca94-43f1-9ad9-a3809ce22971">
     <Platform Project="x64" />
   </Project>
-  <Project Path="NNRPD/NNRPD.csproj" Id="bdbc6013-04c9-4ef7-bdd7-77de3b7af46f">
-    <BuildDependency Project="MessageBus/MessageBus.csproj" />
+  <Project Path="Vector.NNTP.NNRPD/Vector.NNTP.NNRPD.csproj" Id="bdbc6013-04c9-4ef7-bdd7-77de3b7af46f">
+    <BuildDependency Project="Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj" />
     <Platform Project="x64" />
   </Project>
-  <Project Path="NNTPD/NNTPD.csproj">
-    <BuildDependency Project="MessageBus/MessageBus.csproj" />
+  <Project Path="Vector.NNTP.NNTPD/Vector.NNTP.NNTPD.csproj">
+    <BuildDependency Project="Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj" />
     <Platform Project="x64" />
   </Project>
-  <Project Path="MessageBus.Benchmarks/MessageBus.Benchmarks.csproj">
-    <BuildDependency Project="MessageBus/MessageBus.csproj" />
-    <Platform Project="x64" />
-  </Project>
-  <Project Path="MessageBus.Tests/MessageBus.Tests.csproj">
-    <BuildDependency Project="MessageBus/MessageBus.csproj" />
+  <Project Path="Vector.NNTP.Tests/Vector.NNTP.Tests.csproj">
+    <BuildDependency Project="Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj" />
+    <BuildDependency Project="Vector.NNTP.NNRPD/Vector.NNTP.NNRPD.csproj" />
+    <BuildDependency Project="Vector.NNTP.NNTPD/Vector.NNTP.NNTPD.csproj" />
     <Platform Project="x64" />
   </Project>
 </Solution>
