@@ -26,7 +26,6 @@ namespace Vector.NNTP.NNRPD
             _ = builder.Services
                 .AddOptions<RabbitMQOptions>()
                 .Bind(builder.Configuration.GetSection(RabbitMQOptions.SectionName))
-                .ValidateDataAnnotations()
                 .ValidateOnStart();
 
             _ = builder.Services.AddMessageBus();

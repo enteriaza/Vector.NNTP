@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using RabbitMQ.Client;
-using Vector.NNTP.MessageBus;
 using Vector.NNTP.MessageBus.Configuration;
 using Vector.NNTP.MessageBus.Connections;
 using Vector.NNTP.MessageBus.Exceptions;

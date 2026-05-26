@@ -5,7 +5,7 @@
 //
 // Replaces default Microsoft logging providers with Serilog as the primary ILogger implementation.
 
-using Vector.NNTP.MessageBus.Utilities;
+using Vector.NNTP.Utilities.Diagnostics;
 using Serilog;
 
 namespace Vector.NNTP.NNRPD

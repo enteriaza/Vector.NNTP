@@ -9,7 +9,7 @@
 // Threading: Exception handlers run on the triggering thread (finalizer thread for AppDomain.UnhandledException).
 
 using System.Runtime.InteropServices;
-using Vector.NNTP.MessageBus.Utilities;
+using Vector.NNTP.Utilities.Diagnostics;
 using Serilog;
 
 namespace Vector.NNTP.NNRPD

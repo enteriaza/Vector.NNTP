@@ -1,0 +1,32 @@
+// <copyright file="DnsWireRecordTypes.cs" company="Usenet Ninja">
+// Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
+// </copyright>
+// DnsWireRecordTypes.cs -- DNS resource record TYPE/QTYPE constants (RFC 1035).
+
+namespace Vector.NNTP.Utilities.Dns;
+
+/// <summary>
+/// DNS resource record TYPE/QTYPE constants (RFC 1035).
+/// </summary>
+public static class DnsWireRecordTypes
+{
+    /// <summary>
+    /// A record (IPv4 address).
+    /// </summary>
+    public const ushort A = 1;
+
+    /// <summary>
+    /// NS record (authoritative name server).
+    /// </summary>
+    public const ushort Ns = 2;
+
+    /// <summary>
+    /// TXT record.
+    /// </summary>
+    public const ushort Txt = 16;
+
+    /// <summary>
+    /// AAAA record (IPv6 address).
+    /// </summary>
+    public const ushort Aaaa = 28;
+}

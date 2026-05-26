@@ -12,6 +12,12 @@
     <File Path="session-state.md" />
     <File Path="storage-protocol.md" />
   </Folder>
+  <Project Path="Vector.NNTP.Encryption/Vector.NNTP.Encryption.csproj" Id="588e60e8-1916-4542-9367-f11d30f3fe98">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="Vector.NNTP.Utilities/Vector.NNTP.Utilities.csproj" Id="2f1f2212-1f4c-4f20-9c3f-60041f6a386f">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj" Id="bb35d90a-ca94-43f1-9ad9-a3809ce22971">
     <Platform Project="x64" />
   </Project>
@@ -24,6 +30,8 @@
     <Platform Project="x64" />
   </Project>
   <Project Path="Vector.NNTP.Tests/Vector.NNTP.Tests.csproj">
+    <BuildDependency Project="Vector.NNTP.Encryption/Vector.NNTP.Encryption.csproj" />
+    <BuildDependency Project="Vector.NNTP.Utilities/Vector.NNTP.Utilities.csproj" />
     <BuildDependency Project="Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj" />
     <BuildDependency Project="Vector.NNTP.NNRPD/Vector.NNTP.NNRPD.csproj" />
     <BuildDependency Project="Vector.NNTP.NNTPD/Vector.NNTP.NNTPD.csproj" />

@@ -23,6 +23,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Vector.NNTP.Utilities\Vector.NNTP.Utilities.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Vector.NNTP.Tests" />
     <InternalsVisibleTo Include="Vector.NNTP.NNRPD" />
     <InternalsVisibleTo Include="Vector.NNTP.NNTPD" />
