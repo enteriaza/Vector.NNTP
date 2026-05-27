@@ -5,6 +5,8 @@
 //
 // Fail-fast signal for hosts: do not retry indefinitely. Fix configuration, secrets, or AddMessageBus ordering.
 
+using Vector.NNTP.MessageBus.DependencyInjection;
+
 namespace Vector.NNTP.MessageBus.Exceptions
 {
     /// <summary>

@@ -31,7 +31,7 @@ namespace Vector.NNTP.MessageBus.Health
         /// Current aggregate status after the most recent <see cref="UpdateFromPool"/>.
         /// </summary>
         public PoolHealthStatus Status { get; }
-        
+
         /// <summary>
         /// Recomputes aggregate status from the supplied pool snapshot.
         /// </summary>

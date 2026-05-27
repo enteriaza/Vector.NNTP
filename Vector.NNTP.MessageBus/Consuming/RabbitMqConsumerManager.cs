@@ -163,7 +163,7 @@ namespace Vector.NNTP.MessageBus.Consuming
 
             /// <summary>Registered delivery handler.</summary>
             internal AsyncEventHandler<BasicDeliverEventArgs> Handler { get; }
-            
+
             /// <inheritdoc />
             public async ValueTask DisposeAsync()
             {

@@ -18,7 +18,7 @@ using Vector.NNTP.MessageBus.Publishing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-namespace Vector.NNTP.MessageBus
+namespace Vector.NNTP.MessageBus.DependencyInjection
 {
     /// <summary>
     /// Dependency-injection registration for MessageBus pool, publisher, and consumer components.

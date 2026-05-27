@@ -45,7 +45,6 @@
 using System.Collections.Frozen;
 using System.ComponentModel.DataAnnotations;
 using System.Net;
-using Vector.NNTP.Utilities.Diagnostics;
 using Vector.NNTP.Utilities.Networking;
 using Vector.NNTP.Utilities.Validation;
 

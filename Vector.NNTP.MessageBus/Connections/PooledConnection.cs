@@ -57,7 +57,7 @@ namespace Vector.NNTP.MessageBus.Connections
 
         /// <summary>Stable pool-local identifier for this TCP connection.</summary>
         public Guid ConnectionId { get; }
-        
+
         /// <summary>Index into <see cref="RabbitMQOptions.Hosts"/> selected when the connection was created.</summary>
         public int HostIndex { get; }
 

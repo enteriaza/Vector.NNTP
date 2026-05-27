@@ -45,7 +45,7 @@ namespace Vector.NNTP.MessageBus.Health
         /// Faulted fraction exceeds unhealthy threshold, or the pool snapshot is empty.
         /// </summary>
         Unhealthy = 3,
-        
+
     }
 }
 

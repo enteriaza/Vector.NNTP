@@ -2,9 +2,9 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-using Vector.NNTP.MessageBus;
 using Vector.NNTP.MessageBus.Configuration;
 using Microsoft.Extensions.Options;
+using Vector.NNTP.MessageBus.DependencyInjection;
 
 namespace Vector.NNTP.NNRPD
 {

@@ -78,7 +78,7 @@ namespace Vector.NNTP.MessageBus.Connections
                     int used = _pool.GetUsedSlotCount();
                     if (used < capacity)
                         continue;
-                    await _pool.AddConnectionAsync(stoppingToken).ConfigureAwait(false);
+                    _ = await _pool.AddConnectionAsync(stoppingToken).ConfigureAwait(false);
                     LogScaledUp(connectionCount + 1);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

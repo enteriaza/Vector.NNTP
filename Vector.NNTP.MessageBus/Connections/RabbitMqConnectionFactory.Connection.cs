@@ -40,10 +40,7 @@
 
 using System.Diagnostics;
 using Vector.NNTP.MessageBus.Configuration;
-using Vector.NNTP.Utilities.Async;
-using Vector.NNTP.Utilities.Diagnostics;
 using Vector.NNTP.Utilities.Disposal;
-using Vector.NNTP.Utilities.Retry;
 using RabbitMQ.Client;
 
 namespace Vector.NNTP.MessageBus.Connections
