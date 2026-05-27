@@ -5,10 +5,12 @@
 //
 // Serilog bootstrap and global exception handlers: Program.Logging.cs.
 // Serilog DI registration: Program.Serilog.cs.
-// Host JSON and MessageBus: Program.Configuration.cs, Program.MessageBus.cs.
+// Host JSON, Encryption, MessageBus, NNTP sockets: Program.Configuration.cs, Program.Encryption.cs,
+// Program.MessageBus.cs, Program.Nntp.cs.
 
 using Microsoft.Extensions.Options;
 using Serilog;
+using Vector.NNTP.Sockets.Authentication;
 
 namespace Vector.NNTP.NNTPD
 {
@@ -33,10 +35,12 @@ namespace Vector.NNTP.NNTPD
                 AddHostConfiguration(builder);
                 ConfigureSerilog(builder);
                 LogStartupBanner();
+                ConfigureEncryption(builder);
                 ConfigureMessageBus(builder);
-                _ = builder.Services.AddHostedService<Worker>();
+                ConfigureNntpTransit(builder);
 
                 using IHost host = builder.Build();
+                LogNntpCredentialBackend(host.Services);
                 await host.RunAsync().ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -73,6 +77,16 @@ namespace Vector.NNTP.NNTPD
                     // Best effort -- sink failure during shutdown cannot be recovered.
                 }
             }
+        }
+
+        /// <summary>
+        /// Logs which <see cref="INntpCredentialValidator"/> implementation is active after DI build.
+        /// </summary>
+        /// <param name="services">Built host services.</param>
+        private static void LogNntpCredentialBackend(IServiceProvider services)
+        {
+            INntpCredentialValidator validator = services.GetRequiredService<INntpCredentialValidator>();
+            Log.Information("NNTP credential validation backend: {BackendType}", validator.GetType().FullName);
         }
     }
 }

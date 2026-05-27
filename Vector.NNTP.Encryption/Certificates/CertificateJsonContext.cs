@@ -99,6 +99,11 @@ namespace Vector.NNTP.Encryption.Certificates
 
         /// <summary>Record TTL in seconds.</summary>
         public required int Ttl { get; init; }
+
+        /// <summary>
+        /// Gets a value indicating whether the record is proxied through Cloudflare.  Must be <see langword="false"/> for TXT.
+        /// </summary>
+        public bool Proxied { get; init; }
     }
 
 }

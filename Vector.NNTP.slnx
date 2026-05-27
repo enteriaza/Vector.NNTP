@@ -15,10 +15,18 @@
   <Project Path="Vector.NNTP.Encryption/Vector.NNTP.Encryption.csproj" Id="588e60e8-1916-4542-9367-f11d30f3fe98">
     <Platform Project="x64" />
   </Project>
+  <Project Path="Vector.NNTP.Auth.MySql/Vector.NNTP.Auth.MySql.csproj" Id="6e9c0c2a-5e2f-4d88-9f3e-1234567890ab">
+    <BuildDependency Project="Vector.NNTP.Sockets/Vector.NNTP.Sockets.csproj" />
+    <Platform Project="x64" />
+  </Project>
   <Project Path="Vector.NNTP.Utilities/Vector.NNTP.Utilities.csproj" Id="2f1f2212-1f4c-4f20-9c3f-60041f6a386f">
     <Platform Project="x64" />
   </Project>
   <Project Path="Vector.NNTP.Filters/Vector.NNTP.Filters.csproj" Id="0f07bdcc-6c7d-4ea7-b8f9-14b5e7b253b9">
+    <BuildDependency Project="Vector.NNTP.Utilities/Vector.NNTP.Utilities.csproj" />
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="Vector.NNTP.Sockets/Vector.NNTP.Sockets.csproj" Id="a1b2c3d4-e5f6-7890-abcd-ef1234567890">
     <BuildDependency Project="Vector.NNTP.Utilities/Vector.NNTP.Utilities.csproj" />
     <Platform Project="x64" />
   </Project>

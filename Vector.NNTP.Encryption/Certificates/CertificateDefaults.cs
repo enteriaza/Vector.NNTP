@@ -182,8 +182,8 @@ namespace Vector.NNTP.Encryption.Certificates
         /// is constant for the lifetime of the process.</para>
         /// </remarks>
         internal static readonly X509KeyStorageFlags PfxKeyStorageFlags = OperatingSystem.IsWindows()
-            ? X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.PersistKeySet
-            : X509KeyStorageFlags.EphemeralKeySet;
+            ? X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable
+            : X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable;
 
         #endregion
     }

@@ -131,6 +131,12 @@ namespace Vector.NNTP.Encryption.Certificates
             if (!_options.Enabled)
             {
                 LogAutoRenewalDisabled();
+                if (!string.IsNullOrWhiteSpace(_options.CertDir))
+                {
+                    _store = new CertificateStore(logger, _options.CertDir, _options.PfxExportPassword);
+                    TryLoadCachedCertificate();
+                }
+
                 return;
             }
 
@@ -321,6 +327,12 @@ namespace Vector.NNTP.Encryption.Certificates
         /// This avoids duplicating the threshold arithmetic that <see cref="IsCertificateValidBeyondThreshold"/> already
         /// performs, and eliminates a second atomic read of <see cref="_currentCertificate"/> on the happy path.</para>
         ///
+        /// <para><b>PFX bytes for cluster:</b> The issued PFX is already written to disk by
+        /// <see cref="AcmeCertificateProvider.RequestCertificateAsync"/>.  Cluster broadcast reads those bytes via
+        /// <see cref="CertificateStore.TryLoadCertificateBytesAsync"/> instead of re-exporting from
+        /// <see cref="X509Certificate2"/> (Windows CNG keys loaded without <see cref="X509KeyStorageFlags.Exportable"/>
+        /// cannot be exported again).</para>
+        ///
         /// <para><b>Certificate leak prevention:</b> The certificate returned by
         /// <see cref="AcmeCertificateProvider.RequestCertificateAsync"/> is wrapped in a <c>try/finally</c> guard.  If
         /// <see cref="ActivateCertificate"/> throws (e.g. <see cref="ObjectDisposedException"/> during host shutdown, or
@@ -379,7 +391,6 @@ namespace Vector.NNTP.Encryption.Certificates
             }
 
             X509Certificate2? newCert = await _acmeProvider!.RequestCertificateAsync(_store!, ct).ConfigureAwait(false);
-            byte[] pfxBytes = newCert.Export(X509ContentType.Pfx, _options.PfxExportPassword);
 
             try
             {
@@ -388,9 +399,18 @@ namespace Vector.NNTP.Encryption.Certificates
 
                 if (_clusterSync is not null)
                 {
+                    byte[]? pfxBytes = await _store!.TryLoadCertificateBytesAsync(ct).ConfigureAwait(false);
+                    if (pfxBytes is null || pfxBytes.Length == 0)
+                    {
+                        throw new InvalidOperationException(
+                            "Cluster broadcast requires certificate.pfx on disk after renewal, but the file could not be read.");
+                    }
+
                     X509Certificate2? activated = GetCurrentCertificate();
                     if (activated is not null)
+                    {
                         await _clusterSync.PublishAndRecordAsync(activated, pfxBytes, ct).ConfigureAwait(false);
+                    }
                 }
             }
             finally

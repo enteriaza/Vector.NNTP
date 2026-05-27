@@ -1,0 +1,57 @@
+// <copyright file="NntpCmdPost.cs" company="Usenet Ninja">
+// Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
+// </copyright>
+// COLD PATH: POST command handler.
+
+namespace Vector.NNTP.Sockets.Transport.Commands
+{
+    using Session;
+    using Storage;
+
+    /// <summary>
+    /// Handles the NNTP POST command.
+    /// </summary>
+    internal static class NntpCmdPost
+    {
+        /// <summary>
+        /// Accepts a dot-stuffed article body and stores it via article storage.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="storage">Article storage (may be null).</param>
+        /// <param name="lineReader">Line reader for the multi-line body.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns><see langword="true"/> to continue the session.</returns>
+        internal static async ValueTask<bool> DispatchAsync(
+            NntpSession session,
+            INntpArticleStorage? storage,
+            Vector.NNTP.Sockets.Transport.NntpLineReader lineReader,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(session);
+            ArgumentNullException.ThrowIfNull(lineReader);
+            if (storage is null)
+            {
+                await session.Writer.WriteLineAsync("503 Reader storage not configured", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            if (session.Connection.Policy?.AllowPosting != true)
+            {
+                await session.Writer.WriteLineAsync("480 Posting not permitted", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            await session.Writer.WriteLineAsync("340 Send article to be posted", cancellationToken).ConfigureAwait(false);
+            byte[] body = await Vector.NNTP.Sockets.Transport.NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+            NntpPostResult result = await storage.PostArticleAsync(body, cancellationToken).ConfigureAwait(false);
+            if (!result.Success)
+            {
+                await session.Writer.WriteLineAsync("441 Posting failed", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            await session.Writer.WriteLineAsync($"240 Article posted OK <{result.MessageId}>", cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+    }
+}

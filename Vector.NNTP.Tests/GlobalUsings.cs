@@ -2,4 +2,7 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+global using System.IO.Pipelines;
+global using System.Net;
+global using System.Net.Sockets;
 global using NUnit.Framework;

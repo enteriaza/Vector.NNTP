@@ -58,6 +58,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Vector.NNTP.Encryption.Acme;
 using Vector.NNTP.Encryption.Dns;
 using Vector.NNTP.Utilities.IO;
 
@@ -472,12 +473,18 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         #region Private Methods -- Cloudflare TXT Record CRUD
 
         /// <summary>
-        /// Creates a TXT DNS record via the Cloudflare <c>POST /zones/{zoneId}/dns_records</c> API.
+        /// Creates or updates a TXT DNS record for an ACME DNS-01 challenge via the Cloudflare API.
         /// </summary>
         /// <remarks>
-        /// <para><b>Payload:</b> The JSON body specifies <c>type=TXT</c>, the fully-qualified record name, the challenge
-        /// digest value, and a low TTL (<see cref="TxtRecordTtlSeconds"/>) so stale records expire quickly from recursive
-        /// resolver caches if cleanup fails.</para>
+        /// <para><b>Upsert:</b> If a TXT record with the same name already exists (for example from a prior failed
+        /// renewal), the record is updated via <c>PATCH</c> instead of <c>POST</c> to avoid HTTP 400 duplicate-name errors.</para>
+        ///
+        /// <para><b>Name normalization:</b> Challenge FQDNs are converted to zone-relative names via
+        /// <see cref="CloudflareDnsRecordNaming"/> (for example <c>_acme-challenge.usenet.ninja</c> →
+        /// <c>_acme-challenge</c>).</para>
+        ///
+        /// <para><b>Payload:</b> The JSON body specifies <c>type=TXT</c>, the record name, the challenge digest value,
+        /// <c>proxied=false</c>, and a low TTL (<see cref="TxtRecordTtlSeconds"/>).</para>
         ///
         /// <para><b>Serialisation:</b> The payload is serialised from a <see cref="CloudflareDnsRecordRequest"/> using the
         /// shared <see cref="CertificateDefaults.JsonOptions"/> (frozen, camelCase naming).  This method runs at most once
@@ -508,21 +515,110 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// shutdown).</exception>
         private async Task<string> CreateCloudflareTxtRecordAsync(string name, string content, CancellationToken ct)
         {
+            string apiName = CloudflareDnsRecordNaming.NormalizeTxtRecordNameForApi(name, options.DomainNames);
+            string? existingId = await this.TryFindCloudflareTxtRecordIdAsync(apiName, name, ct).ConfigureAwait(false);
+            if (existingId is not null)
+            {
+                return await this.UpdateCloudflareTxtRecordAsync(existingId, apiName, content, ct).ConfigureAwait(false);
+            }
+
+            return await this.CreateCloudflareTxtRecordCoreAsync(apiName, content, ct).ConfigureAwait(false);
+        }
+
+        private async Task<string?> TryFindCloudflareTxtRecordIdAsync(string apiName, string fqdnName, CancellationToken ct)
+        {
+            if (string.Equals(apiName, fqdnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return await this.TryFindCloudflareTxtRecordIdByNameAsync(apiName, ct).ConfigureAwait(false);
+            }
+
+            string? relativeMatch = await this.TryFindCloudflareTxtRecordIdByNameAsync(apiName, ct).ConfigureAwait(false);
+            if (relativeMatch is not null)
+            {
+                return relativeMatch;
+            }
+
+            return await this.TryFindCloudflareTxtRecordIdByNameAsync(fqdnName, ct).ConfigureAwait(false);
+        }
+
+        private async Task<string?> TryFindCloudflareTxtRecordIdByNameAsync(string recordName, CancellationToken ct)
+        {
+            string encodedName = Uri.EscapeDataString(recordName);
+            using HttpRequestMessage request = new(
+                HttpMethod.Get,
+                $"zones/{options.CloudflareZoneId}/dns_records?type=TXT&name={encodedName}");
+            using JsonDocument doc = await SendCloudflareRequestAsync(request, "GET /dns_records", ct).ConfigureAwait(false);
+            if (!doc.RootElement.TryGetProperty("result", out JsonElement results) || results.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            foreach (JsonElement item in results.EnumerateArray())
+            {
+                if (item.TryGetProperty("id", out JsonElement idElement))
+                {
+                    return idElement.GetString();
+                }
+            }
+
+            return null;
+        }
+
+        private async Task<string> CreateCloudflareTxtRecordCoreAsync(string apiName, string content, CancellationToken ct)
+        {
             using HttpRequestMessage request = new(HttpMethod.Post, $"zones/{options.CloudflareZoneId}/dns_records");
             request.Content = new StringContent(
-                JsonSerializer.Serialize(new CloudflareDnsRecordRequest { Type = "TXT", Name = name, Content = content, Ttl = TxtRecordTtlSeconds }, CertificateDefaults.JsonOptions),
-                Encoding.UTF8, "application/json");
+                JsonSerializer.Serialize(this.BuildTxtRecordRequest(apiName, content), CertificateDefaults.JsonOptions),
+                Encoding.UTF8,
+                "application/json");
 
             using JsonDocument doc = await SendCloudflareRequestAsync(request, "POST /dns_records", ct).ConfigureAwait(false);
-
-            // Validate the record ID explicitly rather than using the ! null-forgiving operator.  The id field is
-            // external API input -- a null value indicates a Cloudflare contract violation or malformed response.
-            string recordId = doc.RootElement.GetProperty("result").GetProperty("id").GetString()
-                ?? throw new InvalidOperationException("Cloudflare POST /dns_records returned a null record ID");
-
+            string recordId = this.ReadCloudflareRecordId(doc, "POST /dns_records");
             if (logger.IsEnabled(LogLevel.Debug))
-                LogCreatedCloudflareTxtRecord(recordId, name);
+            {
+                LogCreatedCloudflareTxtRecord(recordId, apiName);
+            }
+
             return recordId;
+        }
+
+        private async Task<string> UpdateCloudflareTxtRecordAsync(
+            string recordId,
+            string apiName,
+            string content,
+            CancellationToken ct)
+        {
+            using HttpRequestMessage request = new(
+                HttpMethod.Patch,
+                $"zones/{options.CloudflareZoneId}/dns_records/{recordId}");
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(this.BuildTxtRecordRequest(apiName, content), CertificateDefaults.JsonOptions),
+                Encoding.UTF8,
+                "application/json");
+
+            using JsonDocument doc = await SendCloudflareRequestAsync(request, "PATCH /dns_records", ct).ConfigureAwait(false);
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                LogCreatedCloudflareTxtRecord(recordId, apiName);
+            }
+
+            return this.ReadCloudflareRecordId(doc, "PATCH /dns_records");
+        }
+
+        private CloudflareDnsRecordRequest BuildTxtRecordRequest(string apiName, string content) =>
+            new()
+            {
+                Type = "TXT",
+                Name = apiName,
+                Content = content,
+                Ttl = TxtRecordTtlSeconds,
+                Proxied = false,
+            };
+
+        private string ReadCloudflareRecordId(JsonDocument doc, string operation)
+        {
+            return doc.RootElement.GetProperty("result").GetProperty("id").GetString()
+                ?? throw new InvalidOperationException($"Cloudflare {operation} returned a null record ID");
         }
 
         /// <summary>
@@ -621,7 +717,12 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
                 response = await CloudflareHttpClient.SendAsync(request, ct).ConfigureAwait(false);
 
                 EnsureResponseSizeWithinLimit(response, operation);
-                response.EnsureSuccessStatusCode();
+                if (!response.IsSuccessStatusCode)
+                {
+                    string errorDetail = await ReadCloudflareHttpErrorDetailAsync(response, operation, ct).ConfigureAwait(false);
+                    throw new HttpRequestException(
+                        $"Cloudflare {operation} returned {(int)response.StatusCode} {response.ReasonPhrase}: {errorDetail}");
+                }
 
                 Stream responseStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
                 await using (responseStream.ConfigureAwait(false))
@@ -662,8 +763,34 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// </remarks>
         /// <param name="response">The HTTP response to validate.</param>
         /// <param name="operation">A short description of the API call for the error message.</param>
-        /// <exception cref="InvalidOperationException">Thrown when the <c>Content-Length</c> exceeds
-        /// <see cref="MaxCloudflareResponseBytes"/>.</exception>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Aggregated Cloudflare error detail text.</returns>
+        private async Task<string> ReadCloudflareHttpErrorDetailAsync(
+            HttpResponseMessage response,
+            string operation,
+            CancellationToken ct)
+        {
+            try
+            {
+                Stream responseStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                await using (responseStream.ConfigureAwait(false))
+                {
+                    using LengthLimitedReadStream limitedStream = new(
+                        responseStream,
+                        MaxCloudflareResponseBytes,
+                        operation,
+                        logger);
+                    using JsonDocument doc = await JsonDocument.ParseAsync(limitedStream, cancellationToken: ct)
+                        .ConfigureAwait(false);
+                    return FormatCloudflareErrorDetail(doc);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return $"could not read error body ({ex.GetType().Name})";
+            }
+        }
+
         private static void EnsureResponseSizeWithinLimit(HttpResponseMessage response, string operation)
         {
             long? contentLength = response.Content.Headers.ContentLength;
@@ -714,60 +841,62 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         private static void EnsureCloudflareSuccess(JsonDocument doc, string operation)
         {
             if (doc.RootElement.TryGetProperty("success", out JsonElement successElement) && successElement.GetBoolean())
-                return;
-
-            // Build the error detail string from the "errors" array with a hard length cap to prevent unbounded growth
-            // from a malformed or adversarial response.  Truncation occurs at error-entry boundaries -- not mid-string --
-            // to avoid partial error codes or dangling separators in the diagnostic output.
-            string errorDetail = "unknown error";
-            if (doc.RootElement.TryGetProperty("errors", out JsonElement errorsElement)
-                && errorsElement.ValueKind == JsonValueKind.Array)
             {
-                StringBuilder sb = new();
-                bool truncated = false;
-
-                foreach (JsonElement error in errorsElement.EnumerateArray())
-                {
-                    string? message = error.TryGetProperty("message", out JsonElement msgEl) ? msgEl.GetString() : null;
-                    if (message is null)
-                        continue;
-
-                    // Pre-calculate the candidate entry length to check truncation before allocating the code prefix.
-                    // The entry format is: "; [code] message" or "; message" (separator omitted for the first entry).
-                    bool hasCode = error.TryGetProperty("code", out JsonElement codeEl) && codeEl.ValueKind == JsonValueKind.Number;
-
-                    // Estimate the entry length without allocating the code prefix string yet.
-                    // Code prefix format: "[" + digits + "] " -- at most "[2147483647] " = 14 characters for int.MaxValue.
-                    int separatorLength = sb.Length > 0 ? 2 : 0;   // "; " separator
-                    int codePrefixEstimate = hasCode ? 14 : 0;     // conservative upper bound for "[int] "
-                    int entryLengthEstimate = separatorLength + codePrefixEstimate + message.Length;
-
-                    // Check if appending this entry would exceed the cap.  If so, mark as truncated and stop -- the
-                    // previous entries already in sb form a complete, well-formatted string.
-                    if (sb.Length + entryLengthEstimate > MaxCloudflareErrorDetailLength)
-                    {
-                        truncated = true;
-                        break;
-                    }
-
-                    // Entry will fit -- now allocate the code prefix if needed.
-                    if (sb.Length > 0)
-                        sb.Append("; ");
-
-                    if (hasCode)
-                        sb.Append('[').Append(codeEl.GetInt32()).Append("] ");
-
-                    sb.Append(message);
-                }
-
-                if (truncated)
-                    sb.Append(" [truncated]");
-
-                if (sb.Length > 0)
-                    errorDetail = sb.ToString();
+                return;
             }
 
-            throw new InvalidOperationException($"Cloudflare API {operation} failed: {errorDetail}");
+            throw new InvalidOperationException($"Cloudflare API {operation} failed: {FormatCloudflareErrorDetail(doc)}");
+        }
+
+        private static string FormatCloudflareErrorDetail(JsonDocument doc)
+        {
+            string errorDetail = "unknown error";
+            if (!doc.RootElement.TryGetProperty("errors", out JsonElement errorsElement)
+                || errorsElement.ValueKind != JsonValueKind.Array)
+            {
+                return errorDetail;
+            }
+
+            StringBuilder sb = new();
+            bool truncated = false;
+
+            foreach (JsonElement error in errorsElement.EnumerateArray())
+            {
+                string? message = error.TryGetProperty("message", out JsonElement msgEl) ? msgEl.GetString() : null;
+                if (message is null)
+                {
+                    continue;
+                }
+
+                bool hasCode = error.TryGetProperty("code", out JsonElement codeEl) && codeEl.ValueKind == JsonValueKind.Number;
+                int separatorLength = sb.Length > 0 ? 2 : 0;
+                int codePrefixEstimate = hasCode ? 14 : 0;
+                int entryLengthEstimate = separatorLength + codePrefixEstimate + message.Length;
+                if (sb.Length + entryLengthEstimate > MaxCloudflareErrorDetailLength)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                if (sb.Length > 0)
+                {
+                    sb.Append("; ");
+                }
+
+                if (hasCode)
+                {
+                    sb.Append('[').Append(codeEl.GetInt32()).Append("] ");
+                }
+
+                sb.Append(message);
+            }
+
+            if (truncated)
+            {
+                sb.Append(" [truncated]");
+            }
+
+            return sb.Length > 0 ? sb.ToString() : errorDetail;
         }
 
         #endregion

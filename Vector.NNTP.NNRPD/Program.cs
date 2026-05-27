@@ -5,7 +5,8 @@
 //
 // Serilog bootstrap and global exception handlers: Program.Logging.cs.
 // Serilog DI registration: Program.Serilog.cs.
-// Host JSON and MessageBus: Program.Configuration.cs, Program.MessageBus.cs.
+// Host JSON, Encryption, MessageBus, NNTP sockets: Program.Configuration.cs, Program.Encryption.cs,
+// Program.MessageBus.cs, Program.Nntp.cs.
 
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -33,8 +34,9 @@ namespace Vector.NNTP.NNRPD
                 AddHostConfiguration(builder);
                 ConfigureSerilog(builder);
                 LogStartupBanner();
+                ConfigureEncryption(builder);
                 ConfigureMessageBus(builder);
-                _ = builder.Services.AddHostedService<Worker>();
+                ConfigureNntpReader(builder);
 
                 using IHost host = builder.Build();
                 await host.RunAsync().ConfigureAwait(false);

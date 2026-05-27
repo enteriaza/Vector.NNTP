@@ -7,6 +7,7 @@
 // The library never reads JSON files, environment variables, or IConfiguration directly.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Vector.NNTP.Encryption.Certificates;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.Dns;
@@ -38,7 +39,9 @@ namespace Vector.NNTP.Encryption
         public static IServiceCollection AddEncryption(this IServiceCollection services)
         {
             _ = services.AddSingleton<IDnsTxtPropagationProbe, AuthoritativeDnsTxtPropagationProbe>();
-            _ = services.AddHostedService<CertificateRenewalService>();
+            _ = services.AddSingleton<IPostConfigureOptions<LetsEncryptOptions>, LetsEncryptOptionsPostConfigurator>();
+            _ = services.AddSingleton<CertificateRenewalService>();
+            _ = services.AddHostedService(provider => provider.GetRequiredService<CertificateRenewalService>());
             return services;
         }
 

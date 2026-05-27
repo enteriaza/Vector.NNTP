@@ -288,7 +288,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\Vector.NNTP.Auth.MySql\Vector.NNTP.Auth.MySql.csproj" />
+		<ProjectReference Include="..\Vector.NNTP.Encryption\Vector.NNTP.Encryption.csproj" />
 		<ProjectReference Include="..\Vector.NNTP.MessageBus\Vector.NNTP.MessageBus.csproj" />
+		<ProjectReference Include="..\Vector.NNTP.Sockets\Vector.NNTP.Sockets.csproj" />
 	</ItemGroup>
 
 	<!-- Local host settings (gitignored); copy when present for dotnet run / publish output layout. -->

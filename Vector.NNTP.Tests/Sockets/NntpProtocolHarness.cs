@@ -1,0 +1,245 @@
+// <copyright file="NntpProtocolHarness.cs" company="Usenet Ninja">
+// Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
+// </copyright>
+// COLD PATH: in-memory duplex pipe harness for golden transcript tests.
+
+using System.Text;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Vector.NNTP.Sockets.Authentication;
+using Vector.NNTP.Sockets.Configuration;
+using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+using Vector.NNTP.Sockets.Transport;
+using Vector.NNTP.Tests.Sockets.Fakes;
+
+namespace Vector.NNTP.Tests.Sockets
+{
+    /// <summary>
+    /// Runs an NNTP session over in-memory pipes for protocol testing.
+    /// </summary>
+    internal sealed class NntpProtocolHarness : IAsyncDisposable
+    {
+        private readonly Pipe _clientToServer;
+        private readonly Pipe _serverToClient;
+        private readonly Task _serverTask;
+        private readonly CancellationTokenSource _cts;
+        private readonly StringBuilder _readBuffer = new();
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="NntpProtocolHarness"/> class.
+        /// </summary>
+        /// <param name="clientToServer">Client-to-server pipe.</param>
+        /// <param name="serverToClient">Server-to-client pipe.</param>
+        /// <param name="serverTask">Background session task.</param>
+        /// <param name="cts">Linked cancellation source.</param>
+        private NntpProtocolHarness(Pipe clientToServer, Pipe serverToClient, Task serverTask, CancellationTokenSource cts)
+        {
+            this._clientToServer = clientToServer;
+            this._serverToClient = serverToClient;
+            this._serverTask = serverTask;
+            this._cts = cts;
+        }
+
+        /// <inheritdoc />
+        public async ValueTask DisposeAsync()
+        {
+            await this._cts.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await this._serverTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // expected on cancel
+            }
+
+            await this._clientToServer.Reader.CompleteAsync().ConfigureAwait(false);
+            await this._clientToServer.Writer.CompleteAsync().ConfigureAwait(false);
+            await this._serverToClient.Reader.CompleteAsync().ConfigureAwait(false);
+            await this._serverToClient.Writer.CompleteAsync().ConfigureAwait(false);
+            this._cts.Dispose();
+        }
+
+        /// <summary>
+        /// Creates a reader-profile harness with fake storage and credentials.
+        /// </summary>
+        /// <returns>Connected harness instance.</returns>
+        internal static NntpProtocolHarness CreateReader() =>
+            Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null);
+
+        /// <summary>
+        /// Creates a transit-profile harness with fake transit storage.
+        /// </summary>
+        /// <returns>Connected harness instance.</returns>
+        internal static NntpProtocolHarness CreateTransit() =>
+            Create(new NntpTransitHostProfile(), null, new FakeNntpTransitStorage());
+
+        /// <summary>
+        /// Authenticates on a transit harness (same fake credentials as reader).
+        /// </summary>
+        /// <param name="harness">Connected harness.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="Task"/> that completes when authentication succeeds.</returns>
+        internal static async Task AuthenticateTransitAsync(
+            NntpProtocolHarness harness,
+            CancellationToken cancellationToken = default)
+        {
+            _ = await harness.ReadGreetingAsync(cancellationToken).ConfigureAwait(false);
+            await harness.SendAsync("AUTHINFO USER alice", cancellationToken).ConfigureAwait(false);
+            _ = await harness.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            await harness.SendAsync("AUTHINFO PASS secret", cancellationToken).ConfigureAwait(false);
+            string ok = await harness.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            Assert.That(ok, Does.StartWith("281 "));
+        }
+
+        /// <summary>
+        /// Reads the initial greeting line.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Greeting line text.</returns>
+        internal Task<string> ReadGreetingAsync(CancellationToken cancellationToken = default) =>
+            this.ReadLineAsync(cancellationToken);
+
+        /// <summary>
+        /// Authenticates with AUTHINFO USER/PASS using the fake alice/secret credentials.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="Task"/> that completes when authentication succeeds.</returns>
+        internal async Task AuthenticateAsync(CancellationToken cancellationToken = default)
+        {
+            _ = await this.ReadGreetingAsync(cancellationToken).ConfigureAwait(false);
+            await this.SendAsync("AUTHINFO USER alice", cancellationToken).ConfigureAwait(false);
+            _ = await this.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            await this.SendAsync("AUTHINFO PASS secret", cancellationToken).ConfigureAwait(false);
+            string ok = await this.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            Assert.That(ok, Does.StartWith("281 "));
+        }
+
+        /// <summary>
+        /// Sends a dot-stuffed article body terminated by a lone period line.
+        /// </summary>
+        /// <param name="body">Raw article bytes.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="Task"/> that completes when the body is flushed.</returns>
+        internal async Task SendArticleBodyAsync(string body, CancellationToken cancellationToken = default)
+        {
+            foreach (string line in body.Replace("\n", "\r\n", StringComparison.Ordinal).Split("\r\n", StringSplitOptions.None))
+            {
+                if (line.StartsWith('.'))
+                {
+                    await this.SendAsync("." + line, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await this.SendAsync(line, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            await this.SendAsync(".", cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Sends a command line (CRLF appended).
+        /// </summary>
+        /// <param name="command">Command without CRLF.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="Task"/> that completes when bytes are flushed.</returns>
+        internal async Task SendAsync(string command, CancellationToken cancellationToken = default)
+        {
+            byte[] bytes = Encoding.ASCII.GetBytes(command + "\r\n");
+            await this._clientToServer.Writer.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+            await this._clientToServer.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Reads a dot-terminated multi-line response (including the header line, excluding the final dot).
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>All lines before the terminating dot.</returns>
+        internal async Task<List<string>> ReadMultiLineAsync(CancellationToken cancellationToken = default)
+        {
+            var lines = new List<string>();
+            while (true)
+            {
+                string line = await this.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                if (line == ".")
+                {
+                    return lines;
+                }
+
+                lines.Add(line);
+            }
+        }
+
+        /// <summary>
+        /// Reads one CRLF-terminated line from the server.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Line without CRLF.</returns>
+        internal async Task<string> ReadLineAsync(CancellationToken cancellationToken = default)
+        {
+            while (true)
+            {
+                string buffered = this._readBuffer.ToString();
+                int idx = buffered.IndexOf("\r\n", StringComparison.Ordinal);
+                if (idx >= 0)
+                {
+                    string line = buffered[..idx];
+                    this._readBuffer.Clear();
+                    this._readBuffer.Append(buffered[(idx + 2)..]);
+                    return line;
+                }
+
+                ReadResult read = await this._serverToClient.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                foreach (ReadOnlyMemory<byte> seg in read.Buffer)
+                {
+                    this._readBuffer.Append(Encoding.ASCII.GetString(seg.Span));
+                }
+
+                this._serverToClient.Reader.AdvanceTo(read.Buffer.End);
+                if (read.IsCompleted && this._readBuffer.Length == 0)
+                {
+                    return string.Empty;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Wires pipes and starts the server session task.
+        /// </summary>
+        /// <param name="profile">Host profile.</param>
+        /// <param name="articles">Optional reader storage.</param>
+        /// <param name="transit">Optional transit storage.</param>
+        /// <returns>Connected harness.</returns>
+        private static NntpProtocolHarness Create(
+            INntpHostProfile profile,
+            INntpArticleStorage? articles,
+            INntpTransitStorage? transit)
+        {
+            var clientToServer = new Pipe();
+            var serverToClient = new Pipe();
+            var cts = new CancellationTokenSource();
+            var options = Options.Create(new NntpServerOptions
+            {
+                ServerIdentification = "VectorNNTPD-Test",
+                IdleTimeout = TimeSpan.FromSeconds(5),
+            });
+            var auth = new NntpAuthenticationService(new FakeNntpCredentialValidator(new Dictionary<string, string> { ["alice"] = "secret" }));
+            var dispatcher = new NntpCommandDispatcher(
+                auth,
+                articles,
+                transit,
+                tlsCertificateSource: null,
+                scramCredentialStore: null,
+                NullLogger<NntpCommandDispatcher>.Instance);
+            var runner = new NntpSessionRunner(dispatcher, profile, options, tlsCertificateSource: null, admissionTracker: null, NullLogger<NntpSessionRunner>.Instance);
+            var remote = new IPEndPoint(IPAddress.Loopback, 12345);
+            var context = new NntpConnectionContext(Guid.NewGuid().ToString("N"), remote, remote, profile.Role);
+            var transport = new NntpPipeTransport(clientToServer.Reader, serverToClient.Writer);
+            Task serverTask = runner.RunAsync(transport, context, tlsAlreadyActive: false, cts.Token);
+            return new NntpProtocolHarness(clientToServer, serverToClient, serverTask, cts);
+        }
+    }
+}

@@ -10,6 +10,7 @@
     <InternalsVisibleTo Include="Vector.NNTP.Tests" />
     <InternalsVisibleTo Include="Vector.NNTP.NNRPD" />
     <InternalsVisibleTo Include="Vector.NNTP.NNTPD" />
+    <InternalsVisibleTo Include="Vector.NNTP.Sockets" />
   </ItemGroup>
 
   <ItemGroup>
