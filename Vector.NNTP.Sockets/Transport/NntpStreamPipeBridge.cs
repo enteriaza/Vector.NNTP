@@ -22,29 +22,29 @@ namespace Vector.NNTP.Sockets.Transport
         /// <param name="stream">Underlying bidirectional stream.</param>
         public NntpStreamPipeBridge(Stream stream)
         {
-            this._stream = stream ?? throw new ArgumentNullException(nameof(stream));
-            this._fillTask = this.FillInputAsync();
-            this._drainTask = this.DrainOutputAsync();
+            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            _fillTask = FillInputAsync();
+            _drainTask = DrainOutputAsync();
         }
 
         /// <summary>
         /// Gets the pipe reader fed from the stream.
         /// </summary>
-        internal PipeReader Input => this._inputPipe.Reader;
+        internal PipeReader Input => _inputPipe.Reader;
 
         /// <summary>
         /// Gets the pipe writer drained to the stream.
         /// </summary>
-        internal PipeWriter Output => this._outputPipe.Writer;
+        internal PipeWriter Output => _outputPipe.Writer;
 
         /// <inheritdoc />
         public async ValueTask DisposeAsync()
         {
-            await this._inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
-            await this._outputPipe.Writer.CompleteAsync().ConfigureAwait(false);
+            await _inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
+            await _outputPipe.Writer.CompleteAsync().ConfigureAwait(false);
             try
             {
-                await this._fillTask.ConfigureAwait(false);
+                await _fillTask.ConfigureAwait(false);
             }
             catch (Exception)
             {
@@ -53,15 +53,15 @@ namespace Vector.NNTP.Sockets.Transport
 
             try
             {
-                await this._drainTask.ConfigureAwait(false);
+                await _drainTask.ConfigureAwait(false);
             }
             catch (Exception)
             {
                 // Background drain ended with fault or cancel.
             }
 
-            await this._inputPipe.Reader.CompleteAsync().ConfigureAwait(false);
-            await this._outputPipe.Reader.CompleteAsync().ConfigureAwait(false);
+            await _inputPipe.Reader.CompleteAsync().ConfigureAwait(false);
+            await _outputPipe.Reader.CompleteAsync().ConfigureAwait(false);
         }
 
         private async Task FillInputAsync()
@@ -70,15 +70,15 @@ namespace Vector.NNTP.Sockets.Transport
             {
                 while (true)
                 {
-                    Memory<byte> memory = this._inputPipe.Writer.GetMemory();
-                    int read = await this._stream.ReadAsync(memory).ConfigureAwait(false);
+                    Memory<byte> memory = _inputPipe.Writer.GetMemory();
+                    int read = await _stream.ReadAsync(memory).ConfigureAwait(false);
                     if (read == 0)
                     {
                         break;
                     }
 
-                    this._inputPipe.Writer.Advance(read);
-                    FlushResult flush = await this._inputPipe.Writer.FlushAsync().ConfigureAwait(false);
+                    _inputPipe.Writer.Advance(read);
+                    FlushResult flush = await _inputPipe.Writer.FlushAsync().ConfigureAwait(false);
                     if (flush.IsCompleted || flush.IsCanceled)
                     {
                         break;
@@ -87,7 +87,7 @@ namespace Vector.NNTP.Sockets.Transport
             }
             finally
             {
-                await this._inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
+                await _inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
             }
         }
 
@@ -97,17 +97,17 @@ namespace Vector.NNTP.Sockets.Transport
             {
                 while (true)
                 {
-                    ReadResult result = await this._outputPipe.Reader.ReadAsync().ConfigureAwait(false);
+                    ReadResult result = await _outputPipe.Reader.ReadAsync().ConfigureAwait(false);
                     ReadOnlySequence<byte> buffer = result.Buffer;
                     if (!buffer.IsEmpty)
                     {
                         foreach (ReadOnlyMemory<byte> segment in buffer)
                         {
-                            await this._stream.WriteAsync(segment).ConfigureAwait(false);
+                            await _stream.WriteAsync(segment).ConfigureAwait(false);
                         }
                     }
 
-                    this._outputPipe.Reader.AdvanceTo(buffer.End);
+                    _outputPipe.Reader.AdvanceTo(buffer.End);
                     if (result.IsCompleted)
                     {
                         break;
@@ -116,7 +116,7 @@ namespace Vector.NNTP.Sockets.Transport
             }
             finally
             {
-                await this._outputPipe.Reader.CompleteAsync().ConfigureAwait(false);
+                await _outputPipe.Reader.CompleteAsync().ConfigureAwait(false);
             }
         }
     }

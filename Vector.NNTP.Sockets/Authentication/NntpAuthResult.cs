@@ -12,8 +12,8 @@ namespace Vector.NNTP.Sockets.Authentication
     {
         private NntpAuthResult(NntpAuthStatus status, NntpSessionPolicy? policy)
         {
-            this.Status = status;
-            this.Policy = policy;
+            Status = status;
+            Policy = policy;
         }
 
         /// <summary>
@@ -31,22 +31,28 @@ namespace Vector.NNTP.Sockets.Authentication
         /// </summary>
         /// <param name="policy">Granted session policy.</param>
         /// <returns>Success result.</returns>
-        public static NntpAuthResult Success(NntpSessionPolicy policy) =>
-            new(NntpAuthStatus.Success, policy);
+        public static NntpAuthResult Success(NntpSessionPolicy policy)
+        {
+            return new(NntpAuthStatus.Success, policy);
+        }
 
         /// <summary>
         /// Creates an invalid-credentials result (481).
         /// </summary>
         /// <returns>Invalid credentials result.</returns>
-        public static NntpAuthResult InvalidCredentials() =>
-            new(NntpAuthStatus.InvalidCredentials, null);
+        public static NntpAuthResult InvalidCredentials()
+        {
+            return new(NntpAuthStatus.InvalidCredentials, null);
+        }
 
         /// <summary>
         /// Creates a transient backend failure result (503).
         /// </summary>
         /// <returns>Transient failure result.</returns>
-        public static NntpAuthResult TransientFailure() =>
-            new(NntpAuthStatus.TransientFailure, null);
+        public static NntpAuthResult TransientFailure()
+        {
+            return new(NntpAuthStatus.TransientFailure, null);
+        }
     }
 
     /// <summary>

@@ -68,7 +68,9 @@ namespace Vector.NNTP.Utilities.Dns
         /// <param name="error">On failure, a descriptive error string; on success, <see langword="null"/>.</param>
         /// <returns><see langword="true"/> if valid; otherwise <see langword="false"/>.</returns>
         public static bool TryValidateDnsName(string name, out string? error)
-            => TryValidateDnsName(name.AsSpan(), out error);
+        {
+            return TryValidateDnsName(name.AsSpan(), out error);
+        }
 
         /// <summary>
         /// Validates a DNS name for wire-format encoding: non-empty, no empty labels, per-label length limits, total QNAME

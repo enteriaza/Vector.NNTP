@@ -15,6 +15,6 @@ namespace Vector.NNTP.Sockets.Tls
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Certificate instance or null when TLS is not configured.</returns>
-        ValueTask<System.Security.Cryptography.X509Certificates.X509Certificate2?> GetServerCertificateAsync(CancellationToken cancellationToken);
+        public ValueTask<System.Security.Cryptography.X509Certificates.X509Certificate2?> GetServerCertificateAsync(CancellationToken cancellationToken);
     }
 }

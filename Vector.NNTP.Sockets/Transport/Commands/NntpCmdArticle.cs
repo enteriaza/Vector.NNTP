@@ -3,13 +3,13 @@
 // </copyright>
 // COLD PATH: ARTICLE, HEAD, BODY, and STAT command handlers.
 
+using Vector.NNTP.Sockets.Protocol;
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Protocol;
-    using Responses;
-    using Session;
-    using Storage;
-
     /// <summary>
     /// Handles ARTICLE, HEAD, BODY, and STAT retrieval commands.
     /// </summary>
@@ -87,10 +87,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 payload.ArticleNumber,
                 messageId,
                 cancellationToken).ConfigureAwait(false);
-            if (resolvedMessageId is null)
-            {
-                resolvedMessageId = "<unknown@local>";
-            }
+            resolvedMessageId ??= "<unknown@local>";
 
             if (part == NntpArticlePart.Stat)
             {
@@ -109,17 +106,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
 
         private static bool IsOutOfRange(NntpSession session, long articleNumber)
         {
-            if (session.State.SelectedGroupLowWater is long low && articleNumber < low)
-            {
-                return true;
-            }
-
-            if (session.State.SelectedGroupHighWater is long high && articleNumber > high)
-            {
-                return true;
-            }
-
-            return false;
+            return (session.State.SelectedGroupLowWater is long low && articleNumber < low) || (session.State.SelectedGroupHighWater is long high && articleNumber > high);
         }
     }
 }

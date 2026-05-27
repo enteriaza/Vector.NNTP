@@ -27,7 +27,9 @@ namespace Vector.NNTP.Utilities.Security
         /// </summary>
         /// <param name="buffers">Buffers to clear. <see langword="null"/> elements are skipped.</param>
         public static void ZeroBuffers(params byte[]?[] buffers)
-            => ZeroBuffers(buffers.AsSpan());
+        {
+            ZeroBuffers(buffers.AsSpan());
+        }
 
         /// <summary>
         /// Zeroes one or more buffers via <see cref="CryptographicOperations.ZeroMemory"/>.

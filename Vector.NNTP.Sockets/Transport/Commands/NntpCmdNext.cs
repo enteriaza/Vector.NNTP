@@ -3,12 +3,12 @@
 // </copyright>
 // COLD PATH: NEXT command handler.
 
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Responses;
-    using Session;
-    using Storage;
-
     /// <summary>
     /// Handles the NNTP NEXT command.
     /// </summary>
@@ -73,10 +73,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 articleNumber,
                 null,
                 cancellationToken).ConfigureAwait(false);
-            if (messageId is null)
-            {
-                messageId = "<unknown@local>";
-            }
+            messageId ??= "<unknown@local>";
 
             await session.Writer.WriteLineAsync($"223 {articleNumber} {messageId}", cancellationToken).ConfigureAwait(false);
             return true;

@@ -31,8 +31,10 @@ namespace Vector.NNTP.Utilities.Internal
         /// <param name="paramName">Parameter name for the thrown exception.</param>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void EmptySource(string paramName) =>
+        public static void EmptySource(string paramName)
+        {
             throw new ArgumentException("Input span must not be empty.", paramName);
+        }
 
         /// <summary>
         /// Throws when a string contains non-ASCII characters.
@@ -41,8 +43,10 @@ namespace Vector.NNTP.Utilities.Internal
         /// <param name="paramName">Parameter name for the thrown exception.</param>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void NonAsciiInput(int length, string paramName) =>
+        public static void NonAsciiInput(int length, string paramName)
+        {
             throw new ArgumentException($"Input contains non-ASCII characters (length={length}).", paramName);
+        }
 
         /// <summary>
         /// Throws when a character span contains non-ASCII characters.
@@ -51,8 +55,10 @@ namespace Vector.NNTP.Utilities.Internal
         /// <param name="paramName">Parameter name for the thrown exception.</param>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void NonAsciiSpanInput(int length, string paramName) =>
+        public static void NonAsciiSpanInput(int length, string paramName)
+        {
             throw new ArgumentException($"Input contains non-ASCII characters (source length={length}).", paramName);
+        }
 
         /// <summary>
         /// Throws when a byte span contains non-ASCII bytes.
@@ -61,8 +67,10 @@ namespace Vector.NNTP.Utilities.Internal
         /// <param name="paramName">Parameter name for the thrown exception.</param>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void NonAsciiByteInput(int length, string paramName) =>
+        public static void NonAsciiByteInput(int length, string paramName)
+        {
             throw new ArgumentException($"Input contains non-ASCII bytes (length={length}).", paramName);
+        }
 
         /// <summary>
         /// Throws when a destination span is too short for the requested operation.
@@ -72,10 +80,12 @@ namespace Vector.NNTP.Utilities.Internal
         /// <param name="paramName">Parameter name for the thrown exception.</param>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void DestinationTooShort(int requiredLength, int actualLength, string paramName) =>
+        public static void DestinationTooShort(int requiredLength, int actualLength, string paramName)
+        {
             throw new ArgumentException(
                 $"Destination span is too short (required={requiredLength}, actual={actualLength}).",
                 paramName);
+        }
 
         /// <summary>
         /// Throws when an ASCII encode destination span is too short.
@@ -85,17 +95,21 @@ namespace Vector.NNTP.Utilities.Internal
         /// <param name="paramName">Parameter name for the thrown exception.</param>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void DestinationTooShortForAsciiEncode(int requiredLength, int actualLength, string paramName) =>
+        public static void DestinationTooShortForAsciiEncode(int requiredLength, int actualLength, string paramName)
+        {
             throw new ArgumentException(
                 $"Destination span is too short (required={requiredLength}, actual={actualLength}). ASCII encoding requires destination.Length >= source.Length.",
                 paramName);
+        }
 
         /// <summary>
         /// Throws when an inner stream does not support reading.
         /// </summary>
         /// <param name="paramName">Parameter name for the thrown exception.</param>
         [DoesNotReturn]
-        public static void InnerStreamNotReadable(string paramName) =>
+        public static void InnerStreamNotReadable(string paramName)
+        {
             throw new ArgumentException("Inner stream must be readable (CanRead must be true).", paramName);
+        }
     }
 }

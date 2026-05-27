@@ -3,13 +3,13 @@
 // </copyright>
 // COLD PATH: HDR and XHDR command handler.
 
+using Vector.NNTP.Sockets.Protocol;
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Protocol;
-    using Responses;
-    using Session;
-    using Storage;
-
     /// <summary>
     /// Handles HDR and XHDR header field retrieval commands.
     /// </summary>
@@ -63,7 +63,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 cancellationToken).ConfigureAwait(false);
             if (lines is null)
             {
-                await session.Writer.WriteMultiLineAsync("225 Headers follow", Array.Empty<string>(), cancellationToken).ConfigureAwait(false);
+                await session.Writer.WriteMultiLineAsync("225 Headers follow", [], cancellationToken).ConfigureAwait(false);
                 return true;
             }
 

@@ -3,10 +3,10 @@
 // </copyright>
 // HOT PATH: transport abstraction for socket and in-memory pipe sessions.
 
+using System.Security.Cryptography.X509Certificates;
+
 namespace Vector.NNTP.Sockets.Transport
 {
-    using System.Security.Cryptography.X509Certificates;
-
     /// <summary>
     /// Duplex transport for one NNTP session (TCP socket or test pipes).
     /// </summary>
@@ -15,12 +15,12 @@ namespace Vector.NNTP.Sockets.Transport
         /// <summary>
         /// Gets the input pipe reader for the command loop.
         /// </summary>
-        PipeReader Input { get; }
+        public PipeReader Input { get; }
 
         /// <summary>
         /// Gets the output pipe writer for responses.
         /// </summary>
-        PipeWriter Output { get; }
+        public PipeWriter Output { get; }
 
         /// <summary>
         /// Upgrades a cleartext session to TLS (STARTTLS).
@@ -28,13 +28,13 @@ namespace Vector.NNTP.Sockets.Transport
         /// <param name="serverCertificate">Server certificate with private key.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A <see cref="Task"/> that completes when TLS is active.</returns>
-        Task UpgradeToTlsAsync(X509Certificate2 serverCertificate, CancellationToken cancellationToken);
+        public Task UpgradeToTlsAsync(X509Certificate2 serverCertificate, CancellationToken cancellationToken);
 
         /// <summary>
         /// Activates RFC 8054 COMPRESS DEFLATE on the transport after the 206 response is sent.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A <see cref="ValueTask"/> that completes when compression is active.</returns>
-        ValueTask ActivateDeflateCompressionAsync(CancellationToken cancellationToken);
+        public ValueTask ActivateDeflateCompressionAsync(CancellationToken cancellationToken);
     }
 }

@@ -141,7 +141,7 @@ namespace Vector.NNTP.Utilities.IO
     /// <see cref="_activeRead"/>.</para>
     ///
     /// <para><b>Performance:</b> HOT PATH — pre-clamped reads avoid over-fetching; limit/disposed throws are isolated in
-    /// separate methods; copy paths use <see cref="Internal.PoolingHelpers"/>.</para>
+    /// separate methods; copy paths use <see cref="PoolingHelpers"/>.</para>
     ///
     /// <para><b>Cross-platform:</b> No platform-specific behaviour.  All operations delegate to the inner stream's
     /// standard <see cref="Stream"/> API surface, which is fully supported on both Linux and Windows.</para>
@@ -203,13 +203,13 @@ namespace Vector.NNTP.Utilities.IO
         /// </summary>
         private int _disposed;
 
-    #if DEBUG
+#if DEBUG
         /// <summary>
         /// Debug-only re-entrancy guard.  0 = idle, 1 = read in progress.  Detects accidental concurrent reads that
         /// would corrupt <see cref="_totalBytesRead"/> without synchronisation.
         /// </summary>
         private int _activeRead;
-    #endif
+#endif
 
         /// <summary>
         /// Initialises a new instance wrapping the specified inner stream with a byte limit.
@@ -263,8 +263,8 @@ namespace Vector.NNTP.Utilities.IO
 
         /// <inheritdoc />
         /// <remarks>Delegates to the inner stream -- exposes the inner stream's timeout capability.  HTTP response
-        /// streams (<see cref="System.Net.Http.HttpResponseMessage"/>) may support read timeouts depending on the
-        /// underlying <see cref="System.Net.Http.SocketsHttpHandler"/> configuration.</remarks>
+        /// streams (<see cref="HttpResponseMessage"/>) may support read timeouts depending on the
+        /// underlying <see cref="SocketsHttpHandler"/> configuration.</remarks>
         public override bool CanTimeout => _inner.CanTimeout;
 
         /// <inheritdoc />
@@ -363,7 +363,9 @@ namespace Vector.NNTP.Utilities.IO
         /// <exception cref="InvalidOperationException">Thrown when the cumulative bytes read have reached or exceeded
         /// <c>maxBytes</c>.</exception>
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-            => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        {
+            return ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        }
 
         /// <summary>
         /// Reads a sequence of bytes from the inner stream into <paramref name="buffer"/>, clamping the request to
@@ -414,7 +416,9 @@ namespace Vector.NNTP.Utilities.IO
         /// <exception cref="InvalidOperationException">Thrown when the cumulative bytes read have reached or exceeded
         /// <c>maxBytes</c>.</exception>
         public override int Read(byte[] buffer, int offset, int count)
-            => Read(buffer.AsSpan(offset, count));
+        {
+            return Read(buffer.AsSpan(offset, count));
+        }
 
         /// <summary>
         /// Copies the remaining content of this stream to <paramref name="destination"/> using the
@@ -433,7 +437,9 @@ namespace Vector.NNTP.Utilities.IO
         /// <exception cref="InvalidOperationException">Thrown when the cumulative bytes read exceed
         /// <c>maxBytes</c>.</exception>
         public new void CopyTo(Stream destination)
-            => CopyTo(destination, DefaultCopyBufferSize);
+        {
+            CopyTo(destination, DefaultCopyBufferSize);
+        }
 
         /// <summary>
         /// Copies the remaining content of this stream to <paramref name="destination"/>, enforcing the byte limit on
@@ -507,7 +513,9 @@ namespace Vector.NNTP.Utilities.IO
         /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is
         /// cancelled.</exception>
         public new Task CopyToAsync(Stream destination, CancellationToken cancellationToken)
-            => CopyToAsync(destination, DefaultCopyBufferSize, cancellationToken);
+        {
+            return CopyToAsync(destination, DefaultCopyBufferSize, cancellationToken);
+        }
 
         /// <summary>
         /// Asynchronously copies the remaining content of this stream to <paramref name="destination"/>, enforcing the
@@ -633,8 +641,10 @@ namespace Vector.NNTP.Utilities.IO
         /// <para>Uses <see cref="Volatile.Read(ref int)"/> for a single atomic read of <see cref="_disposed"/>,
         /// consistent with the guard pattern used by <see cref="CertificateRenewalService"/>.</para>
         /// </remarks>
-        private void ThrowIfDisposed() =>
+        private void ThrowIfDisposed()
+        {
             GuardUtilities.ThrowIfDisposed(this, ref _disposed);
+        }
 
         /// <summary>
         /// Debug-only: asserts that no concurrent read is in progress.  In release builds, compiles to a no-op.
@@ -647,10 +657,10 @@ namespace Vector.NNTP.Utilities.IO
         [Conditional("DEBUG")]
         private void EnterRead()
         {
-    #if DEBUG
+#if DEBUG
             int previous = Interlocked.Exchange(ref _activeRead, 1);
             Debug.Assert(previous == 0, "LengthLimitedReadStream: concurrent read detected -- this stream is not thread-safe.");
-    #endif
+#endif
         }
 
         /// <summary>
@@ -659,39 +669,57 @@ namespace Vector.NNTP.Utilities.IO
         [Conditional("DEBUG")]
         private void ExitRead()
         {
-    #if DEBUG
+#if DEBUG
             Volatile.Write(ref _activeRead, 0);
-    #endif
+#endif
         }
 
         /// <inheritdoc />
         /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only
         /// decorator.</exception>
-        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            throw new NotSupportedException();
+        }
 
         /// <inheritdoc />
         /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only
         /// decorator.</exception>
-        public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException();
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            throw new NotSupportedException();
+        }
 
         /// <inheritdoc />
         /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only
         /// decorator.</exception>
-        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
 
         /// <inheritdoc />
         /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only
         /// decorator.</exception>
-        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
 
         /// <inheritdoc />
         /// <exception cref="NotSupportedException">Always thrown -- HTTP response streams are forward-only.</exception>
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            throw new NotSupportedException();
+        }
 
         /// <inheritdoc />
         /// <exception cref="NotSupportedException">Always thrown -- length mutation is not supported on a read-only
         /// decorator.</exception>
-        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void SetLength(long value)
+        {
+            throw new NotSupportedException();
+        }
 
         /// <inheritdoc />
         /// <remarks>No-op -- flushing a read-only stream has no effect.</remarks>
@@ -708,7 +736,9 @@ namespace Vector.NNTP.Utilities.IO
         /// cancelled task when cancellation has already been requested.
         /// </remarks>
         public override Task FlushAsync(CancellationToken cancellationToken)
-            => cancellationToken.IsCancellationRequested ? Task.FromCanceled(cancellationToken) : Task.CompletedTask;
+        {
+            return cancellationToken.IsCancellationRequested ? Task.FromCanceled(cancellationToken) : Task.CompletedTask;
+        }
 
         /// <inheritdoc />
         /// <remarks>
@@ -725,7 +755,7 @@ namespace Vector.NNTP.Utilities.IO
         /// </remarks>
         protected override void Dispose(bool disposing)
         {
-            Interlocked.Exchange(ref _disposed, 1);
+            _ = Interlocked.Exchange(ref _disposed, 1);
 
             // base.Dispose(bool) is an empty virtual on Stream in .NET 8; called for CA2215 compliance only.
             base.Dispose(disposing);
@@ -748,12 +778,7 @@ namespace Vector.NNTP.Utilities.IO
         /// </remarks>
         public override ValueTask DisposeAsync()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            {
-                return default;
-            }
-
-            return base.DisposeAsync();
+            return Interlocked.Exchange(ref _disposed, 1) != 0 ? default : base.DisposeAsync();
         }
     }
 }

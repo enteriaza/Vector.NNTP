@@ -3,17 +3,17 @@
 // </copyright>
 // COLD PATH: DI registration for reader and transit socket hosts.
 
+using Vector.NNTP.Sockets.Authentication;
+using Vector.NNTP.Sockets.Configuration;
+using Vector.NNTP.Sockets.HostProfile;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using Vector.NNTP.Sockets.Transport;
+using Vector.NNTP.Sockets.Tls;
+
 namespace Vector.NNTP.Sockets.Hosting
 {
-    using Authentication;
-    using Configuration;
-    using HostProfile;
-    using Microsoft.Extensions.DependencyInjection;
-    using Microsoft.Extensions.DependencyInjection.Extensions;
-    using Microsoft.Extensions.Options;
-    using Transport;
-    using Tls;
-
     /// <summary>
     /// Registers Vector.NNTP.Sockets services for NNRPD (reader) or NNTPD (transit) hosts.
     /// </summary>
@@ -45,18 +45,18 @@ namespace Vector.NNTP.Sockets.Hosting
 
         private static IServiceCollection AddNntpSocketsCore(this IServiceCollection services)
         {
-            services.AddOptions<NntpServerOptions>()
+            _ = services.AddOptions<NntpServerOptions>()
                 .BindConfiguration(NntpServerOptions.SectionName)
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NntpServerOptions>, NntpServerOptionsValidator>());
-            services.AddSingleton<NntpAuthenticationService>();
-            services.AddSingleton<NntpInFlightSessionTracker>();
-            services.AddSingleton<NntpCommandDispatcher>();
-            services.AddSingleton<NntpSessionRunner>();
-            services.AddSingleton<NntpSocketAcceptor>();
-            services.AddHostedService<NntpSocketHostedService>();
-            services.AddNntpSocketsEncryptionTls();
+            _ = services.AddSingleton<NntpAuthenticationService>();
+            _ = services.AddSingleton<NntpInFlightSessionTracker>();
+            _ = services.AddSingleton<NntpCommandDispatcher>();
+            _ = services.AddSingleton<NntpSessionRunner>();
+            _ = services.AddSingleton<NntpSocketAcceptor>();
+            _ = services.AddHostedService<NntpSocketHostedService>();
+            _ = services.AddNntpSocketsEncryptionTls();
             return services;
         }
 

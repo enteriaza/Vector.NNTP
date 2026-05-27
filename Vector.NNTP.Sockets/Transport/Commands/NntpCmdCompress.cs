@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: COMPRESS DEFLATE command handler (RFC 8054).
 
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Session;
-
     /// <summary>
     /// Handles the NNTP COMPRESS command.
     /// </summary>

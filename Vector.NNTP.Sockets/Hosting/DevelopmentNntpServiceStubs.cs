@@ -3,14 +3,14 @@
 // </copyright>
 // COLD PATH: development stubs until RADIUS and storage workers are wired.
 
+using Vector.NNTP.Sockets.Authentication;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Hosting
 {
-    using Authentication;
-    using Microsoft.Extensions.DependencyInjection;
-    using Microsoft.Extensions.DependencyInjection.Extensions;
-    using Microsoft.Extensions.Logging;
-    using Storage;
-
     /// <summary>
     /// Registers development-only NNTP service stubs for hosts without production auth/storage.
     /// </summary>
@@ -91,15 +91,10 @@ namespace Vector.NNTP.Sockets.Hosting
             }
         }
 
-        private sealed class DevelopmentNntpCredentialValidator : INntpCredentialValidator
+        private sealed class DevelopmentNntpCredentialValidator(ILogger<DevelopmentNntpCredentialValidator> logger) : INntpCredentialValidator
         {
-            private readonly ILogger<DevelopmentNntpCredentialValidator> _logger;
+            private readonly ILogger<DevelopmentNntpCredentialValidator> _logger = logger;
             private int _logged;
-
-            public DevelopmentNntpCredentialValidator(ILogger<DevelopmentNntpCredentialValidator> logger)
-            {
-                this._logger = logger;
-            }
 
             public ValueTask<NntpAuthResult> ValidatePasswordAsync(
                 string username,
@@ -113,28 +108,23 @@ namespace Vector.NNTP.Sockets.Hosting
                 _ = clientIp;
                 _ = isTls;
                 _ = cancellationToken;
-                if (Interlocked.Exchange(ref this._logged, 1) == 0)
+                if (Interlocked.Exchange(ref _logged, 1) == 0)
                 {
-                    DevelopmentNntpServiceStubsLog.CredentialValidatorStubActive(this._logger);
+                    DevelopmentNntpServiceStubsLog.CredentialValidatorStubActive(_logger);
                 }
 
                 return ValueTask.FromResult(NntpAuthResult.InvalidCredentials());
             }
         }
 
-        private sealed class DevelopmentNntpArticleStorage : INntpArticleStorage
+        private sealed class DevelopmentNntpArticleStorage(ILogger<DevelopmentNntpArticleStorage> logger) : INntpArticleStorage
         {
-            private readonly ILogger<DevelopmentNntpArticleStorage> _logger;
+            private readonly ILogger<DevelopmentNntpArticleStorage> _logger = logger;
             private int _logged;
-
-            public DevelopmentNntpArticleStorage(ILogger<DevelopmentNntpArticleStorage> logger)
-            {
-                this._logger = logger;
-            }
 
             public ValueTask<NntpGroupInfo?> SelectGroupAsync(string groupName, CancellationToken cancellationToken)
             {
-                this.LogOnce();
+                LogOnce();
                 _ = groupName;
                 _ = cancellationToken;
                 return ValueTask.FromResult<NntpGroupInfo?>(null);
@@ -147,7 +137,7 @@ namespace Vector.NNTP.Sockets.Hosting
                 NntpArticlePart part,
                 CancellationToken cancellationToken)
             {
-                this.LogOnce();
+                LogOnce();
                 _ = groupName;
                 _ = articleNumber;
                 _ = messageId;
@@ -158,7 +148,7 @@ namespace Vector.NNTP.Sockets.Hosting
 
             public ValueTask<NntpPostResult> PostArticleAsync(ReadOnlyMemory<byte> articleBytes, CancellationToken cancellationToken)
             {
-                this.LogOnce();
+                LogOnce();
                 _ = articleBytes;
                 _ = cancellationToken;
                 return ValueTask.FromResult(new NntpPostResult(false, null));
@@ -166,26 +156,20 @@ namespace Vector.NNTP.Sockets.Hosting
 
             private void LogOnce()
             {
-                if (Interlocked.Exchange(ref this._logged, 1) == 0)
+                if (Interlocked.Exchange(ref _logged, 1) == 0)
                 {
-                    DevelopmentNntpServiceStubsLog.ArticleStorageStubActive(this._logger);
+                    DevelopmentNntpServiceStubsLog.ArticleStorageStubActive(_logger);
                 }
             }
         }
 
-        private sealed class DevelopmentNntpTransitStorage : INntpTransitStorage
+        private sealed class DevelopmentNntpTransitStorage(ILogger<DevelopmentNntpTransitStorage> logger) : INntpTransitStorage
         {
-            private readonly ILogger<DevelopmentNntpTransitStorage> _logger;
             private int _logged;
-
-            public DevelopmentNntpTransitStorage(ILogger<DevelopmentNntpTransitStorage> logger)
-            {
-                this._logger = logger;
-            }
 
             public ValueTask<bool> CheckAsync(string messageId, CancellationToken cancellationToken)
             {
-                this.LogOnce();
+                LogOnce();
                 _ = messageId;
                 _ = cancellationToken;
                 return ValueTask.FromResult(false);
@@ -193,7 +177,7 @@ namespace Vector.NNTP.Sockets.Hosting
 
             public ValueTask<bool> IHaveAsync(string messageId, CancellationToken cancellationToken)
             {
-                this.LogOnce();
+                LogOnce();
                 _ = messageId;
                 _ = cancellationToken;
                 return ValueTask.FromResult(false);
@@ -201,7 +185,7 @@ namespace Vector.NNTP.Sockets.Hosting
 
             public ValueTask<bool> TakeThisAsync(string messageId, ReadOnlyMemory<byte> articleBytes, CancellationToken cancellationToken)
             {
-                this.LogOnce();
+                LogOnce();
                 _ = messageId;
                 _ = articleBytes;
                 _ = cancellationToken;
@@ -210,9 +194,9 @@ namespace Vector.NNTP.Sockets.Hosting
 
             private void LogOnce()
             {
-                if (Interlocked.Exchange(ref this._logged, 1) == 0)
+                if (Interlocked.Exchange(ref _logged, 1) == 0)
                 {
-                    DevelopmentNntpServiceStubsLog.TransitStorageStubActive(this._logger);
+                    DevelopmentNntpServiceStubsLog.TransitStorageStubActive(logger);
                 }
             }
         }

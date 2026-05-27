@@ -19,11 +19,11 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
 
         private ScramMechanism(string hashName, HashAlgorithmName hashAlgorithm, ScramStoredCredential credential, string clientFirstBare, string serverNonce)
         {
-            this._hashName = hashName;
-            this._hashAlgorithm = hashAlgorithm;
-            this._credential = credential;
-            this._clientFirstBare = clientFirstBare;
-            this._serverNonce = serverNonce;
+            _hashName = hashName;
+            _hashAlgorithm = hashAlgorithm;
+            _credential = credential;
+            _clientFirstBare = clientFirstBare;
+            _serverNonce = serverNonce;
         }
 
         /// <summary>
@@ -42,7 +42,7 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             string serverNonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
             string clientFirstBare = StripGs2Header(clientFirst);
             string serverFirst = $"r={serverNonce},s={Convert.ToBase64String(credential.Salt.Span)},i={credential.IterationCount}";
-            var state = new ScramMechanism(hashName, hash, credential, clientFirstBare, serverNonce);
+            ScramMechanism state = new(hashName, hash, credential, clientFirstBare, serverNonce);
             return (state, serverFirst);
         }
 
@@ -59,13 +59,13 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
                 return null;
             }
 
-            this._clientProof = proofB64;
-            if (combinedNonce is null || !combinedNonce.EndsWith(this._serverNonce, StringComparison.Ordinal))
+            _clientProof = proofB64;
+            if (combinedNonce is null || !combinedNonce.EndsWith(_serverNonce, StringComparison.Ordinal))
             {
                 return null;
             }
 
-            if (!TryParseAttribute(this._clientFirstBare, 'n', out string? username))
+            if (!TryParseAttribute(_clientFirstBare, 'n', out string? username))
             {
                 return null;
             }
@@ -74,27 +74,27 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             byte[] clientProof = Convert.FromBase64String(proofB64!);
             byte[] serverSignature = ComputeServerSignature(combinedNonce!);
             byte[] expectedProof = Xor(clientProof, serverSignature);
-            byte[] storedKey = this._credential.StoredKey.Span.ToArray();
+            byte[] storedKey = _credential.StoredKey.Span.ToArray();
             if (!CryptographicOperations.FixedTimeEquals(expectedProof, storedKey))
             {
                 return null;
             }
 
-            byte[] serverKey = this._credential.ServerKey.Span.ToArray();
+            byte[] serverKey = _credential.ServerKey.Span.ToArray();
             byte[] serverFinalProof = Hmac(serverKey, Encoding.UTF8.GetBytes($"c=biws,r={combinedNonce}"));
             return $"v={Convert.ToBase64String(serverFinalProof)}";
         }
 
         private byte[] ComputeServerSignature(string combinedNonce)
         {
-            string authMessage = $"{this._clientFirstBare},{combinedNonce}";
-            byte[] clientKey = Xor(Convert.FromBase64String(this._clientProof!), this._credential.StoredKey.Span.ToArray());
+            string authMessage = $"{_clientFirstBare},{combinedNonce}";
+            byte[] clientKey = Xor(Convert.FromBase64String(_clientProof!), _credential.StoredKey.Span.ToArray());
             return Hmac(clientKey, Encoding.UTF8.GetBytes(authMessage));
         }
 
         private byte[] Hmac(byte[] key, byte[] data)
         {
-            using var hmac = IncrementalHash.CreateHMAC(this._hashAlgorithm, key);
+            using IncrementalHash hmac = IncrementalHash.CreateHMAC(_hashAlgorithm, key);
             hmac.AppendData(data);
             return hmac.GetHashAndReset();
         }

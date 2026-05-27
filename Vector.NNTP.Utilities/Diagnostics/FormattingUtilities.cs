@@ -10,7 +10,6 @@
 // Thread safety:
 //   All methods are static and stateless. Safe for concurrent use from any thread.
 
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -47,7 +46,10 @@ namespace Vector.NNTP.Utilities.Diagnostics
         /// <param name="bytes">Byte count.</param>
         /// <returns>GiB value as a <see cref="double"/>.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double ToGiB(long bytes) => bytes / BytesPerGiB;
+        public static double ToGiB(long bytes)
+        {
+            return bytes / BytesPerGiB;
+        }
 
         /// <summary>
         /// Normalises an <see cref="IPAddress"/> by converting IPv4-mapped IPv6 addresses (<c>::ffff:a.b.c.d</c>) to their
@@ -84,12 +86,12 @@ namespace Vector.NNTP.Utilities.Diagnostics
             {
                 if (i != 0)
                 {
-                    sb.Append(", ");
+                    _ = sb.Append(", ");
                 }
 
-                sb.Append(hosts[i]);
-                sb.Append(':');
-                sb.Append(port);
+                _ = sb.Append(hosts[i]);
+                _ = sb.Append(':');
+                _ = sb.Append(port);
             }
 
             return sb.ToString();
@@ -127,17 +129,7 @@ namespace Vector.NNTP.Utilities.Diagnostics
         /// <returns>A safe string representation.</returns>
         public static string FormatObjectValue(object? value, int maxByteLength = DefaultMaxByteLength)
         {
-            if (value is null)
-            {
-                return "<null>";
-            }
-
-            if (value is byte[] bytes)
-            {
-                return FormatByteArray(bytes, maxByteLength);
-            }
-
-            return value.ToString() ?? "<null>";
+            return value is null ? "<null>" : value is byte[] bytes ? FormatByteArray(bytes, maxByteLength) : value.ToString() ?? "<null>";
         }
 
         /// <summary>
@@ -155,14 +147,14 @@ namespace Vector.NNTP.Utilities.Diagnostics
             {
                 if (!first)
                 {
-                    sb.Append(", ");
+                    _ = sb.Append(", ");
                 }
 
                 first = false;
                 wroteAny = true;
-                sb.Append(kvp.Key);
-                sb.Append('=');
-                sb.Append(FormatObjectValue(kvp.Value, DefaultMaxByteLength));
+                _ = sb.Append(kvp.Key);
+                _ = sb.Append('=');
+                _ = sb.Append(FormatObjectValue(kvp.Value, DefaultMaxByteLength));
             }
 
             return wroteAny ? sb.ToString() : string.Empty;
@@ -186,12 +178,7 @@ namespace Vector.NNTP.Utilities.Diagnostics
             try
             {
                 string s = System.Text.Encoding.UTF8.GetString(bytes, 0, length);
-                if (bytes.Length > length)
-                {
-                    return $"\"{s}...\"";
-                }
-
-                return $"\"{s}\"";
+                return bytes.Length > length ? $"\"{s}...\"" : $"\"{s}\"";
             }
             catch (Exception)
             {

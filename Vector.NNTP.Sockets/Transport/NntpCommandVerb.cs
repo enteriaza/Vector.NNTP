@@ -85,6 +85,8 @@ namespace Vector.NNTP.Sockets.Transport
                 case 12:
                     if (IsVerb(verb, "CAPABILITIES")) return NntpKnownVerb.Capabilities;
                     break;
+                default:
+                    break;
             }
 
             return NntpKnownVerb.Unknown;

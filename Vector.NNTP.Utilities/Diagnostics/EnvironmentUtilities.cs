@@ -44,7 +44,10 @@ namespace Vector.NNTP.Utilities.Diagnostics
         /// Resolves the machine hostname from <see cref="Environment.MachineName"/> with a deterministic fallback.
         /// </summary>
         /// <returns>A non-empty hostname string.</returns>
-        public static string ResolveMachineName() => ResolveMachineName(out _);
+        public static string ResolveMachineName()
+        {
+            return ResolveMachineName(out _);
+        }
 
         /// <summary>
         /// Attempts to retrieve the system hostname from <see cref="Environment.MachineName"/> with exception safety.

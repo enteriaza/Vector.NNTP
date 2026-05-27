@@ -3,13 +3,13 @@
 // </copyright>
 // COLD PATH: TAKETHIS command handler (RFC 4644).
 
+using Vector.NNTP.Sockets.Protocol;
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Protocol;
-    using Responses;
-    using Session;
-    using Storage;
-
     /// <summary>
     /// Handles the NNTP TAKETHIS streaming command.
     /// </summary>
@@ -28,7 +28,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             NntpSession session,
             INntpTransitStorage? storage,
             string line,
-            Vector.NNTP.Sockets.Transport.NntpLineReader lineReader,
+            NntpLineReader lineReader,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(session);
@@ -48,7 +48,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             }
 
             await session.Writer.WriteLineAsync("373 Send article", cancellationToken).ConfigureAwait(false);
-            byte[] body = await Vector.NNTP.Sockets.Transport.NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+            byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
             bool ok = await storage.TakeThisAsync(messageId, body, cancellationToken).ConfigureAwait(false);
             await session.Writer.WriteLineAsync(ok ? "235 Article transferred OK" : "439 Transfer failed", cancellationToken).ConfigureAwait(false);
             return true;

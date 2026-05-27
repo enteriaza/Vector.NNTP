@@ -3,36 +3,28 @@
 // </copyright>
 // COLD PATH: in-memory pipe transport for protocol unit tests.
 
+using System.Security.Cryptography.X509Certificates;
+
 namespace Vector.NNTP.Sockets.Transport
 {
-    using System.Security.Cryptography.X509Certificates;
-
     /// <summary>
     /// Pipe-backed session transport for golden transcript tests (no TCP socket).
     /// </summary>
-    internal sealed class NntpPipeTransport : INntpSessionTransport
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="NntpPipeTransport"/> class.
+    /// </remarks>
+    /// <param name="input">Server-side input reader (client writes here).</param>
+    /// <param name="output">Server-side output writer (client reads here).</param>
+    internal sealed class NntpPipeTransport(PipeReader input, PipeWriter output) : INntpSessionTransport
     {
-        private readonly PipeWriter _output;
-        private readonly PipeReader _input;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="NntpPipeTransport"/> class.
-        /// </summary>
-        /// <param name="input">Server-side input reader (client writes here).</param>
-        /// <param name="output">Server-side output writer (client reads here).</param>
-        public NntpPipeTransport(PipeReader input, PipeWriter output)
-        {
-            this.Input = input ?? throw new ArgumentNullException(nameof(input));
-            this._output = output ?? throw new ArgumentNullException(nameof(output));
-            this._input = input;
-            this.Output = output;
-        }
+        private readonly PipeWriter _output = output ?? throw new ArgumentNullException(nameof(output));
+        private readonly PipeReader _input = input;
 
         /// <inheritdoc />
-        public PipeReader Input { get; }
+        public PipeReader Input { get; } = input ?? throw new ArgumentNullException(nameof(input));
 
         /// <inheritdoc />
-        public PipeWriter Output { get; }
+        public PipeWriter Output { get; } = output;
 
         /// <inheritdoc />
         Task INntpSessionTransport.UpgradeToTlsAsync(X509Certificate2 serverCertificate, CancellationToken cancellationToken)
@@ -52,8 +44,8 @@ namespace Vector.NNTP.Sockets.Transport
         /// <inheritdoc />
         public async ValueTask DisposeAsync()
         {
-            await this._output.CompleteAsync().ConfigureAwait(false);
-            await this._input.CompleteAsync().ConfigureAwait(false);
+            await _output.CompleteAsync().ConfigureAwait(false);
+            await _input.CompleteAsync().ConfigureAwait(false);
         }
     }
 }

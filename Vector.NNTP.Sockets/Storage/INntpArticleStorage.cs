@@ -16,7 +16,7 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="groupName">Newsgroup name.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Group metadata or null when unknown.</returns>
-        ValueTask<NntpGroupInfo?> SelectGroupAsync(string groupName, CancellationToken cancellationToken);
+        public ValueTask<NntpGroupInfo?> SelectGroupAsync(string groupName, CancellationToken cancellationToken);
 
         /// <summary>
         /// Retrieves article bytes for ARTICLE/HEAD/BODY/STAT.
@@ -27,7 +27,7 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="part">Article part requested.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Article payload or null when not found.</returns>
-        ValueTask<NntpArticlePayload?> GetArticleAsync(
+        public ValueTask<NntpArticlePayload?> GetArticleAsync(
             string? groupName,
             long? articleNumber,
             string? messageId,
@@ -40,15 +40,17 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="articleBytes">Full article bytes.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Assigned message-id or error indication.</returns>
-        ValueTask<NntpPostResult> PostArticleAsync(ReadOnlyMemory<byte> articleBytes, CancellationToken cancellationToken);
+        public ValueTask<NntpPostResult> PostArticleAsync(ReadOnlyMemory<byte> articleBytes, CancellationToken cancellationToken);
 
         /// <summary>
         /// Lists active newsgroups for LIST ACTIVE (one name per line in the multi-line body).
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Group names, or <see langword="null"/> when the host does not implement LIST ACTIVE.</returns>
-        ValueTask<IReadOnlyList<string>?> ListActiveAsync(CancellationToken cancellationToken) =>
-            ValueTask.FromResult<IReadOnlyList<string>?>(null);
+        public ValueTask<IReadOnlyList<string>?> ListActiveAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult<IReadOnlyList<string>?>(null);
+        }
 
         /// <summary>
         /// Lists article numbers in the selected group for LISTGROUP.
@@ -58,12 +60,14 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="rangeHigh">Inclusive high bound (optional).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Article numbers, or <see langword="null"/> when not implemented.</returns>
-        ValueTask<IReadOnlyList<long>?> ListGroupAsync(
+        public ValueTask<IReadOnlyList<long>?> ListGroupAsync(
             string groupName,
             long? rangeLow,
             long? rangeHigh,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult<IReadOnlyList<long>?>(null);
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult<IReadOnlyList<long>?>(null);
+        }
 
         /// <summary>
         /// Retrieves OVER/XOVER overview lines for the current selection.
@@ -73,12 +77,14 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="rangeHigh">Inclusive high article number (optional).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Overview tab-separated lines, or <see langword="null"/> when not implemented.</returns>
-        ValueTask<IReadOnlyList<string>?> GetOverviewAsync(
+        public ValueTask<IReadOnlyList<string>?> GetOverviewAsync(
             string groupName,
             long? rangeLow,
             long? rangeHigh,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult<IReadOnlyList<string>?>(null);
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult<IReadOnlyList<string>?>(null);
+        }
 
         /// <summary>
         /// Retrieves HDR/XHDR header field values for the current selection.
@@ -89,13 +95,15 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="rangeHigh">Inclusive high article number (optional).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Header lines (<c>number value</c>), or <see langword="null"/> when not implemented.</returns>
-        ValueTask<IReadOnlyList<string>?> GetHeadersAsync(
+        public ValueTask<IReadOnlyList<string>?> GetHeadersAsync(
             string groupName,
             string headerField,
             long? rangeLow,
             long? rangeHigh,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult<IReadOnlyList<string>?>(null);
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult<IReadOnlyList<string>?>(null);
+        }
 
         /// <summary>
         /// Returns the next article number after <paramref name="currentArticleNumber"/> in <paramref name="groupName"/>.
@@ -106,11 +114,13 @@ namespace Vector.NNTP.Sockets.Storage
         /// <returns>
         /// The next article number, <c>-1</c> when no next article exists, or <see langword="null"/> when not implemented.
         /// </returns>
-        ValueTask<long?> GetNextArticleNumberAsync(
+        public ValueTask<long?> GetNextArticleNumberAsync(
             string groupName,
             long currentArticleNumber,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult<long?>(null);
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult<long?>(null);
+        }
 
         /// <summary>
         /// Returns the previous article number before <paramref name="currentArticleNumber"/> in <paramref name="groupName"/>.
@@ -121,11 +131,10 @@ namespace Vector.NNTP.Sockets.Storage
         /// <returns>
         /// The previous article number, <c>-1</c> when no previous article exists, or <see langword="null"/> when not implemented.
         /// </returns>
-        ValueTask<long?> GetPreviousArticleNumberAsync(
-            string groupName,
-            long currentArticleNumber,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult<long?>(null);
+        public ValueTask<long?> GetPreviousArticleNumberAsync(string groupName, long currentArticleNumber, CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult<long?>(null);
+        }
 
         /// <summary>
         /// Resolves the Message-ID for an article (STAT response line).
@@ -135,12 +144,10 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="messageId">Message-ID when applicable.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Message-ID including angle brackets, or <see langword="null"/> when not found or not implemented.</returns>
-        ValueTask<string?> GetArticleMessageIdAsync(
-            string? groupName,
-            long? articleNumber,
-            string? messageId,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult<string?>(null);
+        public ValueTask<string?> GetArticleMessageIdAsync(string? groupName, long? articleNumber, string? messageId, CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult<string?>(null);
+        }
     }
 
     /// <summary>
@@ -164,79 +171,62 @@ namespace Vector.NNTP.Sockets.Storage
     /// <summary>
     /// GROUP command metadata.
     /// </summary>
-    public sealed class NntpGroupInfo
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="NntpGroupInfo"/> class.
+    /// </remarks>
+    /// <param name="name">Group name.</param>
+    /// <param name="articleCount">Estimated count.</param>
+    /// <param name="lowWater">Low water mark.</param>
+    /// <param name="highWater">High water mark.</param>
+    public sealed class NntpGroupInfo(string name, int articleCount, long lowWater, long highWater)
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="NntpGroupInfo"/> class.
-        /// </summary>
-        /// <param name="name">Group name.</param>
-        /// <param name="articleCount">Estimated count.</param>
-        /// <param name="lowWater">Low water mark.</param>
-        /// <param name="highWater">High water mark.</param>
-        public NntpGroupInfo(string name, int articleCount, long lowWater, long highWater)
-        {
-            this.Name = name;
-            this.ArticleCount = articleCount;
-            this.LowWater = lowWater;
-            this.HighWater = highWater;
-        }
 
         /// <summary>Gets the group name.</summary>
-        public string Name { get; }
+        public string Name { get; } = name;
 
         /// <summary>Gets the estimated article count.</summary>
-        public int ArticleCount { get; }
+        public int ArticleCount { get; } = articleCount;
 
         /// <summary>Gets the low water mark.</summary>
-        public long LowWater { get; }
+        public long LowWater { get; } = lowWater;
 
         /// <summary>Gets the high water mark.</summary>
-        public long HighWater { get; }
+        public long HighWater { get; } = highWater;
     }
 
     /// <summary>
     /// Retrieved article bytes and number for NNTP multi-line responses.
     /// </summary>
-    public sealed class NntpArticlePayload
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="NntpArticlePayload"/> class.
+    /// </remarks>
+    /// <param name="articleNumber">Article number in group.</param>
+    /// <param name="body">Article bytes (may include headers per part).</param>
+    public sealed class NntpArticlePayload(long articleNumber, ReadOnlyMemory<byte> body)
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="NntpArticlePayload"/> class.
-        /// </summary>
-        /// <param name="articleNumber">Article number in group.</param>
-        /// <param name="body">Article bytes (may include headers per part).</param>
-        public NntpArticlePayload(long articleNumber, ReadOnlyMemory<byte> body)
-        {
-            this.ArticleNumber = articleNumber;
-            this.Body = body;
-        }
 
         /// <summary>Gets the article number.</summary>
-        public long ArticleNumber { get; }
+        public long ArticleNumber { get; } = articleNumber;
 
         /// <summary>Gets the payload bytes.</summary>
-        public ReadOnlyMemory<byte> Body { get; }
+        public ReadOnlyMemory<byte> Body { get; } = body;
     }
 
     /// <summary>
     /// POST command outcome.
     /// </summary>
-    public readonly struct NntpPostResult
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="NntpPostResult"/> struct.
+    /// </remarks>
+    /// <param name="success">Whether POST succeeded.</param>
+    /// <param name="messageId">Assigned message-id on success.</param>
+    public readonly struct NntpPostResult(bool success, string? messageId)
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="NntpPostResult"/> struct.
-        /// </summary>
-        /// <param name="success">Whether POST succeeded.</param>
-        /// <param name="messageId">Assigned message-id on success.</param>
-        public NntpPostResult(bool success, string? messageId)
-        {
-            this.Success = success;
-            this.MessageId = messageId;
-        }
 
         /// <summary>Gets whether POST succeeded.</summary>
-        public bool Success { get; }
+        public bool Success { get; } = success;
 
         /// <summary>Gets the assigned message-id.</summary>
-        public string? MessageId { get; }
+        public string? MessageId { get; } = messageId;
     }
 }

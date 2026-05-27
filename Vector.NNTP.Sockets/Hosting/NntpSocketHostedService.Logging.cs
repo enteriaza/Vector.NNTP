@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: source-generated LoggerMessage methods for NntpSocketHostedService.
 
+using Microsoft.Extensions.Logging;
+
 namespace Vector.NNTP.Sockets.Hosting
 {
-    using Microsoft.Extensions.Logging;
-
     /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="NntpSocketHostedService"/>.
     /// </summary>

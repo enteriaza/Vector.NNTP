@@ -15,17 +15,23 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <summary>
         /// Gets the number of sessions currently running.
         /// </summary>
-        internal int InFlight => Volatile.Read(ref this._inFlight);
+        internal int InFlight => Volatile.Read(ref _inFlight);
 
         /// <summary>
         /// Registers the start of a session task.
         /// </summary>
-        internal void Enter() => Interlocked.Increment(ref this._inFlight);
+        internal void Enter()
+        {
+            _ = Interlocked.Increment(ref _inFlight);
+        }
 
         /// <summary>
         /// Registers the end of a session task.
         /// </summary>
-        internal void Leave() => Interlocked.Decrement(ref this._inFlight);
+        internal void Leave()
+        {
+            _ = Interlocked.Decrement(ref _inFlight);
+        }
 
         /// <summary>
         /// Waits until all in-flight sessions complete or the token is canceled.
@@ -34,7 +40,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <returns>A <see cref="Task"/> that completes when drained or canceled.</returns>
         internal async Task DrainAsync(CancellationToken cancellationToken)
         {
-            while (this.InFlight > 0 && !cancellationToken.IsCancellationRequested)
+            while (InFlight > 0 && !cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(50, cancellationToken).ConfigureAwait(false);
             }

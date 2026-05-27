@@ -3,11 +3,11 @@
 // </copyright>
 // COLD PATH: NEWNEWS command stub.
 
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Responses;
-    using Session;
-
     /// <summary>
     /// Handles the NNTP NEWNEWS command (not yet implemented).
     /// </summary>

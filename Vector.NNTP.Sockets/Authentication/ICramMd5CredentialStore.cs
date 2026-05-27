@@ -16,6 +16,6 @@ namespace Vector.NNTP.Sockets.Authentication
         /// <param name="username">NNTP username.</param>
         /// <param name="secret">Shared secret bytes when found.</param>
         /// <returns><see langword="true"/> when the user exists.</returns>
-        bool TryGetCramSecret(string username, out ReadOnlyMemory<byte> secret);
+        public bool TryGetCramSecret(string username, out ReadOnlyMemory<byte> secret);
     }
 }

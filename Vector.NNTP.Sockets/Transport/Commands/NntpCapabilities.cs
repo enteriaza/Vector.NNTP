@@ -3,15 +3,14 @@
 // </copyright>
 // COLD PATH: CAPABILITIES command handler.
 
+using Vector.NNTP.Sockets.Authentication;
+using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Sockets.Commands;
+using Vector.NNTP.Sockets.Session;
+using CapabilitiesWriter = Vector.NNTP.Sockets.Commands.NntpCapabilitiesWriter;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Authentication;
-    using HostProfile;
-    using Vector.NNTP.Sockets.Commands;
-    using Session;
-    using Tls;
-    using CapabilitiesWriter = Vector.NNTP.Sockets.Commands.NntpCapabilitiesWriter;
-
     /// <summary>
     /// Handles the NNTP CAPABILITIES command (RFC 4643 / RFC 3977).
     /// </summary>
@@ -36,7 +35,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(session);
-            CapabilitiesWriter writer = new CapabilitiesWriter();
+            CapabilitiesWriter writer = new();
             bool dedicatedReader = IsDedicatedReader(session.Profile);
             bool isAuthenticated = session.Connection.IsAuthenticated;
             bool isAuthAdvertised = session.Profile.AllowsAuthentication;
@@ -101,67 +100,34 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             return true;
         }
 
-        private static bool IsDedicatedReader(INntpHostProfile profile) =>
-            profile.Role == NntpHostRole.Reader && profile.AllowsReaderCommands;
+        private static bool IsDedicatedReader(INntpHostProfile profile)
+        {
+            return profile.Role == NntpHostRole.Reader && profile.AllowsReaderCommands;
+        }
 
         private static bool ShouldAdvertiseAuthInfoUser(NntpSession session, bool isAuthAdvertised, bool isAuthenticated)
         {
-            if (!isAuthAdvertised || isAuthenticated)
-            {
-                return false;
-            }
-
-            return session.IsAuthInfoPermitted;
+            return isAuthAdvertised && !isAuthenticated && session.IsAuthInfoPermitted;
         }
 
         private static bool ShouldAdvertiseSasl(NntpSession session, bool isAuthAdvertised, bool isAuthenticated)
         {
-            if (!isAuthAdvertised || isAuthenticated)
-            {
-                return false;
-            }
-
-            return session.IsAuthInfoPermitted;
+            return isAuthAdvertised && !isAuthenticated && session.IsAuthInfoPermitted;
         }
 
         private static bool ShouldAdvertiseCompressDeflate(NntpSession session, bool dedicatedReader)
         {
-            if (!session.Options.EnableCompressDeflate || session.State.IsCompressionActive)
-            {
-                return false;
-            }
-
-            if (dedicatedReader && session.Options.RequireTlsForAuthInfo && !session.State.IsTlsActive)
-            {
-                return false;
-            }
-
-            return true;
+            return session.Options.EnableCompressDeflate && !session.State.IsCompressionActive && (!dedicatedReader || !session.Options.RequireTlsForAuthInfo || session.State.IsTlsActive);
         }
 
         private static string BuildSaslLine(IScramCredentialStore? scramStore)
         {
-            if (scramStore is null)
-            {
-                return "SASL PLAIN LOGIN CRAM-MD5";
-            }
-
-            return "SASL PLAIN LOGIN SCRAM-SHA-256 SCRAM-SHA-1 CRAM-MD5";
+            return scramStore is null ? "SASL PLAIN LOGIN CRAM-MD5" : "SASL PLAIN LOGIN SCRAM-SHA-256 SCRAM-SHA-1 CRAM-MD5";
         }
 
         private static async ValueTask<bool> ShouldAdvertiseStartTlsAsync(NntpSession session, CancellationToken cancellationToken)
         {
-            if (!session.Options.EnableStartTls || session.State.IsTlsActive || session.State.IsCompressionActive)
-            {
-                return false;
-            }
-
-            if (session.TlsCertificateSource is null)
-            {
-                return false;
-            }
-
-            return await session.TlsCertificateSource.GetServerCertificateAsync(cancellationToken).ConfigureAwait(false) is not null;
+            return session.Options.EnableStartTls && !session.State.IsTlsActive && !session.State.IsCompressionActive && session.TlsCertificateSource is not null && await session.TlsCertificateSource.GetServerCertificateAsync(cancellationToken).ConfigureAwait(false) is not null;
         }
     }
 }

@@ -3,13 +3,13 @@
 // </copyright>
 // COLD PATH: GROUP command handler.
 
+using Vector.NNTP.Sockets.Protocol;
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Protocol;
-    using Responses;
-    using Session;
-    using Storage;
-
     /// <summary>
     /// Handles the NNTP GROUP command.
     /// </summary>

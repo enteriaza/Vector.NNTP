@@ -3,11 +3,11 @@
 // </copyright>
 // COLD PATH: HELP multi-line bodies per host profile (informative; not a substitute for CAPABILITIES).
 
+using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using HostProfile;
-    using Session;
-
     /// <summary>
     /// Supplies RFC 3977 <c>HELP</c> command bodies aligned with legacy NNRPD and NNTPD deployments.
     /// </summary>
@@ -27,7 +27,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         }
 
         private static readonly string[] TransitHelpLines =
-        {
+        [
             "  QUIT",
             "  CAPABILITIES [keyword]",
             "  MODE STREAM",
@@ -40,10 +40,10 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             "  CHECK <message-id>",
             "  IHAVE <message-id>",
             "  TAKETHIS <message-id>",
-        };
+        ];
 
         private static readonly string[] ReaderHelpLines =
-        {
+        [
             "  QUIT",
             "  CAPABILITIES [keyword]",
             "  MODE READER",
@@ -70,6 +70,6 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             "  NEWGROUPS (recognised, 503)",
             "  NEWNEWS (recognised, 503)",
             "  XPAT (recognised, 503)",
-        };
+        ];
     }
 }

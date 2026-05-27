@@ -14,12 +14,12 @@ namespace Vector.NNTP.Sockets.Session
         /// Registers a session when a connection is accepted.
         /// </summary>
         /// <param name="session">Active session.</param>
-        void Register(NntpSession session);
+        public void Register(NntpSession session);
 
         /// <summary>
         /// Removes a session on teardown.
         /// </summary>
         /// <param name="sessionId">Session identifier.</param>
-        void Unregister(string sessionId);
+        public void Unregister(string sessionId);
     }
 }

@@ -120,17 +120,9 @@ namespace Vector.NNTP.Utilities.Disposal
                 return new ValueTask<Exception?>(ex);
             }
 
-            if (vt.IsCompletedSuccessfully)
-            {
-                return default;
-            }
-
-            if (vt.IsCompleted)
-            {
-                return new ValueTask<Exception?>(ExtractException(vt));
-            }
-
-            return AwaitDisposeAsync(vt);
+            return vt.IsCompletedSuccessfully
+                ? default
+                : vt.IsCompleted ? new ValueTask<Exception?>(ExtractException(vt)) : AwaitDisposeAsync(vt);
         }
 
         /// <summary>

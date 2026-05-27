@@ -3,42 +3,35 @@
 // </copyright>
 // HOT PATH: bidirectional ZLIB compression wrapper for RFC 8054 COMPRESS DEFLATE.
 
+using System.IO.Compression;
+
 namespace Vector.NNTP.Sockets.Compression
 {
-    using System.IO.Compression;
-
     /// <summary>
     /// Wraps a bidirectional stream with independent ZLIB compress and decompress contexts per RFC 8054.
     /// </summary>
     /// <remarks>
     /// <para>After COMPRESS DEFLATE succeeds, all subsequent bytes on the connection use ZLIB framing in each direction.</para>
     /// </remarks>
-    internal sealed class NntpZLibSessionStream : Stream
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="NntpZLibSessionStream"/> class.
+    /// </remarks>
+    /// <param name="inner">Underlying cleartext or TLS-protected stream.</param>
+    internal sealed class NntpZLibSessionStream(Stream inner) : Stream
     {
-        private readonly Stream _inner;
-        private readonly ZLibStream _reader;
-        private readonly ZLibStream _writer;
+        private readonly Stream _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        private readonly ZLibStream _reader = new(inner, CompressionMode.Decompress, leaveOpen: true);
+        private readonly ZLibStream _writer = new(inner, CompressionMode.Compress, leaveOpen: true);
         private bool _disposed;
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="NntpZLibSessionStream"/> class.
-        /// </summary>
-        /// <param name="inner">Underlying cleartext or TLS-protected stream.</param>
-        public NntpZLibSessionStream(Stream inner)
-        {
-            this._inner = inner ?? throw new ArgumentNullException(nameof(inner));
-            this._reader = new ZLibStream(inner, CompressionMode.Decompress, leaveOpen: true);
-            this._writer = new ZLibStream(inner, CompressionMode.Compress, leaveOpen: true);
-        }
-
         /// <inheritdoc />
-        public override bool CanRead => this._reader.CanRead;
+        public override bool CanRead => _reader.CanRead;
 
         /// <inheritdoc />
         public override bool CanSeek => false;
 
         /// <inheritdoc />
-        public override bool CanWrite => this._writer.CanWrite;
+        public override bool CanWrite => _writer.CanWrite;
 
         /// <inheritdoc />
         public override long Length => throw new NotSupportedException();
@@ -51,53 +44,85 @@ namespace Vector.NNTP.Sockets.Compression
         }
 
         /// <inheritdoc />
-        public override void Flush() => this._writer.Flush();
+        public override void Flush()
+        {
+            _writer.Flush();
+        }
 
         /// <inheritdoc />
-        public override Task FlushAsync(CancellationToken cancellationToken) => this._writer.FlushAsync(cancellationToken);
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            return _writer.FlushAsync(cancellationToken);
+        }
 
         /// <inheritdoc />
-        public override int Read(byte[] buffer, int offset, int count) => this._reader.Read(buffer, offset, count);
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            return _reader.Read(buffer, offset, count);
+        }
 
         /// <inheritdoc />
-        public override int Read(Span<byte> buffer) => this._reader.Read(buffer);
+        public override int Read(Span<byte> buffer)
+        {
+            return _reader.Read(buffer);
+        }
 
         /// <inheritdoc />
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-            this._reader.ReadAsync(buffer, offset, count, cancellationToken);
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            return _reader.ReadAsync(buffer, offset, count, cancellationToken);
+        }
 
         /// <inheritdoc />
-        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
-            this._reader.ReadAsync(buffer, cancellationToken);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            return _reader.ReadAsync(buffer, cancellationToken);
+        }
 
         /// <inheritdoc />
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            throw new NotSupportedException();
+        }
 
         /// <inheritdoc />
-        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void SetLength(long value)
+        {
+            throw new NotSupportedException();
+        }
 
         /// <inheritdoc />
-        public override void Write(byte[] buffer, int offset, int count) => this._writer.Write(buffer, offset, count);
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            _writer.Write(buffer, offset, count);
+        }
 
         /// <inheritdoc />
-        public override void Write(ReadOnlySpan<byte> buffer) => this._writer.Write(buffer);
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            _writer.Write(buffer);
+        }
 
         /// <inheritdoc />
-        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-            this._writer.WriteAsync(buffer, offset, count, cancellationToken);
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            return _writer.WriteAsync(buffer, offset, count, cancellationToken);
+        }
 
         /// <inheritdoc />
-        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
-            this._writer.WriteAsync(buffer, cancellationToken);
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            return _writer.WriteAsync(buffer, cancellationToken);
+        }
 
         /// <inheritdoc />
         protected override void Dispose(bool disposing)
         {
-            if (disposing && !this._disposed)
+            if (disposing && !_disposed)
             {
-                this._disposed = true;
-                this._reader.Dispose();
-                this._writer.Dispose();
+                _disposed = true;
+                _reader.Dispose();
+                _writer.Dispose();
             }
 
             base.Dispose(disposing);
@@ -106,11 +131,11 @@ namespace Vector.NNTP.Sockets.Compression
         /// <inheritdoc />
         public override async ValueTask DisposeAsync()
         {
-            if (!this._disposed)
+            if (!_disposed)
             {
-                this._disposed = true;
-                await this._reader.DisposeAsync().ConfigureAwait(false);
-                await this._writer.DisposeAsync().ConfigureAwait(false);
+                _disposed = true;
+                await _reader.DisposeAsync().ConfigureAwait(false);
+                await _writer.DisposeAsync().ConfigureAwait(false);
             }
 
             await base.DisposeAsync().ConfigureAwait(false);

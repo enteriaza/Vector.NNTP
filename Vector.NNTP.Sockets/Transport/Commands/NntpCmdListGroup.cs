@@ -3,12 +3,12 @@
 // </copyright>
 // COLD PATH: LISTGROUP command handler.
 
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Responses;
-    using Session;
-    using Storage;
-
     /// <summary>
     /// Handles the NNTP LISTGROUP command.
     /// </summary>

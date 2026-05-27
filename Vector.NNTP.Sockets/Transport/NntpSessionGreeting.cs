@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: initial 200/201 greeting after connection accept.
 
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport
 {
-    using Session;
-
     /// <summary>
     /// Sends the RFC 3977 service-ready greeting for a new NNTP session.
     /// </summary>

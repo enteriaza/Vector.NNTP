@@ -14,7 +14,10 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
         /// Creates a random challenge string for 383 continuation.
         /// </summary>
         /// <returns>Base64-encoded challenge bytes.</returns>
-        internal static string CreateChallenge() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+        internal static string CreateChallenge()
+        {
+            return Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+        }
 
         /// <summary>
         /// Verifies a CRAM-MD5 response against the shared secret.
@@ -47,7 +50,7 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
         private static byte[] HmacMd5(ReadOnlySpan<byte> key, ReadOnlySpan<byte> data)
         {
 #pragma warning disable CA5351 // CRAM-MD5 requires HMAC-MD5 per RFC 2195
-            using var hmac = new HMACMD5(key.ToArray());
+            using HMACMD5 hmac = new(key.ToArray());
 #pragma warning restore CA5351
             return hmac.ComputeHash(data.ToArray());
         }

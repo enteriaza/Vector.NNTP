@@ -3,11 +3,11 @@
 // </copyright>
 // COLD PATH: AUTHINFO command handler wrapper.
 
+using Vector.NNTP.Sockets.Authentication;
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Authentication;
-    using Session;
-
     /// <summary>
     /// Thin wrapper delegating AUTHINFO handling to <see cref="NntpAuthenticationService"/>.
     /// </summary>

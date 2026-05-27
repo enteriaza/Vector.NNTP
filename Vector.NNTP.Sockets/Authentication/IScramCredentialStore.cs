@@ -16,6 +16,6 @@ namespace Vector.NNTP.Sockets.Authentication
         /// <param name="username">NNTP username.</param>
         /// <param name="credential">SCRAM stored credential when found.</param>
         /// <returns><see langword="true"/> when the user exists.</returns>
-        bool TryGetScramCredential(string username, [NotNullWhen(true)] out ScramStoredCredential? credential);
+        public bool TryGetScramCredential(string username, [NotNullWhen(true)] out ScramStoredCredential? credential);
     }
 }

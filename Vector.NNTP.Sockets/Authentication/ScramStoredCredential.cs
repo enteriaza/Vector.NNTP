@@ -22,15 +22,12 @@ namespace Vector.NNTP.Sockets.Authentication
         /// <param name="serverKey">ServerKey from SCRAM derivation.</param>
         public ScramStoredCredential(ReadOnlyMemory<byte> salt, int iterationCount, ReadOnlyMemory<byte> storedKey, ReadOnlyMemory<byte> serverKey)
         {
-            if (iterationCount < 1)
-            {
-                throw new ArgumentOutOfRangeException(nameof(iterationCount));
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThan(iterationCount, 1);
 
-            this.Salt = salt;
-            this.IterationCount = iterationCount;
-            this.StoredKey = storedKey;
-            this.ServerKey = serverKey;
+            Salt = salt;
+            IterationCount = iterationCount;
+            StoredKey = storedKey;
+            ServerKey = serverKey;
         }
 
         /// <summary>

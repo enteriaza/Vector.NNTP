@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: IMPLEMENTATION capability line for CAPABILITIES responses.
 
+using Vector.NNTP.Utilities.Diagnostics;
+
 namespace Vector.NNTP.Sockets.Commands
 {
-    using Vector.NNTP.Utilities.Diagnostics;
-
     /// <summary>
     /// Builds the RFC 3977 <c>IMPLEMENTATION</c> capability line from entry-assembly metadata.
     /// </summary>

@@ -17,12 +17,7 @@ namespace Vector.NNTP.Sockets.Protocol
         /// <returns><see langword="true"/> when the token is non-empty and wrapped in angle brackets.</returns>
         internal static bool IsValid(string messageId)
         {
-            if (string.IsNullOrWhiteSpace(messageId))
-            {
-                return false;
-            }
-
-            return messageId.Length >= 3
+            return !string.IsNullOrWhiteSpace(messageId) && messageId.Length >= 3
                 && messageId[0] == '<'
                 && messageId[^1] == '>';
         }

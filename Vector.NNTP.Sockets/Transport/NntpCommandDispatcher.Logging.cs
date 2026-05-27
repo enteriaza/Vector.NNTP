@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: source-generated LoggerMessage methods for NntpCommandDispatcher.
 
+using Microsoft.Extensions.Logging;
+
 namespace Vector.NNTP.Sockets.Transport
 {
-    using Microsoft.Extensions.Logging;
-
     /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="NntpCommandDispatcher"/>.
     /// </summary>

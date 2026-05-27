@@ -19,7 +19,7 @@ namespace Vector.NNTP.Sockets.Authentication
         /// <param name="isTls">Whether the connection is TLS-protected.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Validation outcome and optional session policy.</returns>
-        ValueTask<NntpAuthResult> ValidatePasswordAsync(
+        public ValueTask<NntpAuthResult> ValidatePasswordAsync(
             string username,
             string password,
             IPAddress clientIp,

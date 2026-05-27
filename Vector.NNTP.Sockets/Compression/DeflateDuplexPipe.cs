@@ -21,8 +21,8 @@ namespace Vector.NNTP.Sockets.Compression
         public DeflateDuplexPipe(IDuplexPipe inner)
         {
             ArgumentNullException.ThrowIfNull(inner);
-            this.Input = inner.Input;
-            this.Output = inner.Output;
+            Input = inner.Input;
+            Output = inner.Output;
         }
 
         /// <inheritdoc />

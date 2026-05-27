@@ -81,7 +81,7 @@ namespace Vector.NNTP.Utilities.Dns
                 }
 
                 pos++;
-                labels ??= new List<string>();
+                labels ??= [];
 
                 expandedBytes += (labels.Count == 0 ? 0 : 1) + len;
                 if (expandedBytes > MaxExpandedNameLengthBytes)

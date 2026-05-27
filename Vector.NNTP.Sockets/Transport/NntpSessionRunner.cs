@@ -3,53 +3,43 @@
 // </copyright>
 // HOT PATH: per-connection command loop over PipeReader/PipeWriter.
 
+using Vector.NNTP.Sockets.Authentication;
+using Vector.NNTP.Sockets.Configuration;
+using Vector.NNTP.Sockets.HostProfile;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Tls;
+
 namespace Vector.NNTP.Sockets.Transport
 {
-    using Authentication;
-    using Configuration;
-    using HostProfile;
-    using Microsoft.Extensions.Logging;
-    using Microsoft.Extensions.Options;
-    using Responses;
-    using Session;
-    using Tls;
-
     /// <summary>
     /// Runs the NNTP command loop for one accepted connection.
     /// </summary>
-    public sealed class NntpSessionRunner
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="NntpSessionRunner"/> class.
+    /// </remarks>
+    /// <param name="dispatcher">Command dispatcher.</param>
+    /// <param name="profile">Host profile.</param>
+    /// <param name="options">Server options.</param>
+    /// <param name="tlsCertificateSource">Optional TLS certificate source.</param>
+    /// <param name="admissionTracker">Optional session admission tracker for limit enforcement.</param>
+    /// <param name="logger">Logger.</param>
+    public sealed class NntpSessionRunner(
+        NntpCommandDispatcher dispatcher,
+        INntpHostProfile profile,
+        IOptions<NntpServerOptions> options,
+        ITlsCertificateSource? tlsCertificateSource,
+        INntpSessionAdmissionTracker? admissionTracker,
+        ILogger<NntpSessionRunner> logger)
     {
-        private readonly NntpCommandDispatcher _dispatcher;
-        private readonly INntpHostProfile _profile;
-        private readonly IOptions<NntpServerOptions> _options;
-        private readonly ITlsCertificateSource? _tlsCertificateSource;
-        private readonly INntpSessionAdmissionTracker? _admissionTracker;
-        private readonly ILogger<NntpSessionRunner> _logger;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="NntpSessionRunner"/> class.
-        /// </summary>
-        /// <param name="dispatcher">Command dispatcher.</param>
-        /// <param name="profile">Host profile.</param>
-        /// <param name="options">Server options.</param>
-        /// <param name="tlsCertificateSource">Optional TLS certificate source.</param>
-        /// <param name="admissionTracker">Optional session admission tracker for limit enforcement.</param>
-        /// <param name="logger">Logger.</param>
-        public NntpSessionRunner(
-            NntpCommandDispatcher dispatcher,
-            INntpHostProfile profile,
-            IOptions<NntpServerOptions> options,
-            ITlsCertificateSource? tlsCertificateSource,
-            INntpSessionAdmissionTracker? admissionTracker,
-            ILogger<NntpSessionRunner> logger)
-        {
-            this._dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
-            this._profile = profile ?? throw new ArgumentNullException(nameof(profile));
-            this._options = options ?? throw new ArgumentNullException(nameof(options));
-            this._tlsCertificateSource = tlsCertificateSource;
-            this._admissionTracker = admissionTracker;
-            this._logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
+        private readonly NntpCommandDispatcher _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        private readonly INntpHostProfile _profile = profile ?? throw new ArgumentNullException(nameof(profile));
+        private readonly IOptions<NntpServerOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
+        private readonly ITlsCertificateSource? _tlsCertificateSource = tlsCertificateSource;
+        private readonly INntpSessionAdmissionTracker? _admissionTracker = admissionTracker;
+        private readonly ILogger<NntpSessionRunner> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         /// <summary>
         /// Runs a session over the given transport until QUIT or disconnect.
@@ -65,22 +55,22 @@ namespace Vector.NNTP.Sockets.Transport
             bool tlsAlreadyActive,
             CancellationToken cancellationToken)
         {
-            var state = new NntpSessionState
+            NntpSessionState state = new()
             {
                 IsTlsActive = tlsAlreadyActive,
                 StartTlsCompleted = tlsAlreadyActive,
             };
-            var session = new NntpSession(context, state, this._profile, this._options, transport, this._tlsCertificateSource);
+            NntpSession session = new(context, state, _profile, _options, transport, _tlsCertificateSource);
 
             await NntpSessionGreeting.SendAsync(session, cancellationToken).ConfigureAwait(false);
 
-            using var readIdleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using CancellationTokenSource readIdleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    readIdleCts.CancelAfter(this._options.Value.IdleTimeout);
+                    readIdleCts.CancelAfter(_options.Value.IdleTimeout);
                     string? line = await session.LineReader.ReadLineAsync(readIdleCts.Token).ConfigureAwait(false);
                     if (line is null)
                     {
@@ -92,7 +82,7 @@ namespace Vector.NNTP.Sockets.Transport
                         continue;
                     }
 
-                    bool cont = await this._dispatcher.DispatchAsync(session, line, cancellationToken).ConfigureAwait(false);
+                    bool cont = await _dispatcher.DispatchAsync(session, line, cancellationToken).ConfigureAwait(false);
                     if (!cont)
                     {
                         break;
@@ -116,11 +106,11 @@ namespace Vector.NNTP.Sockets.Transport
             }
             finally
             {
-                if (this._admissionTracker is not null &&
+                if (_admissionTracker is not null &&
                     context.IsAuthenticated &&
                     context.Policy is not null)
                 {
-                    this._admissionTracker.Leave(context.Policy, context.ClientRemoteEndPoint.Address);
+                    _admissionTracker.Leave(context.Policy, context.ClientRemoteEndPoint.Address);
                 }
 
                 await transport.DisposeAsync().ConfigureAwait(false);

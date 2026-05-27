@@ -29,12 +29,7 @@ namespace Vector.NNTP.Utilities.Networking
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool HasPortSuffix(string? host)
         {
-            if (string.IsNullOrEmpty(host))
-            {
-                return false;
-            }
-
-            return HasPortSuffix(host.AsSpan());
+            return !string.IsNullOrEmpty(host) && HasPortSuffix(host.AsSpan());
         }
 
         /// <summary>
@@ -81,12 +76,7 @@ namespace Vector.NNTP.Utilities.Networking
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool HasUriScheme(string? host)
         {
-            if (string.IsNullOrEmpty(host))
-            {
-                return false;
-            }
-
-            return host.Contains("://", StringComparison.Ordinal);
+            return !string.IsNullOrEmpty(host) && host.Contains("://", StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -96,7 +86,9 @@ namespace Vector.NNTP.Utilities.Networking
         /// <param name="host">Host string.</param>
         /// <returns>Unwrapped host string, or <see langword="null"/> if input is <see langword="null"/>.</returns>
         public static string? StripIPv6Brackets(string? host)
-            => host is null ? null : StripIPv6Brackets(host.AsSpan());
+        {
+            return host is null ? null : StripIPv6Brackets(host.AsSpan());
+        }
 
         /// <summary>
         /// Strips RFC 3986 IPv6 literal brackets from a host span.
@@ -105,12 +97,7 @@ namespace Vector.NNTP.Utilities.Networking
         /// <returns>Unwrapped host string.</returns>
         public static string StripIPv6Brackets(ReadOnlySpan<char> host)
         {
-            if (host.Length >= 2 && host[0] == '[' && host[^1] == ']')
-            {
-                return host[1..^1].ToString();
-            }
-
-            return host.ToString();
+            return host.Length >= 2 && host[0] == '[' && host[^1] == ']' ? host[1..^1].ToString() : host.ToString();
         }
     }
 }

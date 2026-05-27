@@ -4,8 +4,6 @@
 // COLD PATH: diagnostics/formatting/startup validation; readability over micro-optimization; allocations acceptable.
 // TaskUtilities.cs -- Helpers for observing fire-and-forget Task exceptions and shared cancellable delay primitives.
 
-using System.Runtime.CompilerServices;
-
 namespace Vector.NNTP.Utilities.Async
 {
     /// <summary>

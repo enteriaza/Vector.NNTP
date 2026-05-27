@@ -3,19 +3,19 @@
 // </copyright>
 // COLD PATH: LIST command handler.
 
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Responses;
-    using Session;
-    using Storage;
-
     /// <summary>
     /// Handles LIST and LIST keyword variants.
     /// </summary>
     internal static class NntpCmdList
     {
         private static readonly string[] OverviewFmtLines =
-        {
+        [
             "Subject:",
             "From:",
             "Date:",
@@ -24,7 +24,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             ":bytes",
             ":lines",
             "Xref:full",
-        };
+        ];
 
         /// <summary>
         /// Dispatches LIST, LIST ACTIVE, or LIST OVERVIEW.FMT.
@@ -70,14 +70,14 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         {
             if (storage is null)
             {
-                await session.Writer.WriteMultiLineAsync("215 Newsgroups in form", Array.Empty<string>(), cancellationToken).ConfigureAwait(false);
+                await session.Writer.WriteMultiLineAsync("215 Newsgroups in form", [], cancellationToken).ConfigureAwait(false);
                 return true;
             }
 
             IReadOnlyList<string>? groups = await storage.ListActiveAsync(cancellationToken).ConfigureAwait(false);
             if (groups is null)
             {
-                await session.Writer.WriteMultiLineAsync("215 Newsgroups in form", Array.Empty<string>(), cancellationToken).ConfigureAwait(false);
+                await session.Writer.WriteMultiLineAsync("215 Newsgroups in form", [], cancellationToken).ConfigureAwait(false);
                 return true;
             }
 

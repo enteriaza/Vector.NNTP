@@ -3,11 +3,11 @@
 // </copyright>
 // COLD PATH: posting permission and RFC 3977 greeting text shared by greeting, MODE, POST, and CAPABILITIES.
 
+using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport
 {
-    using HostProfile;
-    using Session;
-
     /// <summary>
     /// Reader posting policy helpers shared by greeting, <c>MODE</c>, <c>POST</c>, and <c>CAPABILITIES</c>.
     /// </summary>
@@ -36,24 +36,18 @@ namespace Vector.NNTP.Sockets.Transport
             INntpHostProfile host = session.Profile;
             NntpConnectionContext connection = session.Connection;
 
-            if (host.Role == NntpHostRole.Reader && host.AllowsReaderCommands)
-            {
-                return connection.IsAuthenticated && (connection.Policy?.AllowPosting ?? false);
-            }
-
-            return host.Role == NntpHostRole.Transit;
+            return host.Role == NntpHostRole.Reader && host.AllowsReaderCommands
+                ? connection.IsAuthenticated && (connection.Policy?.AllowPosting ?? false)
+                : host.Role == NntpHostRole.Transit;
         }
 
         private static string FormatServiceReadyLine(string serverIdentification, bool postingPermitted, NntpHostRole role)
         {
-            if (role == NntpHostRole.Transit)
-            {
-                return postingPermitted
+            return role == NntpHostRole.Transit
+                ? postingPermitted
                     ? $"200 {serverIdentification} ready - posting allowed"
-                    : $"201 {serverIdentification} ready - posting prohibited";
-            }
-
-            return postingPermitted
+                    : $"201 {serverIdentification} ready - posting prohibited"
+                : postingPermitted
                 ? $"200 {serverIdentification} Service Ready, posting allowed (yEnc validation enabled)"
                 : $"201 {serverIdentification} Service Ready, posting not allowed (yEnc validation enabled)";
         }

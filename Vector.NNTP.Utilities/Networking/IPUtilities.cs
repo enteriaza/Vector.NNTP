@@ -26,21 +26,18 @@ namespace Vector.NNTP.Utilities.Networking
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static string? Classify(ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length < MinBytesRequired)
-            {
-                return null;
-            }
-
-            return bytes[0] switch
-            {
-                10 => "RFC 1918 private (10.0.0.0/8)",
-                127 => "RFC 1122 loopback (127.0.0.0/8)",
-                172 when bytes[1] is >= 16 and <= 31 => "RFC 1918 private (172.16.0.0/12)",
-                192 when bytes[1] == 168 => "RFC 1918 private (192.168.0.0/16)",
-                100 when bytes[1] is >= 64 and <= 127 => "RFC 6598 CGN shared (100.64.0.0/10)",
-                169 when bytes[1] == 254 => "RFC 3927 link-local (169.254.0.0/16)",
-                _ => null,
-            };
+            return bytes.Length < MinBytesRequired
+                ? null
+                : bytes[0] switch
+                {
+                    10 => "RFC 1918 private (10.0.0.0/8)",
+                    127 => "RFC 1122 loopback (127.0.0.0/8)",
+                    172 when bytes[1] is >= 16 and <= 31 => "RFC 1918 private (172.16.0.0/12)",
+                    192 when bytes[1] == 168 => "RFC 1918 private (192.168.0.0/16)",
+                    100 when bytes[1] is >= 64 and <= 127 => "RFC 6598 CGN shared (100.64.0.0/10)",
+                    169 when bytes[1] == 254 => "RFC 3927 link-local (169.254.0.0/16)",
+                    _ => null,
+                };
         }
 
         /// <summary>
@@ -68,6 +65,9 @@ namespace Vector.NNTP.Utilities.Networking
         /// <param name="address">IP address.</param>
         /// <returns><see langword="true"/> for private/reserved; otherwise <see langword="false"/>.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsPrivateOrReserved(IPAddress address) => Classify(address) is not null;
+        public static bool IsPrivateOrReserved(IPAddress address)
+        {
+            return Classify(address) is not null;
+        }
     }
 }

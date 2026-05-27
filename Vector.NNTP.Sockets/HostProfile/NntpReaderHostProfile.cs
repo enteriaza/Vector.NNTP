@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: NNRPD reader profile defaults.
 
+using Vector.NNTP.Sockets.Commands;
+
 namespace Vector.NNTP.Sockets.HostProfile
 {
-    using Commands;
-
     /// <summary>
     /// NNRPD-style reader host profile: MODE READER, reader commands, POST when policy allows.
     /// </summary>

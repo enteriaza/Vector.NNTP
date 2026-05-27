@@ -3,11 +3,11 @@
 // </copyright>
 // COLD PATH: STARTTLS command handler (RFC 4642).
 
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Tls;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Session;
-    using Tls;
-
     /// <summary>
     /// Handles the NNTP STARTTLS command.
     /// </summary>

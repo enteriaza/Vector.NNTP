@@ -3,11 +3,11 @@
 // </copyright>
 // COLD PATH: SLAVE command stub.
 
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Responses;
-    using Session;
-
     /// <summary>
     /// Handles the legacy NNTP SLAVE command (not supported).
     /// </summary>

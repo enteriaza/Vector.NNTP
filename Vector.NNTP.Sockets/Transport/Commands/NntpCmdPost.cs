@@ -3,11 +3,11 @@
 // </copyright>
 // COLD PATH: POST command handler.
 
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Session;
-    using Storage;
-
     /// <summary>
     /// Handles the NNTP POST command.
     /// </summary>
@@ -24,7 +24,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         internal static async ValueTask<bool> DispatchAsync(
             NntpSession session,
             INntpArticleStorage? storage,
-            Vector.NNTP.Sockets.Transport.NntpLineReader lineReader,
+            NntpLineReader lineReader,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(session);
@@ -42,7 +42,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             }
 
             await session.Writer.WriteLineAsync("340 Send article to be posted", cancellationToken).ConfigureAwait(false);
-            byte[] body = await Vector.NNTP.Sockets.Transport.NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+            byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
             NntpPostResult result = await storage.PostArticleAsync(body, cancellationToken).ConfigureAwait(false);
             if (!result.Success)
             {

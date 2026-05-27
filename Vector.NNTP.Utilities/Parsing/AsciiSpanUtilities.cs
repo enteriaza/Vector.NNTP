@@ -84,7 +84,10 @@ namespace Vector.NNTP.Utilities.Parsing
         /// <param name="span">The span to search.</param>
         /// <returns>The zero-based index of the first whitespace byte, or -1.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int IndexOfAsciiWhitespace(ReadOnlySpan<byte> span) => span.IndexOfAny(Space, Tab);
+        public static int IndexOfAsciiWhitespace(ReadOnlySpan<byte> span)
+        {
+            return span.IndexOfAny(Space, Tab);
+        }
 
         /// <summary>
         /// Returns <see langword="true"/> if the byte is ASCII whitespace (space or horizontal tab).
@@ -92,7 +95,10 @@ namespace Vector.NNTP.Utilities.Parsing
         /// <param name="b">The byte to test.</param>
         /// <returns><see langword="true"/> if whitespace.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAsciiWhitespace(byte b) => b is Space or Tab;
+        public static bool IsAsciiWhitespace(byte b)
+        {
+            return b is Space or Tab;
+        }
 
         /// <summary>
         /// Strips a trailing CRLF (\r\n) or bare LF (\n) from the end of a byte span.
@@ -102,17 +108,7 @@ namespace Vector.NNTP.Utilities.Parsing
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ReadOnlySpan<byte> TrimLineEnding(ReadOnlySpan<byte> span)
         {
-            if (span.Length >= 2 && span[^2] == CR && span[^1] == LF)
-            {
-                return span[..^2];
-            }
-
-            if (span.Length >= 1 && span[^1] == LF)
-            {
-                return span[..^1];
-            }
-
-            return span;
+            return span.Length >= 2 && span[^2] == CR && span[^1] == LF ? span[..^2] : span.Length >= 1 && span[^1] == LF ? span[..^1] : span;
         }
 
         /// <summary>
@@ -163,6 +159,8 @@ namespace Vector.NNTP.Utilities.Parsing
         /// <returns><see langword="true"/> if all bytes are digits.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool ContainsOnlyAsciiDigits(ReadOnlySpan<byte> span)
-            => span.IndexOfAnyExceptInRange(Digit0, Digit9) < 0;
+        {
+            return span.IndexOfAnyExceptInRange(Digit0, Digit9) < 0;
+        }
     }
 }

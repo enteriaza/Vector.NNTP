@@ -3,12 +3,12 @@
 // </copyright>
 // COLD PATH: server-side TLS handshake for implicit TLS and STARTTLS.
 
+using System.Net.Security;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
+
 namespace Vector.NNTP.Sockets.Tls
 {
-    using System.Net.Security;
-    using System.Security.Authentication;
-    using System.Security.Cryptography.X509Certificates;
-
     /// <summary>
     /// Performs TLS server authentication on an <see cref="SslStream"/> using the active server certificate.
     /// </summary>
@@ -29,7 +29,7 @@ namespace Vector.NNTP.Sockets.Tls
         {
             ArgumentNullException.ThrowIfNull(sslStream);
             ArgumentNullException.ThrowIfNull(serverCertificate);
-            var options = new SslServerAuthenticationOptions
+            SslServerAuthenticationOptions options = new()
             {
                 ServerCertificate = serverCertificate,
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,

@@ -3,15 +3,15 @@
 // </copyright>
 // COLD PATH: pairs connection context with protocol state for dispatch.
 
+using Vector.NNTP.Sockets.Configuration;
+using Vector.NNTP.Sockets.HostProfile;
+using Microsoft.Extensions.Options;
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Transport;
+using Vector.NNTP.Sockets.Tls;
+
 namespace Vector.NNTP.Sockets.Session
 {
-    using Configuration;
-    using HostProfile;
-    using Microsoft.Extensions.Options;
-    using Responses;
-    using Transport;
-    using Tls;
-
     /// <summary>
     /// Active NNTP session: connection accounting plus protocol state, passed through command dispatch.
     /// </summary>
@@ -34,13 +34,13 @@ namespace Vector.NNTP.Sockets.Session
             INntpSessionTransport transport,
             ITlsCertificateSource? tlsCertificateSource)
         {
-            this.Connection = connection ?? throw new ArgumentNullException(nameof(connection));
-            this.State = state ?? throw new ArgumentNullException(nameof(state));
-            this.Profile = profile ?? throw new ArgumentNullException(nameof(profile));
-            this.Options = options?.Value ?? throw new ArgumentNullException(nameof(options));
-            this.Transport = transport ?? throw new ArgumentNullException(nameof(transport));
-            this.TlsCertificateSource = tlsCertificateSource;
-            this.RebindTransportIo();
+            Connection = connection ?? throw new ArgumentNullException(nameof(connection));
+            State = state ?? throw new ArgumentNullException(nameof(state));
+            Profile = profile ?? throw new ArgumentNullException(nameof(profile));
+            Options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+            Transport = transport ?? throw new ArgumentNullException(nameof(transport));
+            TlsCertificateSource = tlsCertificateSource;
+            RebindTransportIo();
         }
 
         /// <summary>
@@ -87,15 +87,15 @@ namespace Vector.NNTP.Sockets.Session
         /// Gets a value indicating whether AUTHINFO/SASL may proceed (TLS gating).
         /// </summary>
         public bool IsAuthInfoPermitted =>
-            !this.Options.RequireTlsForAuthInfo || this.State.IsTlsActive;
+            !Options.RequireTlsForAuthInfo || State.IsTlsActive;
 
         /// <summary>
         /// Rebinds <see cref="LineReader"/> and <see cref="Writer"/> after transport upgrade (STARTTLS).
         /// </summary>
         internal void RebindTransportIo()
         {
-            this.LineReader = new NntpLineReader(this.Transport.Input, this.Connection);
-            this.Writer = new NntpResponseWriter(this.Transport.Output, this.Connection);
+            LineReader = new NntpLineReader(Transport.Input, Connection);
+            Writer = new NntpResponseWriter(Transport.Output, Connection);
         }
     }
 }

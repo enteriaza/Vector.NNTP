@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: NNTPD transit profile defaults.
 
+using Vector.NNTP.Sockets.Commands;
+
 namespace Vector.NNTP.Sockets.HostProfile
 {
-    using Commands;
-
     /// <summary>
     /// NNTPD-style transit host profile: MODE STREAM and RFC 4644 streaming commands only.
     /// </summary>

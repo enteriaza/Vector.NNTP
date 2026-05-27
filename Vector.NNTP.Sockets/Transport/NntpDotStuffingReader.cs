@@ -5,8 +5,6 @@
 
 namespace Vector.NNTP.Sockets.Transport
 {
-    using Session;
-
     /// <summary>
     /// Reads a dot-stuffed article body terminated by CRLF.CRLF. on its own line.
     /// </summary>
@@ -20,7 +18,7 @@ namespace Vector.NNTP.Sockets.Transport
         /// <returns>Decoded body bytes.</returns>
         internal static async ValueTask<byte[]> ReadBodyAsync(NntpLineReader lineReader, CancellationToken cancellationToken)
         {
-            using var ms = new MemoryStream();
+            using MemoryStream ms = new();
             while (true)
             {
                 string? line = await lineReader.ReadLineAsync(cancellationToken).ConfigureAwait(false);

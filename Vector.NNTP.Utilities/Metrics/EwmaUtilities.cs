@@ -30,7 +30,10 @@ namespace Vector.NNTP.Utilities.Metrics
         /// <param name="sample">New observation.</param>
         /// <returns>Blended EWMA value.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double Blend(double oldValue, double sample) => (Alpha * sample) + (OneMinusAlpha * oldValue);
+        public static double Blend(double oldValue, double sample)
+        {
+            return (Alpha * sample) + (OneMinusAlpha * oldValue);
+        }
 
         /// <summary>
         /// Blends a new sample into an EWMA, seeding the series when <paramref name="hasValue"/> is <see langword="false"/>.
@@ -40,7 +43,10 @@ namespace Vector.NNTP.Utilities.Metrics
         /// <param name="hasValue">Whether the series has been seeded.</param>
         /// <returns>Seeded or blended value.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double BlendOrSeed(double oldValue, double sample, bool hasValue) => hasValue ? Blend(oldValue, sample) : sample;
+        public static double BlendOrSeed(double oldValue, double sample, bool hasValue)
+        {
+            return hasValue ? Blend(oldValue, sample) : sample;
+        }
 
         /// <summary>
         /// Reads a lock-free atomically stored <see cref="double"/> from a <see cref="long"/> bit-pattern field.
@@ -48,7 +54,10 @@ namespace Vector.NNTP.Utilities.Metrics
         /// <param name="bits">The field containing <see cref="BitConverter.DoubleToInt64Bits(double)"/>.</param>
         /// <returns>The decoded <see cref="double"/> value.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double AtomicRead(ref long bits) => BitConverter.Int64BitsToDouble(Volatile.Read(ref bits));
+        public static double AtomicRead(ref long bits)
+        {
+            return BitConverter.Int64BitsToDouble(Volatile.Read(ref bits));
+        }
 
         /// <summary>
         /// Writes a lock-free atomically stored <see cref="double"/> into a <see cref="long"/> bit-pattern field.
@@ -56,7 +65,9 @@ namespace Vector.NNTP.Utilities.Metrics
         /// <param name="bits">The field to write.</param>
         /// <param name="value">The value to store.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void AtomicWrite(ref long bits, double value) =>
+        public static void AtomicWrite(ref long bits, double value)
+        {
             _ = Interlocked.Exchange(ref bits, BitConverter.DoubleToInt64Bits(value));
+        }
     }
 }

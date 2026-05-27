@@ -32,14 +32,14 @@ namespace Vector.NNTP.Sockets.Authentication
             int srcIpLimit)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);
-            this.Username = username;
-            this.AllowPosting = allowPosting;
-            this.AccountType = accountType;
-            this.CustomerId = customerId ?? string.Empty;
-            this.RateLimit = rateLimit;
-            this.ByteLimit = byteLimit;
-            this.SessionLimit = sessionLimit;
-            this.SrcIpLimit = srcIpLimit;
+            Username = username;
+            AllowPosting = allowPosting;
+            AccountType = accountType;
+            CustomerId = customerId ?? string.Empty;
+            RateLimit = rateLimit;
+            ByteLimit = byteLimit;
+            SessionLimit = sessionLimit;
+            SrcIpLimit = srcIpLimit;
         }
 
         /// <summary>

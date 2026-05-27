@@ -28,14 +28,18 @@ namespace Vector.NNTP.Utilities.Internal
         /// </summary>
         /// <param name="minimumLength">Minimum buffer length required.</param>
         /// <returns>A rented buffer that may be larger than <paramref name="minimumLength"/>.</returns>
-        public static byte[] RentByteBuffer(int minimumLength) =>
-            ArrayPool<byte>.Shared.Rent(minimumLength);
+        public static byte[] RentByteBuffer(int minimumLength)
+        {
+            return ArrayPool<byte>.Shared.Rent(minimumLength);
+        }
 
         /// <summary>
         /// Returns a rented byte buffer to the shared pool.
         /// </summary>
         /// <param name="buffer">The buffer previously obtained from <see cref="RentByteBuffer"/>.</param>
-        public static void ReturnByteBuffer(byte[] buffer) =>
+        public static void ReturnByteBuffer(byte[] buffer)
+        {
             ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 }

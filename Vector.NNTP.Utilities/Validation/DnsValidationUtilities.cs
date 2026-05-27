@@ -71,6 +71,8 @@ namespace Vector.NNTP.Utilities.Validation
         /// <para>Prefer <see cref="TryValidateHost"/> for new call sites. This method forwards to the same implementation.</para>
         /// </remarks>
         public static bool ValidateHost(string host, out string? error)
-            => TryValidateHost(host, out error);
+        {
+            return TryValidateHost(host, out error);
+        }
     }
 }

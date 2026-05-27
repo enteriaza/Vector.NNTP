@@ -3,11 +3,11 @@
 // </copyright>
 // COLD PATH: per-connection identity, byte accounting, and authentication flags.
 
+using Vector.NNTP.Sockets.Authentication;
+using Vector.NNTP.Sockets.HostProfile;
+
 namespace Vector.NNTP.Sockets.Session
 {
-    using Authentication;
-    using HostProfile;
-
     /// <summary>
     /// Per-connection identity and byte accounting for logging, metrics, and authentication state.
     /// </summary>
@@ -32,11 +32,11 @@ namespace Vector.NNTP.Sockets.Session
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentNullException.ThrowIfNull(clientRemoteEndPoint);
             ArgumentNullException.ThrowIfNull(proxyHopEndPoint);
-            this.SessionId = sessionId;
-            this.ClientRemoteEndPoint = clientRemoteEndPoint;
-            this.ProxyHopEndPoint = proxyHopEndPoint;
-            this.HostRole = hostRole;
-            this.SessionStartedUtc = DateTimeOffset.UtcNow;
+            SessionId = sessionId;
+            ClientRemoteEndPoint = clientRemoteEndPoint;
+            ProxyHopEndPoint = proxyHopEndPoint;
+            HostRole = hostRole;
+            SessionStartedUtc = DateTimeOffset.UtcNow;
         }
 
         /// <summary>
@@ -82,24 +82,30 @@ namespace Vector.NNTP.Sockets.Session
         /// <summary>
         /// Gets total bytes received on the wire including CRLF.
         /// </summary>
-        public long RxBytes => Interlocked.Read(ref this._rxBytes);
+        public long RxBytes => Interlocked.Read(ref _rxBytes);
 
         /// <summary>
         /// Gets total bytes sent on the wire including CRLF.
         /// </summary>
-        public long TxBytes => Interlocked.Read(ref this._txBytes);
+        public long TxBytes => Interlocked.Read(ref _txBytes);
 
         /// <summary>
         /// Records received bytes toward <see cref="RxBytes"/>.
         /// </summary>
         /// <param name="count">Byte count including CRLF.</param>
-        public void AddRxBytes(int count) => Interlocked.Add(ref this._rxBytes, count);
+        public void AddRxBytes(int count)
+        {
+            _ = Interlocked.Add(ref _rxBytes, count);
+        }
 
         /// <summary>
         /// Records transmitted bytes toward <see cref="TxBytes"/>.
         /// </summary>
         /// <param name="count">Byte count including CRLF.</param>
-        public void AddTxBytes(int count) => Interlocked.Add(ref this._txBytes, count);
+        public void AddTxBytes(int count)
+        {
+            _ = Interlocked.Add(ref _txBytes, count);
+        }
 
         /// <summary>
         /// Marks the connection authenticated with the given policy.
@@ -108,9 +114,9 @@ namespace Vector.NNTP.Sockets.Session
         public void SetAuthenticated(NntpSessionPolicy policy)
         {
             ArgumentNullException.ThrowIfNull(policy);
-            this.IsAuthenticated = true;
-            this.AuthenticatedUsername = policy.Username;
-            this.Policy = policy;
+            IsAuthenticated = true;
+            AuthenticatedUsername = policy.Username;
+            Policy = policy;
         }
 
         /// <summary>
@@ -118,9 +124,9 @@ namespace Vector.NNTP.Sockets.Session
         /// </summary>
         public void ClearAuthentication()
         {
-            this.IsAuthenticated = false;
-            this.AuthenticatedUsername = null;
-            this.Policy = null;
+            IsAuthenticated = false;
+            AuthenticatedUsername = null;
+            Policy = null;
         }
     }
 }

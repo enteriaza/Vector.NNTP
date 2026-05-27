@@ -3,11 +3,11 @@
 // </copyright>
 // HOT PATH: pre-dispatch security and authentication gating.
 
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport
 {
-    using Responses;
-    using Session;
-
     /// <summary>
     /// Result of command gate evaluation.
     /// </summary>
@@ -42,37 +42,15 @@ namespace Vector.NNTP.Sockets.Transport
         /// <returns>Gate result.</returns>
         internal static NntpGateResult Evaluate(NntpSession session, NntpKnownVerb verb)
         {
-            if (session.Connection.IsAuthenticated && verb == NntpKnownVerb.Authinfo)
-            {
-                return NntpGateResult.AlreadyAuthenticated;
-            }
-
-            if (verb == NntpKnownVerb.StartTls && session.State.IsCompressionActive)
-            {
-                return NntpGateResult.PermissionDenied;
-            }
-
-            if (verb == NntpKnownVerb.Authinfo && !session.IsAuthInfoPermitted)
-            {
-                return NntpGateResult.TlsRequired;
-            }
-
-            if (!session.Connection.IsAuthenticated)
-            {
-                if (IsStage1Allowed(verb))
-                {
-                    return NntpGateResult.Allow;
-                }
-
-                return NntpGateResult.AuthenticationRequired;
-            }
-
-            if (!IsAllowedForProfile(session, verb))
-            {
-                return NntpGateResult.PermissionDenied;
-            }
-
-            return NntpGateResult.Allow;
+            return session.Connection.IsAuthenticated && verb == NntpKnownVerb.Authinfo
+                ? NntpGateResult.AlreadyAuthenticated
+                : verb == NntpKnownVerb.StartTls && session.State.IsCompressionActive
+                ? NntpGateResult.PermissionDenied
+                : verb == NntpKnownVerb.Authinfo && !session.IsAuthInfoPermitted
+                ? NntpGateResult.TlsRequired
+                : !session.Connection.IsAuthenticated
+                ? IsStage1Allowed(verb) ? NntpGateResult.Allow : NntpGateResult.AuthenticationRequired
+                : !IsAllowedForProfile(session, verb) ? NntpGateResult.PermissionDenied : NntpGateResult.Allow;
         }
 
         /// <summary>
@@ -94,32 +72,13 @@ namespace Vector.NNTP.Sockets.Transport
                     NntpPreencodedResponses.TlsRequired483, cancellationToken),
                 NntpGateResult.AlreadyAuthenticated => session.Writer.WritePreencodedAsync(
                     NntpPreencodedResponses.AlreadyAuthenticated502, cancellationToken),
+                NntpGateResult.Allow => throw new NotImplementedException(),
                 _ => default,
             };
         }
 
-        private static bool IsStage1Allowed(NntpKnownVerb verb) =>
-            verb is NntpKnownVerb.Capabilities
-                or NntpKnownVerb.Mode
-                or NntpKnownVerb.Quit
-                or NntpKnownVerb.Date
-                or NntpKnownVerb.Help
-                or NntpKnownVerb.StartTls
-                or NntpKnownVerb.Compress
-                or NntpKnownVerb.Authinfo;
-
-        private static bool IsAllowedForProfile(NntpSession session, NntpKnownVerb verb)
+        private static bool IsStage1Allowed(NntpKnownVerb verb)
         {
-            if (session.Profile.AllowsReaderCommands && IsReaderVerb(verb))
-            {
-                return true;
-            }
-
-            if (session.Profile.AllowsStreamingCommands && IsStreamingVerb(verb))
-            {
-                return true;
-            }
-
             return verb is NntpKnownVerb.Capabilities
                 or NntpKnownVerb.Mode
                 or NntpKnownVerb.Quit
@@ -130,8 +89,21 @@ namespace Vector.NNTP.Sockets.Transport
                 or NntpKnownVerb.Authinfo;
         }
 
-        private static bool IsReaderVerb(NntpKnownVerb verb) =>
-            verb is NntpKnownVerb.Group
+        private static bool IsAllowedForProfile(NntpSession session, NntpKnownVerb verb)
+        {
+            return (session.Profile.AllowsReaderCommands && IsReaderVerb(verb)) || (session.Profile.AllowsStreamingCommands && IsStreamingVerb(verb)) || verb is NntpKnownVerb.Capabilities
+                or NntpKnownVerb.Mode
+                or NntpKnownVerb.Quit
+                or NntpKnownVerb.Date
+                or NntpKnownVerb.Help
+                or NntpKnownVerb.StartTls
+                or NntpKnownVerb.Compress
+                or NntpKnownVerb.Authinfo;
+        }
+
+        private static bool IsReaderVerb(NntpKnownVerb verb)
+        {
+            return verb is NntpKnownVerb.Group
                 or NntpKnownVerb.List
                 or NntpKnownVerb.ListGroup
                 or NntpKnownVerb.Article
@@ -143,8 +115,11 @@ namespace Vector.NNTP.Sockets.Transport
                 or NntpKnownVerb.Newnews
                 or NntpKnownVerb.Newgroups
                 or NntpKnownVerb.Slave;
+        }
 
-        private static bool IsStreamingVerb(NntpKnownVerb verb) =>
-            verb is NntpKnownVerb.Check or NntpKnownVerb.Takethis;
+        private static bool IsStreamingVerb(NntpKnownVerb verb)
+        {
+            return verb is NntpKnownVerb.Check or NntpKnownVerb.Takethis;
+        }
     }
 }

@@ -20,12 +20,7 @@ namespace Vector.NNTP.Sockets.Protocol
         /// <returns><see langword="true"/> when the field name is non-empty and contains no whitespace.</returns>
         internal static bool IsValid(string headerField)
         {
-            if (string.IsNullOrWhiteSpace(headerField))
-            {
-                return false;
-            }
-
-            return !headerField.AsSpan().ContainsAny(" \t\r\n:");
+            return !string.IsNullOrWhiteSpace(headerField) && !headerField.AsSpan().ContainsAny(" \t\r\n:");
         }
     }
 }

@@ -3,9 +3,10 @@
 // </copyright>
 // COLD PATH: host capability and command policy surface.
 
+using Vector.NNTP.Sockets.Commands;
+
 namespace Vector.NNTP.Sockets.HostProfile
 {
-    using Commands;
     /// <summary>
     /// Host-specific NNTP capability advertisement and command allow/deny policy (reader vs transit).
     /// </summary>
@@ -14,12 +15,12 @@ namespace Vector.NNTP.Sockets.HostProfile
         /// <summary>
         /// Gets the deployment role served by this profile.
         /// </summary>
-        NntpHostRole Role { get; }
+        public NntpHostRole Role { get; }
 
         /// <summary>
         /// Gets a value indicating whether RFC 3977 reader data commands are permitted after authentication.
         /// </summary>
-        bool AllowsReaderCommands { get; }
+        public bool AllowsReaderCommands { get; }
 
         /// <summary>
         /// Gets a value indicating whether RFC 3977 authentication commands are advertised and accepted.
@@ -31,33 +32,33 @@ namespace Vector.NNTP.Sockets.HostProfile
         /// to authenticate before issuing commands that the command gate protects with a 480 response.
         /// </para>
         /// </remarks>
-        bool AllowsAuthentication { get; }
+        public bool AllowsAuthentication { get; }
 
         /// <summary>
         /// Gets a value indicating whether RFC 4644 streaming commands are permitted.
         /// </summary>
-        bool AllowsStreamingCommands { get; }
+        public bool AllowsStreamingCommands { get; }
 
         /// <summary>
         /// Gets a value indicating whether POST is advertised when authenticated policy allows posting.
         /// </summary>
-        bool AdvertisePost { get; }
+        public bool AdvertisePost { get; }
 
         /// <summary>
         /// Gets a value indicating whether MODE READER is advertised and accepted.
         /// </summary>
-        bool AdvertiseModeReader { get; }
+        public bool AdvertiseModeReader { get; }
 
         /// <summary>
         /// Gets a value indicating whether MODE STREAM is advertised and accepted.
         /// </summary>
-        bool AdvertiseModeStream { get; }
+        public bool AdvertiseModeStream { get; }
 
         /// <summary>
         /// Appends profile-specific capability lines (after core lines) to <paramref name="writer"/>.
         /// </summary>
         /// <param name="writer">Capability list builder.</param>
         /// <param name="session">Active session for TLS/auth-dependent lines.</param>
-        void AppendCapabilities(NntpCapabilitiesWriter writer, Session.NntpSession session);
+        public void AppendCapabilities(NntpCapabilitiesWriter writer, Session.NntpSession session);
     }
 }

@@ -19,17 +19,7 @@ namespace Vector.NNTP.Sockets.Protocol
         /// </returns>
         internal static bool IsValid(string name)
         {
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                return false;
-            }
-
-            if (name.AsSpan().ContainsAny(" \t\r\n"))
-            {
-                return false;
-            }
-
-            return name.Contains('.', StringComparison.Ordinal);
+            return !string.IsNullOrWhiteSpace(name) && !name.AsSpan().ContainsAny(" \t\r\n") && name.Contains('.', StringComparison.Ordinal);
         }
     }
 }

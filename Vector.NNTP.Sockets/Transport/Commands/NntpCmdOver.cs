@@ -3,12 +3,12 @@
 // </copyright>
 // COLD PATH: OVER and XOVER command handler.
 
+using Vector.NNTP.Sockets.Responses;
+using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Storage;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Responses;
-    using Session;
-    using Storage;
-
     /// <summary>
     /// Handles OVER and XOVER overview retrieval commands.
     /// </summary>
@@ -50,7 +50,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 cancellationToken).ConfigureAwait(false);
             if (lines is null)
             {
-                await session.Writer.WriteMultiLineAsync("224 Overview data follow", Array.Empty<string>(), cancellationToken).ConfigureAwait(false);
+                await session.Writer.WriteMultiLineAsync("224 Overview data follow", [], cancellationToken).ConfigureAwait(false);
                 return true;
             }
 

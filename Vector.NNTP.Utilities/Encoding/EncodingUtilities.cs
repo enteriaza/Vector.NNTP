@@ -21,7 +21,7 @@ namespace Vector.NNTP.Utilities.Encoding
     /// <para><b>SIMD:</b> Core paths delegate to <see cref="Ascii"/> (.NET 8+) which uses SIMD acceleration on x64.</para>
     ///
     /// <para><b>Performance:</b> HOT PATH -- success paths avoid allocations except where a new <see cref="string"/> or
-    /// <see cref="byte"/>[] is explicitly returned; throws are delegated to <see cref="Internal.ThrowHelpers"/>.</para>
+    /// <see cref="byte"/>[] is explicitly returned; throws are delegated to <see cref="ThrowHelpers"/>.</para>
     /// </remarks>
     public static class EncodingUtilities
     {
@@ -118,12 +118,9 @@ namespace Vector.NNTP.Utilities.Encoding
                 ThrowHelpers.DestinationTooShortForAsciiEncode(source.Length, destination.Length, nameof(destination));
             }
 
-            if (Ascii.ToUtf16(source, destination, out int charsWritten) == OperationStatus.Done)
-            {
-                return charsWritten;
-            }
-
-            return System.Text.Encoding.ASCII.GetChars(source, destination);
+            return Ascii.ToUtf16(source, destination, out int charsWritten) == OperationStatus.Done
+                ? charsWritten
+                : System.Text.Encoding.ASCII.GetChars(source, destination);
         }
 
         /// <summary>
@@ -132,7 +129,10 @@ namespace Vector.NNTP.Utilities.Encoding
         /// <param name="value">Input characters.</param>
         /// <returns><see langword="true"/> if all characters are ASCII.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAscii(ReadOnlySpan<char> value) => Ascii.IsValid(value);
+        public static bool IsAscii(ReadOnlySpan<char> value)
+        {
+            return Ascii.IsValid(value);
+        }
 
         /// <summary>
         /// Returns <see langword="true"/> if every byte is US-ASCII (0x00-0x7F).
@@ -140,7 +140,10 @@ namespace Vector.NNTP.Utilities.Encoding
         /// <param name="value">Input bytes.</param>
         /// <returns><see langword="true"/> if all bytes are ASCII.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAscii(ReadOnlySpan<byte> value) => Ascii.IsValid(value);
+        public static bool IsAscii(ReadOnlySpan<byte> value)
+        {
+            return Ascii.IsValid(value);
+        }
 
         /// <summary>
         /// Returns the number of bytes required to ASCII-encode <paramref name="value"/>.

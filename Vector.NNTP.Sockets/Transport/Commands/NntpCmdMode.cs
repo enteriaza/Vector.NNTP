@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: MODE READER and MODE STREAM command handler.
 
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Session;
-
     /// <summary>
     /// Handles MODE READER and MODE STREAM commands.
     /// </summary>

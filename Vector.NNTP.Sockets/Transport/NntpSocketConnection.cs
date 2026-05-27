@@ -15,6 +15,9 @@ namespace Vector.NNTP.Sockets.Transport
         /// </summary>
         /// <param name="socket">Connected socket.</param>
         /// <returns>Socket transport.</returns>
-        internal static NntpSocketTransport CreateTransport(Socket socket) => new(socket);
+        internal static NntpSocketTransport CreateTransport(Socket socket)
+        {
+            return new(socket);
+        }
     }
 }

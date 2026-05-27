@@ -16,13 +16,13 @@ namespace Vector.NNTP.Sockets.Authentication
         /// <param name="policy">Granted session policy for the authenticated user.</param>
         /// <param name="clientIp">Effective client IP address (after PROXY resolution).</param>
         /// <returns><see langword="true"/> when the session is admitted.</returns>
-        bool TryEnter(NntpSessionPolicy policy, IPAddress clientIp);
+        public bool TryEnter(NntpSessionPolicy policy, IPAddress clientIp);
 
         /// <summary>
         /// Releases counters for a session that previously called <see cref="TryEnter"/>.
         /// </summary>
         /// <param name="policy">Session policy used during admission.</param>
         /// <param name="clientIp">Effective client IP address for the session.</param>
-        void Leave(NntpSessionPolicy policy, IPAddress clientIp);
+        public void Leave(NntpSessionPolicy policy, IPAddress clientIp);
     }
 }

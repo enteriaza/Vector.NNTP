@@ -23,7 +23,10 @@ namespace Vector.NNTP.Utilities.Security
         /// </summary>
         /// <param name="value">Connection string value.</param>
         /// <returns>Redacted value.</returns>
-        public static string RedactPassword(string value) => PasswordCommaDelimitedRegex().Replace(value, "password=***");
+        public static string RedactPassword(string value)
+        {
+            return PasswordCommaDelimitedRegex().Replace(value, "password=***");
+        }
 
         /// <summary>
         /// Redacts <c>Password=...</c> and <c>Pwd=...</c> segments in semicolon-delimited connection strings (ADO.NET style).
@@ -43,17 +46,11 @@ namespace Vector.NNTP.Utilities.Security
         /// <returns>Redacted token.</returns>
         public static string RedactApiToken(string? token)
         {
-            if (string.IsNullOrEmpty(token))
-            {
-                return MaskPlaceholder;
-            }
-
-            if (token.Length < MinPartialRevealLength)
-            {
-                return MaskPlaceholder;
-            }
-
-            return string.Concat(
+            return string.IsNullOrEmpty(token)
+                ? MaskPlaceholder
+                : token.Length < MinPartialRevealLength
+                ? MaskPlaceholder
+                : string.Concat(
                 token.AsSpan(0, RevealPrefix),
                 MaskPlaceholder,
                 token.AsSpan(token.Length - RevealSuffix));
@@ -64,7 +61,10 @@ namespace Vector.NNTP.Utilities.Security
         /// </summary>
         /// <param name="value">Connection string.</param>
         /// <returns>Redacted value.</returns>
-        public static string RedactAll(string value) => RedactConnectionString(RedactPassword(value));
+        public static string RedactAll(string value)
+        {
+            return RedactConnectionString(RedactPassword(value));
+        }
 
         [GeneratedRegex(@"(?i)\bpassword\s*=\s*[^,]+", RegexOptions.CultureInvariant)]
         private static partial Regex PasswordCommaDelimitedRegex();

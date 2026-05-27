@@ -16,7 +16,7 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="messageId">Message-ID.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns><see langword="true"/> when the server wants the article (438 otherwise).</returns>
-        ValueTask<bool> CheckAsync(string messageId, CancellationToken cancellationToken);
+        public ValueTask<bool> CheckAsync(string messageId, CancellationToken cancellationToken);
 
         /// <summary>
         /// Accepts an IHAVE offer; returns whether to send the article body.
@@ -24,7 +24,7 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="messageId">Message-ID.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns><see langword="true"/> when client should send body (335).</returns>
-        ValueTask<bool> IHaveAsync(string messageId, CancellationToken cancellationToken);
+        public ValueTask<bool> IHaveAsync(string messageId, CancellationToken cancellationToken);
 
         /// <summary>
         /// Stores an article received via TAKETHIS or IHAVE body.
@@ -33,6 +33,6 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="articleBytes">Article bytes.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns><see langword="true"/> on success (235).</returns>
-        ValueTask<bool> TakeThisAsync(string messageId, ReadOnlyMemory<byte> articleBytes, CancellationToken cancellationToken);
+        public ValueTask<bool> TakeThisAsync(string messageId, ReadOnlyMemory<byte> articleBytes, CancellationToken cancellationToken);
     }
 }

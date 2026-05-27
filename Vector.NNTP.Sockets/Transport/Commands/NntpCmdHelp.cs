@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: HELP command handler.
 
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
-    using Session;
-
     /// <summary>
     /// Handles the NNTP HELP command.
     /// </summary>

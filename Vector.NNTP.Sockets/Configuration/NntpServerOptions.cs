@@ -3,11 +3,11 @@
 // </copyright>
 // COLD PATH: configuration binding and startup validation.
 
+using System.ComponentModel.DataAnnotations;
+using Microsoft.Extensions.Options;
+
 namespace Vector.NNTP.Sockets.Configuration
 {
-    using System.ComponentModel.DataAnnotations;
-    using Microsoft.Extensions.Options;
-
     /// <summary>
     /// TCP listener, idle timeout, TLS, compression, and authentication policy for the NNTP socket server.
     /// </summary>
@@ -88,17 +88,11 @@ namespace Vector.NNTP.Sockets.Configuration
         public ValidateOptionsResult Validate(string? name, NntpServerOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);
-            if (string.IsNullOrWhiteSpace(options.ServerIdentification))
-            {
-                return ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.ServerIdentification)} is required.");
-            }
-
-            if (options.IdleTimeout <= TimeSpan.Zero)
-            {
-                return ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeout)} must be positive.");
-            }
-
-            return ValidateOptionsResult.Success;
+            return string.IsNullOrWhiteSpace(options.ServerIdentification)
+                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.ServerIdentification)} is required.")
+                : options.IdleTimeout <= TimeSpan.Zero
+                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeout)} must be positive.")
+                : ValidateOptionsResult.Success;
         }
     }
 }

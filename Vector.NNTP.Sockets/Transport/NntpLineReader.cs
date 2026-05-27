@@ -3,28 +3,22 @@
 // </copyright>
 // HOT PATH: CRLF line framing from PipeReader with SequenceReader.
 
+using Vector.NNTP.Sockets.Session;
+
 namespace Vector.NNTP.Sockets.Transport
 {
-    using Session;
-
     /// <summary>
     /// Reads CRLF-terminated lines from a <see cref="PipeReader"/> and updates Rx byte accounting.
     /// </summary>
-    internal sealed class NntpLineReader
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="NntpLineReader"/> class.
+    /// </remarks>
+    /// <param name="reader">Input pipe reader.</param>
+    /// <param name="context">Connection context for Rx accounting.</param>
+    internal sealed class NntpLineReader(PipeReader reader, NntpConnectionContext context)
     {
-        private readonly PipeReader _reader;
-        private readonly NntpConnectionContext _context;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="NntpLineReader"/> class.
-        /// </summary>
-        /// <param name="reader">Input pipe reader.</param>
-        /// <param name="context">Connection context for Rx accounting.</param>
-        public NntpLineReader(PipeReader reader, NntpConnectionContext context)
-        {
-            this._reader = reader ?? throw new ArgumentNullException(nameof(reader));
-            this._context = context ?? throw new ArgumentNullException(nameof(context));
-        }
+        private readonly PipeReader _reader = reader ?? throw new ArgumentNullException(nameof(reader));
+        private readonly NntpConnectionContext _context = context ?? throw new ArgumentNullException(nameof(context));
 
         /// <summary>
         /// Reads one line without CRLF into a string or returns false when the connection closes.
@@ -35,25 +29,25 @@ namespace Vector.NNTP.Sockets.Transport
         {
             while (true)
             {
-                ReadResult result = await this._reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                ReadResult result = await _reader.ReadAsync(cancellationToken).ConfigureAwait(false);
                 ReadOnlySequence<byte> buffer = result.Buffer;
 
                 if (TryParseLine(buffer, out ReadOnlySequence<byte> line, out SequencePosition consumed))
                 {
                     int byteCount = (int)buffer.Slice(0, consumed).Length;
-                    this._context.AddRxBytes(byteCount);
+                    _context.AddRxBytes(byteCount);
                     string lineChars = DecodeLine(line);
-                    this._reader.AdvanceTo(consumed);
+                    _reader.AdvanceTo(consumed);
                     return lineChars;
                 }
 
                 if (result.IsCompleted)
                 {
-                    this._reader.AdvanceTo(buffer.End);
+                    _reader.AdvanceTo(buffer.End);
                     return null;
                 }
 
-                this._reader.AdvanceTo(buffer.Start, buffer.End);
+                _reader.AdvanceTo(buffer.Start, buffer.End);
             }
         }
 
