@@ -67,14 +67,30 @@ namespace Vector.NNTP.Tests.Sockets
         /// </summary>
         /// <returns>Connected harness instance.</returns>
         internal static NntpProtocolHarness CreateReader() =>
-            Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null);
+            Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null, scramCredentialStore: null);
 
         /// <summary>
         /// Creates a transit-profile harness with fake transit storage.
         /// </summary>
         /// <returns>Connected harness instance.</returns>
         internal static NntpProtocolHarness CreateTransit() =>
-            Create(new NntpTransitHostProfile(), null, new FakeNntpTransitStorage());
+            Create(new NntpTransitHostProfile(), null, new FakeNntpTransitStorage(), scramCredentialStore: null);
+
+        /// <summary>
+        /// Creates a reader-profile harness with a supplied SCRAM credential store.
+        /// </summary>
+        /// <param name="scramCredentialStore">SCRAM credential store used for SASL SCRAM mechanism support.</param>
+        /// <returns>Connected harness instance.</returns>
+        internal static NntpProtocolHarness CreateReaderWithScram(IScramCredentialStore scramCredentialStore) =>
+            Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null, scramCredentialStore);
+
+        /// <summary>
+        /// Creates a transit-profile harness with a supplied SCRAM credential store.
+        /// </summary>
+        /// <param name="scramCredentialStore">SCRAM credential store used for SASL SCRAM mechanism support.</param>
+        /// <returns>Connected harness instance.</returns>
+        internal static NntpProtocolHarness CreateTransitWithScram(IScramCredentialStore scramCredentialStore) =>
+            Create(new NntpTransitHostProfile(), null, new FakeNntpTransitStorage(), scramCredentialStore);
 
         /// <summary>
         /// Authenticates on a transit harness (same fake credentials as reader).
@@ -212,11 +228,13 @@ namespace Vector.NNTP.Tests.Sockets
         /// <param name="profile">Host profile.</param>
         /// <param name="articles">Optional reader storage.</param>
         /// <param name="transit">Optional transit storage.</param>
+        /// <param name="scramCredentialStore">Optional SCRAM credential store used for CAPABILITIES advertisement.</param>
         /// <returns>Connected harness.</returns>
         private static NntpProtocolHarness Create(
             INntpHostProfile profile,
             INntpArticleStorage? articles,
-            INntpTransitStorage? transit)
+            INntpTransitStorage? transit,
+            IScramCredentialStore? scramCredentialStore)
         {
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
@@ -232,7 +250,7 @@ namespace Vector.NNTP.Tests.Sockets
                 articles,
                 transit,
                 tlsCertificateSource: null,
-                scramCredentialStore: null,
+                scramCredentialStore: scramCredentialStore,
                 NullLogger<NntpCommandDispatcher>.Instance);
             var runner = new NntpSessionRunner(dispatcher, profile, options, tlsCertificateSource: null, admissionTracker: null, NullLogger<NntpSessionRunner>.Instance);
             var remote = new IPEndPoint(IPAddress.Loopback, 12345);

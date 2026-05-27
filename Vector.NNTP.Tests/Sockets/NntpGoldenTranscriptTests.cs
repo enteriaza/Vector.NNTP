@@ -191,6 +191,54 @@ namespace Vector.NNTP.Tests.Sockets
         }
 
         /// <summary>
+        /// Verifies reader CAPABILITIES includes SCRAM-SHA-256 when a SCRAM store is present.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task Capabilities_Reader_WithScramStore_AdvertisesScramSha256()
+        {
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateReaderWithScram(new Fakes.FakeScramCredentialStore());
+            try
+            {
+                _ = await harness.ReadGreetingAsync().ConfigureAwait(false);
+                await harness.SendAsync("CAPABILITIES").ConfigureAwait(false);
+                List<string> lines = await harness.ReadMultiLineAsync().ConfigureAwait(false);
+                string? sasl = lines.FirstOrDefault(l => l.StartsWith("SASL ", StringComparison.Ordinal));
+                Assert.That(sasl, Is.Not.Null);
+                Assert.That(sasl, Does.Contain("SCRAM-SHA-256"));
+                Assert.That(sasl, Does.Not.Contain("SCRAM-SHA-1"));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Verifies transit CAPABILITIES includes SCRAM-SHA-256 when a SCRAM store is present.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task Capabilities_Transit_WithScramStore_AdvertisesScramSha256()
+        {
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateTransitWithScram(new Fakes.FakeScramCredentialStore());
+            try
+            {
+                _ = await harness.ReadGreetingAsync().ConfigureAwait(false);
+                await harness.SendAsync("CAPABILITIES").ConfigureAwait(false);
+                List<string> lines = await harness.ReadMultiLineAsync().ConfigureAwait(false);
+                string? sasl = lines.FirstOrDefault(l => l.StartsWith("SASL ", StringComparison.Ordinal));
+                Assert.That(sasl, Is.Not.Null);
+                Assert.That(sasl, Does.Contain("SCRAM-SHA-256"));
+                Assert.That(sasl, Does.Not.Contain("SCRAM-SHA-1"));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
         /// Verifies MODE STREAM on transit profile returns 203 per RFC 4644.
         /// </summary>
         /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>

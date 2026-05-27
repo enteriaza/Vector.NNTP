@@ -19,8 +19,11 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Uses the host connection string named <c>ConnectionStrings:MainDB</c>. If that connection string is not set,
-        /// this method is a no-op and development credential stubs remain active.
+        /// Uses the connection string named <c>MainDB</c>.
+        /// </para>
+        /// <para>
+        /// <b>Fatal startup behavior:</b> MySQL authentication depends on the main database connection. If <c>MainDB</c>
+        /// is missing or blank, this method throws and host startup fails.
         /// </para>
         /// </remarks>
         /// <param name="services">Service collection.</param>
@@ -33,10 +36,14 @@ namespace Vector.NNTP.Auth.MySql
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(configuration);
 
-            IConfigurationSection nntpUsersSection = configuration.GetSection(NntpUsersOptions.SectionName);
             string? connectionString = configuration.GetConnectionString("MainDB");
 
-            return string.IsNullOrWhiteSpace(connectionString) ? services : services.AddNntpMySqlAuth(nntpUsersSection, connectionString);
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException("Connection string 'MainDB' is required.");
+            }
+
+            return services.AddNntpMySqlAuth(connectionString);
         }
 
         /// <summary>
@@ -44,8 +51,8 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Configuration:</b> This method binds <see cref="NntpUsersOptions"/> from the supplied configuration section
-        /// and enables data-annotations validation with <c>ValidateOnStart</c>. Misconfiguration will fail host startup.
+        /// <b>Configuration:</b> The MySQL command timeouts and pooling policy are supplied through the connection string
+        /// (for example <c>DefaultCommandTimeout</c>). There is no additional options section bound by this method.
         /// </para>
         /// <para>
         /// <b>Integration:</b> Hosts should call this after <c>AddNntpSocketsReader</c> or <c>AddNntpSocketsTransit</c>.
@@ -54,28 +61,12 @@ namespace Vector.NNTP.Auth.MySql
         /// </para>
         /// </remarks>
         /// <param name="services">Service collection.</param>
-        /// <param name="configurationSection">Configuration section containing <see cref="NntpUsersOptions"/> values.</param>
-        /// <returns>The service collection for chaining.</returns>
-        public static IServiceCollection AddNntpMySqlAuth(this IServiceCollection services, IConfiguration configurationSection)
-        {
-            return AddNntpMySqlAuth(services, configurationSection, configurationSection["ConnectionString"] ?? string.Empty);
-        }
-
-        /// <summary>
-        /// Registers MySQL-backed authentication using <paramref name="configurationSection"/> for options and an explicit connection string.
-        /// </summary>
-        /// <param name="services">Service collection.</param>
-        /// <param name="configurationSection">Configuration section for <see cref="NntpUsersOptions"/> (for example command timeout).</param>
         /// <param name="connectionString">MySQL connection string for the <c>nntpusers</c> table.</param>
         /// <returns>The service collection for chaining.</returns>
         /// <exception cref="ArgumentException">Thrown when <paramref name="connectionString"/> is null or whitespace.</exception>
-        public static IServiceCollection AddNntpMySqlAuth(
-            this IServiceCollection services,
-            IConfiguration configurationSection,
-            string connectionString)
+        public static IServiceCollection AddNntpMySqlAuth(this IServiceCollection services, string connectionString)
         {
             ArgumentNullException.ThrowIfNull(services);
-            ArgumentNullException.ThrowIfNull(configurationSection);
 
             if (string.IsNullOrWhiteSpace(connectionString))
             {
@@ -84,17 +75,14 @@ namespace Vector.NNTP.Auth.MySql
 
             _ = services.RemoveAll<INntpCredentialValidator>();
             _ = services.RemoveAll<ICramMd5CredentialStore>();
+            _ = services.RemoveAll<IScramCredentialStore>();
             _ = services.RemoveAll<INntpSessionAdmissionTracker>();
 
-            _ = services.AddOptions<NntpUsersOptions>()
-                .Bind(configurationSection)
-                .Configure(options => options.ConnectionString = connectionString)
-                .ValidateDataAnnotations()
-                .ValidateOnStart();
             _ = services.AddSingleton<INntpSessionAdmissionTracker, NntpSessionAdmissionTracker>();
-            _ = services.AddSingleton<INntpUserRecordStore, MySqlUserRecordStore>();
+            _ = services.AddSingleton<INntpUserRecordStore>(_ => new MySqlUserRecordStore(connectionString));
             _ = services.AddSingleton<INntpCredentialValidator, MySqlNntpCredentialValidator>();
             _ = services.AddSingleton<ICramMd5CredentialStore, MySqlCramMd5CredentialStore>();
+            _ = services.AddSingleton<IScramCredentialStore, MySqlScramCredentialStore>();
 
             return services;
         }

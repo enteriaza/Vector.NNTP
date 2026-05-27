@@ -1,10 +1,11 @@
 // <copyright file="NntpSessionAdmissionTracker.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-// COLD PATH: in-memory implementation of NNTP session admission tracking.
+// Control path: in-memory implementation of NNTP session admission tracking.
 
 using System.Collections.Concurrent;
 using System.Net;
+using Microsoft.Extensions.Logging;
 using Vector.NNTP.Sockets.Authentication;
 
 namespace Vector.NNTP.Auth.MySql
@@ -15,19 +16,40 @@ namespace Vector.NNTP.Auth.MySql
     /// <remarks>
     /// <para>
     /// <b>Thread safety:</b> This implementation is safe for concurrent use by multiple threads. It uses
-    /// <see cref="ConcurrentDictionary{TKey,TValue}"/> and <see cref="Interlocked"/> operations to maintain counters.
+    /// <see cref="ConcurrentDictionary{TKey,TValue}"/> atomic update operations to maintain counters without coarse-grained locking.
     /// </para>
     /// <para>
     /// <b>Lifetime:</b> The tracker is intended to be registered as a singleton in DI. Counters are purely in-memory and
     /// reset when the host process restarts.
     /// </para>
     /// </remarks>
-    public sealed class NntpSessionAdmissionTracker : INntpSessionAdmissionTracker
+    public sealed class NntpSessionAdmissionTracker(ILogger<NntpSessionAdmissionTracker> logger) : INntpSessionAdmissionTracker
     {
+        /// <summary>
+        /// Logger instance.
+        /// </summary>
+        private readonly ILogger<NntpSessionAdmissionTracker> _logger =
+            logger ?? throw new ArgumentNullException(nameof(logger));
+
+        /// <summary>
+        /// Dictionary of account name to session count.
+        /// </summary>
         private readonly ConcurrentDictionary<string, int> _accountCounts = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Dictionary of account name and IP address to session count.
+        /// </summary>
         private readonly ConcurrentDictionary<string, int> _accountIpCounts = new(StringComparer.Ordinal);
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Tries to enter a session.
+        /// </summary>
+        /// <param name="policy">Session policy that defines the limits to enforce.</param>
+        /// <param name="clientIp">Client IP address used for per-source-IP enforcement.</param>
+        /// <returns>
+        /// <see langword="true"/> when the session is admitted, or when enforcement is disabled by the policy;
+        /// otherwise <see langword="false"/> when a limit is exceeded.
+        /// </returns>
         public bool TryEnter(NntpSessionPolicy policy, IPAddress clientIp)
         {
             ArgumentNullException.ThrowIfNull(policy);
@@ -44,12 +66,22 @@ namespace Vector.NNTP.Auth.MySql
 
             if (!TryIncrement(username, sessionLimit, _accountCounts))
             {
+                NntpSessionAdmissionTrackerLog.SessionLimitExceeded(
+                    this._logger,
+                    username,
+                    clientIp.ToString(),
+                    sessionLimit);
                 return false;
             }
 
             string ipKey = CreateAccountIpKey(username, clientIp);
             if (!TryIncrement(ipKey, srcIpLimit, _accountIpCounts))
             {
+                NntpSessionAdmissionTrackerLog.SrcIpLimitExceeded(
+                    this._logger,
+                    username,
+                    clientIp.ToString(),
+                    srcIpLimit);
                 Decrement(username, _accountCounts);
                 return false;
             }
@@ -57,7 +89,11 @@ namespace Vector.NNTP.Auth.MySql
             return true;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Leaves a session.
+        /// </summary>
+        /// <param name="policy">Session policy that was previously admitted.</param>
+        /// <param name="clientIp">Client IP address used for per-source-IP enforcement.</param>
         public void Leave(NntpSessionPolicy policy, IPAddress clientIp)
         {
             ArgumentNullException.ThrowIfNull(policy);
@@ -106,6 +142,26 @@ namespace Vector.NNTP.Auth.MySql
         }
 
         /// <summary>
+        /// Creates a stable compound key for per-account and per-IP counters.
+        /// </summary>
+        /// <param name="username">Account name.</param>
+        /// <param name="clientIp">Client IP address.</param>
+        /// <returns>Composite key string.</returns>
+        private static string CreateAccountIpKey(string username, IPAddress clientIp)
+        {
+            string ipString = clientIp.ToString();
+            return string.Create(
+                username.Length + 1 + ipString.Length,
+                (username, ipString),
+                static (span, state) =>
+                {
+                    state.username.AsSpan().CopyTo(span);
+                    span[state.username.Length] = '|';
+                    state.ipString.AsSpan().CopyTo(span[(state.username.Length + 1)..]);
+                });
+        }
+
+        /// <summary>
         /// Decrements the counter for the given key, removing the entry when it reaches zero.
         /// </summary>
         /// <param name="key">Counter key.</param>
@@ -118,26 +174,6 @@ namespace Vector.NNTP.Auth.MySql
                 int next = current - 1;
                 removed = next <= 0 ? counters.TryRemove(key, out int _) : counters.TryUpdate(key, next, current);
             }
-        }
-
-        /// <summary>
-        /// Creates a stable compound key for per-account and per-IP counters.
-        /// </summary>
-        /// <param name="username">Account name.</param>
-        /// <param name="clientIp">Client IP address.</param>
-        /// <returns>Composite key string.</returns>
-        private string CreateAccountIpKey(string username, IPAddress clientIp)
-        {
-            return string.Create(
-                username.Length + 1 + clientIp.ToString().Length,
-                (username, clientIp),
-                static (span, state) =>
-                {
-                    state.username.AsSpan().CopyTo(span);
-                    span[state.username.Length] = '|';
-                    ReadOnlySpan<char> ipSpan = state.clientIp.ToString().AsSpan();
-                    ipSpan.CopyTo(span[(state.username.Length + 1)..]);
-                });
         }
     }
 }

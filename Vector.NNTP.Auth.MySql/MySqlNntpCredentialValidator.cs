@@ -1,9 +1,11 @@
 // <copyright file="MySqlNntpCredentialValidator.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-// COLD PATH: INntpCredentialValidator implementation backed by a MySQL nntpusers table.
 
+using System.Buffers;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Vector.NNTP.Sockets.Authentication;
 
@@ -36,11 +38,30 @@ namespace Vector.NNTP.Auth.MySql
         INntpSessionAdmissionTracker admissionTracker,
         ILogger<MySqlNntpCredentialValidator> logger) : INntpCredentialValidator
     {
+        /// <summary>
+        /// Backing user record store.
+        /// </summary>
         private readonly INntpUserRecordStore _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
+
+        /// <summary>
+        /// Session admission tracker enforcing concurrency limits.
+        /// </summary>
         private readonly INntpSessionAdmissionTracker _admissionTracker = admissionTracker ?? throw new ArgumentNullException(nameof(admissionTracker));
+
+        /// <summary>
+        /// Logger for backend/auth failures.
+        /// </summary>
         private readonly ILogger<MySqlNntpCredentialValidator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Validates a password against a user record.
+        /// </summary>
+        /// <param name="username">Username supplied by the client.</param>
+        /// <param name="password">Password supplied by the client.</param>
+        /// <param name="clientIp">Client IP address for policy and limit enforcement.</param>
+        /// <param name="isTls">Whether the connection is TLS-protected.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>An authentication result describing success, invalid credentials, or transient failures.</returns>
         public async ValueTask<NntpAuthResult> ValidatePasswordAsync(
             string username,
             string password,
@@ -48,12 +69,16 @@ namespace Vector.NNTP.Auth.MySql
             bool isTls,
             CancellationToken cancellationToken)
         {
-            _ = isTls;
-
             if (string.IsNullOrEmpty(username))
             {
                 return NntpAuthResult.InvalidCredentials();
             }
+
+            MySqlNntpCredentialValidatorLog.ValidationAttemptStarted(
+                _logger,
+                username,
+                clientIp.ToString(),
+                isTls);
 
             try
             {
@@ -61,18 +86,51 @@ namespace Vector.NNTP.Auth.MySql
                     .TryGetUserAsync(username, cancellationToken)
                     .ConfigureAwait(false);
 
-                if (record is null || !record.IsEnabled)
+                if (record is null)
                 {
+                    MySqlNntpCredentialValidatorLog.ValidationRejectedUserNotFound(_logger, username, clientIp.ToString());
+                    return NntpAuthResult.InvalidCredentials();
+                }
+
+                if (!record.IsEnabled)
+                {
+                    MySqlNntpCredentialValidatorLog.ValidationRejectedAccountDisabled(_logger, username, clientIp.ToString());
+                    return NntpAuthResult.InvalidCredentials();
+                }
+
+                if (!record.AllowAuthPlain)
+                {
+                    MySqlNntpCredentialValidatorLog.ValidationRejectedInvalidCredentials(_logger, username, clientIp.ToString());
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!PasswordEquals(record.AccountPassword, password))
                 {
+                    MySqlNntpCredentialValidatorLog.ValidationRejectedInvalidCredentials(_logger, username, clientIp.ToString());
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 NntpSessionPolicy policy = CreatePolicy(record);
-                return !_admissionTracker.TryEnter(policy, clientIp) ? NntpAuthResult.TransientFailure() : NntpAuthResult.Success(policy);
+                if (!_admissionTracker.TryEnter(policy, clientIp))
+                {
+                    MySqlNntpCredentialValidatorLog.AdmissionRejected(
+                        _logger,
+                        policy.Username,
+                        clientIp.ToString(),
+                        policy.SessionLimit,
+                        policy.SrcIpLimit);
+                    return NntpAuthResult.TransientFailure();
+                }
+
+                MySqlNntpCredentialValidatorLog.AuthenticationSucceeded(
+                    _logger,
+                    policy.Username,
+                    clientIp.ToString(),
+                    policy.AllowPosting,
+                    policy.AccountType,
+                    policy.CustomerId);
+
+                return NntpAuthResult.Success(policy);
             }
             catch (OperationCanceledException)
             {
@@ -96,7 +154,49 @@ namespace Vector.NNTP.Auth.MySql
         /// <returns><see langword="true"/> when the passwords match.</returns>
         internal bool PasswordEquals(string storedPassword, string suppliedPassword)
         {
-            return string.Equals(storedPassword, suppliedPassword, StringComparison.Ordinal);
+            if (storedPassword is null || suppliedPassword is null)
+            {
+                return false;
+            }
+
+            byte[] storedBytes = Encoding.UTF8.GetBytes(storedPassword);
+            byte[] suppliedBytes = Encoding.UTF8.GetBytes(suppliedPassword);
+            int storedLength = storedBytes.Length;
+            int suppliedLength = suppliedBytes.Length;
+            int maxLength = Math.Max(storedLength, suppliedLength);
+
+            const int StackallocThresholdBytes = 4096;
+
+            if (maxLength <= StackallocThresholdBytes)
+            {
+                Span<byte> left = stackalloc byte[maxLength];
+                Span<byte> right = stackalloc byte[maxLength];
+                left.Clear();
+                right.Clear();
+                storedBytes.CopyTo(left);
+                suppliedBytes.CopyTo(right);
+                bool equals = CryptographicOperations.FixedTimeEquals(left, right);
+                return equals && storedLength == suppliedLength;
+            }
+
+            byte[] leftArray = ArrayPool<byte>.Shared.Rent(maxLength);
+            byte[] rightArray = ArrayPool<byte>.Shared.Rent(maxLength);
+            try
+            {
+                Span<byte> left = leftArray.AsSpan(0, maxLength);
+                Span<byte> right = rightArray.AsSpan(0, maxLength);
+                left.Clear();
+                right.Clear();
+                storedBytes.CopyTo(left);
+                suppliedBytes.CopyTo(right);
+                bool equals = CryptographicOperations.FixedTimeEquals(left, right);
+                return equals && storedLength == suppliedLength;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(leftArray, clearArray: true);
+                ArrayPool<byte>.Shared.Return(rightArray, clearArray: true);
+            }
         }
 
         /// <summary>
@@ -106,10 +206,9 @@ namespace Vector.NNTP.Auth.MySql
         /// <returns>Session policy representing the granted permissions and limits.</returns>
         private NntpSessionPolicy CreatePolicy(MySqlUserRecord record)
         {
-            bool allowPosting = record.AccountType is 'R' or 'r' or 'B' or 'b';
             return new NntpSessionPolicy(
                 record.AccountName,
-                allowPosting,
+                allowPosting: true,
                 record.AccountType,
                 record.CustomerId,
                 record.RateLimit,

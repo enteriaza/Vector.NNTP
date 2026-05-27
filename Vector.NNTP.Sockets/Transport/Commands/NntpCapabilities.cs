@@ -122,7 +122,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
 
         private static string BuildSaslLine(IScramCredentialStore? scramStore)
         {
-            return scramStore is null ? "SASL PLAIN LOGIN CRAM-MD5" : "SASL PLAIN LOGIN SCRAM-SHA-256 SCRAM-SHA-1 CRAM-MD5";
+            return scramStore is null ? "SASL PLAIN LOGIN CRAM-MD5" : "SASL PLAIN LOGIN SCRAM-SHA-256 CRAM-MD5";
         }
 
         private static async ValueTask<bool> ShouldAdvertiseStartTlsAsync(NntpSession session, CancellationToken cancellationToken)

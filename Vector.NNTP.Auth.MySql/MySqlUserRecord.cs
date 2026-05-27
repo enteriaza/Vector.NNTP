@@ -1,7 +1,6 @@
 // <copyright file="MySqlUserRecord.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-// COLD PATH: DTO for a single row from the nntpusers table.
 
 namespace Vector.NNTP.Auth.MySql
 {
@@ -21,6 +20,12 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <param name="accountName">User account name.</param>
         /// <param name="accountPassword">Cleartext account password after decryption.</param>
+        /// <param name="allowAuthPlain">Whether password-based mechanisms are permitted for the account.</param>
+        /// <param name="allowAuthScram256">Whether SCRAM-SHA-256 is permitted for the account.</param>
+        /// <param name="scramSalt">SCRAM salt bytes.</param>
+        /// <param name="scramIterations">SCRAM PBKDF2 iteration count.</param>
+        /// <param name="scramStoredKey">SCRAM stored key material (StoredKey).</param>
+        /// <param name="scramServerKey">SCRAM server key material (ServerKey).</param>
         /// <param name="accountType">Account type flag (typically <c>'B'</c> for both or <c>'R'</c> for reader).</param>
         /// <param name="rateLimit">Per-connection rate limit value from the database.</param>
         /// <param name="byteLimit">Per-connection byte limit value from the database.</param>
@@ -31,6 +36,12 @@ namespace Vector.NNTP.Auth.MySql
         public MySqlUserRecord(
             string accountName,
             string accountPassword,
+            bool allowAuthPlain,
+            bool allowAuthScram256,
+            ReadOnlyMemory<byte> scramSalt,
+            int scramIterations,
+            ReadOnlyMemory<byte> scramStoredKey,
+            ReadOnlyMemory<byte> scramServerKey,
             char accountType,
             int rateLimit,
             long byteLimit,
@@ -42,6 +53,12 @@ namespace Vector.NNTP.Auth.MySql
             ArgumentException.ThrowIfNullOrEmpty(accountName);
             AccountName = accountName;
             AccountPassword = accountPassword ?? string.Empty;
+            AllowAuthPlain = allowAuthPlain;
+            AllowAuthScram256 = allowAuthScram256;
+            ScramSalt = scramSalt;
+            ScramIterations = scramIterations;
+            ScramStoredKey = scramStoredKey;
+            ScramServerKey = scramServerKey;
             AccountType = accountType;
             RateLimit = rateLimit;
             ByteLimit = byteLimit;
@@ -60,6 +77,37 @@ namespace Vector.NNTP.Auth.MySql
         /// Gets the decrypted account password in cleartext.
         /// </summary>
         public string AccountPassword { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether password-based mechanisms (AUTHINFO PASS, SASL PLAIN, SASL LOGIN, and CRAM-MD5)
+        /// are permitted for this account.
+        /// </summary>
+        public bool AllowAuthPlain { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether SCRAM-SHA-256 is permitted for this account.
+        /// </summary>
+        public bool AllowAuthScram256 { get; }
+
+        /// <summary>
+        /// Gets the SCRAM salt bytes.
+        /// </summary>
+        public ReadOnlyMemory<byte> ScramSalt { get; }
+
+        /// <summary>
+        /// Gets the SCRAM PBKDF2 iteration count.
+        /// </summary>
+        public int ScramIterations { get; }
+
+        /// <summary>
+        /// Gets the SCRAM StoredKey (H(ClientKey)).
+        /// </summary>
+        public ReadOnlyMemory<byte> ScramStoredKey { get; }
+
+        /// <summary>
+        /// Gets the SCRAM ServerKey.
+        /// </summary>
+        public ReadOnlyMemory<byte> ScramServerKey { get; }
 
         /// <summary>
         /// Gets the account type flag (for example <c>'B'</c> for both or <c>'R'</c> for reader).

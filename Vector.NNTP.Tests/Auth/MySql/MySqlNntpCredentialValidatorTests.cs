@@ -24,7 +24,22 @@ namespace Vector.NNTP.Tests.Auth.MySql
         [Test]
         public async Task ValidatePasswordAsync_MatchingPassword_Succeeds()
         {
-            MySqlUserRecord record = new MySqlUserRecord("user1", "secret", 'B', 10, 1000L, 2, 1, true, "00000000-0000-0000-0000-0000000042");
+            MySqlUserRecord record = new MySqlUserRecord(
+                "user1",
+                "secret",
+                allowAuthPlain: true,
+                allowAuthScram256: true,
+                scramSalt: ReadOnlyMemory<byte>.Empty,
+                scramIterations: 0,
+                scramStoredKey: ReadOnlyMemory<byte>.Empty,
+                scramServerKey: ReadOnlyMemory<byte>.Empty,
+                'B',
+                10,
+                1000L,
+                2,
+                1,
+                true,
+                "00000000-0000-0000-0000-0000000042");
             FakeUserRecordStore store = new FakeUserRecordStore(record);
             FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
             MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
@@ -46,7 +61,22 @@ namespace Vector.NNTP.Tests.Auth.MySql
         [Test]
         public async Task ValidatePasswordAsync_MismatchedPassword_Fails()
         {
-            MySqlUserRecord record = new MySqlUserRecord("user1", "secret", 'R', 0, 0L, 0, 0, true, string.Empty);
+            MySqlUserRecord record = new MySqlUserRecord(
+                "user1",
+                "secret",
+                allowAuthPlain: true,
+                allowAuthScram256: true,
+                scramSalt: ReadOnlyMemory<byte>.Empty,
+                scramIterations: 0,
+                scramStoredKey: ReadOnlyMemory<byte>.Empty,
+                scramServerKey: ReadOnlyMemory<byte>.Empty,
+                'R',
+                0,
+                0L,
+                0,
+                0,
+                true,
+                string.Empty);
             FakeUserRecordStore store = new FakeUserRecordStore(record);
             FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
             MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
@@ -63,7 +93,22 @@ namespace Vector.NNTP.Tests.Auth.MySql
         [Test]
         public async Task ValidatePasswordAsync_AdmissionTrackerDenies_TransientFailure()
         {
-            MySqlUserRecord record = new MySqlUserRecord("user1", "secret", 'R', 0, 0L, 1, 1, true, string.Empty);
+            MySqlUserRecord record = new MySqlUserRecord(
+                "user1",
+                "secret",
+                allowAuthPlain: true,
+                allowAuthScram256: true,
+                scramSalt: ReadOnlyMemory<byte>.Empty,
+                scramIterations: 0,
+                scramStoredKey: ReadOnlyMemory<byte>.Empty,
+                scramServerKey: ReadOnlyMemory<byte>.Empty,
+                'R',
+                0,
+                0L,
+                1,
+                1,
+                true,
+                string.Empty);
             FakeUserRecordStore store = new FakeUserRecordStore(record);
             FakeAdmissionTracker tracker = new FakeAdmissionTracker(false);
             MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);

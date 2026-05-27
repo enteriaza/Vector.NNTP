@@ -16,8 +16,7 @@ Successful validation returns `NntpAuthResult.Success` with `NntpSessionPolicy` 
 
 When a database connection is configured, **NNRPD** and **NNTPD** register `Vector.NNTP.Auth.MySql` via `AddNntpMySqlAuthFromHostConfiguration`:
 
-1. `NntpUsers:ConnectionString` when set explicitly.
-2. Otherwise `ConnectionStrings:MainDB` (common in host JSON such as `NNRPD.json` / `NNTPD.json`).
+1. `ConnectionStrings:MainDB` (common in host JSON such as `NNRPD.json` / `NNTPD.json`).
 
 When neither is present, development credential stubs remain active and log a warning on authentication attempts.
 
