@@ -12,7 +12,6 @@ using Vector.NNTP.Encryption.Acme;
 using Vector.NNTP.Encryption.Certificates;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Utilities.IO;
-using Vector.NNTP.Utilities.Security;
 using Vector.NNTP.MessageBus.Connections;
 using Vector.NNTP.MessageBus.Configuration;
 using Vector.NNTP.MessageBus.Consuming;
@@ -27,7 +26,28 @@ namespace Vector.NNTP.Encryption.Cluster
     /// <para><b>Logging:</b> <see cref="LoggerMessageAttribute"/> partial methods in
     /// <c>CertificateClusterSync.Logging.cs</c>.</para>
     /// </remarks>
-    internal sealed partial class CertificateClusterSync : IAsyncDisposable
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="CertificateClusterSync"/> class.
+    /// </remarks>
+    /// <param name="logger">Logger scoped to the renewal service.</param>
+    /// <param name="getOptions">Accessor for current Let's Encrypt options.</param>
+    /// <param name="hostEnvironment">Hosting environment for exchange/queue naming.</param>
+    /// <param name="connectionFactory">RabbitMQ connection factory for topology and leader lock.</param>
+    /// <param name="rabbitOptions">RabbitMQ connection options.</param>
+    /// <param name="publisherPool">Publisher pool for fanout broadcasts.</param>
+    /// <param name="consumerManager">Long-lived consumer manager for follower adoption.</param>
+    /// <param name="store">Local certificate persistence.</param>
+    /// <param name="activateCertificateAsync">Callback to activate an adopted certificate for TLS.</param>
+    internal sealed partial class CertificateClusterSync(
+        ILogger logger,
+        Func<LetsEncryptOptions> getOptions,
+        IHostEnvironment hostEnvironment,
+        RabbitMqConnectionFactory connectionFactory,
+        RabbitMQOptions rabbitOptions,
+        IRabbitMqPublisherPool publisherPool,
+        IRabbitMqConsumerManager consumerManager,
+        CertificateStore store,
+        Func<X509Certificate2, Task> activateCertificateAsync) : IAsyncDisposable
     {
         /// <summary>
         /// Wire payload type for cluster certificate broadcasts.
@@ -38,59 +58,23 @@ namespace Vector.NNTP.Encryption.Cluster
         private static readonly TimeSpan ClusterIssuedAtMaxPastAge = TimeSpan.FromDays(7);
         private static readonly char[] ClusterAdoptionLineSeparators = ['\r', '\n'];
 
-        private readonly ILogger _logger;
-
         /// <summary>
         /// Gets the logger instance for source-generated <see cref="LoggerMessageAttribute"/> methods.
         /// </summary>
-        private ILogger Logger => _logger;
-        private readonly Func<LetsEncryptOptions> _getOptions;
-        private readonly IHostEnvironment _hostEnvironment;
-        private readonly RabbitMqConnectionFactory _connectionFactory;
-        private readonly RabbitMQOptions _rabbitOptions;
-        private readonly IRabbitMqPublisherPool _publisherPool;
-        private readonly IRabbitMqConsumerManager _consumerManager;
-        private readonly CertificateStore _store;
-        private readonly Func<X509Certificate2, Task> _activateCertificateAsync;
+        private ILogger Logger { get; } = logger;
+        private readonly Func<LetsEncryptOptions> _getOptions = getOptions;
+        private readonly IHostEnvironment _hostEnvironment = hostEnvironment;
+        private readonly RabbitMqConnectionFactory _connectionFactory = connectionFactory;
+        private readonly RabbitMQOptions _rabbitOptions = rabbitOptions;
+        private readonly IRabbitMqPublisherPool _publisherPool = publisherPool;
+        private readonly IRabbitMqConsumerManager _consumerManager = consumerManager;
+        private readonly CertificateStore _store = store;
+        private readonly Func<X509Certificate2, Task> _activateCertificateAsync = activateCertificateAsync;
 
         private long _lastAcceptedEpoch;
         private string _lastAcceptedSha256 = string.Empty;
         private Guid _consumerSubscriptionId;
         private int _started;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="CertificateClusterSync"/> class.
-        /// </summary>
-        /// <param name="logger">Logger scoped to the renewal service.</param>
-        /// <param name="getOptions">Accessor for current Let's Encrypt options.</param>
-        /// <param name="hostEnvironment">Hosting environment for exchange/queue naming.</param>
-        /// <param name="connectionFactory">RabbitMQ connection factory for topology and leader lock.</param>
-        /// <param name="rabbitOptions">RabbitMQ connection options.</param>
-        /// <param name="publisherPool">Publisher pool for fanout broadcasts.</param>
-        /// <param name="consumerManager">Long-lived consumer manager for follower adoption.</param>
-        /// <param name="store">Local certificate persistence.</param>
-        /// <param name="activateCertificateAsync">Callback to activate an adopted certificate for TLS.</param>
-        public CertificateClusterSync(
-            ILogger logger,
-            Func<LetsEncryptOptions> getOptions,
-            IHostEnvironment hostEnvironment,
-            RabbitMqConnectionFactory connectionFactory,
-            RabbitMQOptions rabbitOptions,
-            IRabbitMqPublisherPool publisherPool,
-            IRabbitMqConsumerManager consumerManager,
-            CertificateStore store,
-            Func<X509Certificate2, Task> activateCertificateAsync)
-        {
-            _logger = logger;
-            _getOptions = getOptions;
-            _hostEnvironment = hostEnvironment;
-            _connectionFactory = connectionFactory;
-            _rabbitOptions = rabbitOptions;
-            _publisherPool = publisherPool;
-            _consumerManager = consumerManager;
-            _store = store;
-            _activateCertificateAsync = activateCertificateAsync;
-        }
 
         /// <summary>
         /// Loads persisted adoption state and starts the fanout consumer when cluster mode is enabled.
@@ -128,53 +112,53 @@ namespace Vector.NNTP.Encryption.Cluster
                 .ConfigureAwait(false);
             await using (leaderConnection.ConfigureAwait(false))
             {
-            IChannel leaderChannel = await leaderConnection.CreateChannelAsync(cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            await using (leaderChannel.ConfigureAwait(false))
-            {
-            string leaderQueue = $"vectornntp.acme.leader.{SanitizeSegment(_hostEnvironment.EnvironmentName)}";
-            try
-            {
-                await leaderChannel.QueueDeclareAsync(
-                    queue: leaderQueue,
-                    durable: false,
-                    exclusive: true,
-                    autoDelete: true,
-                    arguments: null,
-                    passive: false,
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                LogNotAcmeLeader(ex, leaderQueue);
-                return;
-            }
+                IChannel leaderChannel = await leaderConnection.CreateChannelAsync(cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                await using (leaderChannel.ConfigureAwait(false))
+                {
+                    string leaderQueue = $"vectornntp.acme.leader.{SanitizeSegment(_hostEnvironment.EnvironmentName)}";
+                    try
+                    {
+                        _ = await leaderChannel.QueueDeclareAsync(
+                            queue: leaderQueue,
+                            durable: false,
+                            exclusive: true,
+                            autoDelete: true,
+                            arguments: null,
+                            passive: false,
+                            cancellationToken: cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        LogNotAcmeLeader(ex, leaderQueue);
+                        return;
+                    }
 
-            LogAcmeLeaderAcquired(leaderQueue);
-            using CancellationTokenSource connectionShutdownCts = new();
-            Task OnLeaderConnectionShutdown(object? sender, ShutdownEventArgs shutdownArgs)
-            {
-                _ = sender;
-                _ = shutdownArgs;
-                try { connectionShutdownCts.Cancel(); }
-                catch (ObjectDisposedException) { }
+                    LogAcmeLeaderAcquired(leaderQueue);
+                    using CancellationTokenSource connectionShutdownCts = new();
+                    Task OnLeaderConnectionShutdown(object? sender, ShutdownEventArgs shutdownArgs)
+                    {
+                        _ = sender;
+                        _ = shutdownArgs;
+                        try { connectionShutdownCts.Cancel(); }
+                        catch (ObjectDisposedException) { }
 
-                return Task.CompletedTask;
-            }
+                        return Task.CompletedTask;
+                    }
 
-            leaderConnection.ConnectionShutdownAsync += OnLeaderConnectionShutdown;
-            try
-            {
-                using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellationToken,
-                    connectionShutdownCts.Token);
-                await issueAsync(linkedCts.Token).ConfigureAwait(false);
-            }
-            finally
-            {
-                leaderConnection.ConnectionShutdownAsync -= OnLeaderConnectionShutdown;
-            }
-            }
+                    leaderConnection.ConnectionShutdownAsync += OnLeaderConnectionShutdown;
+                    try
+                    {
+                        using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                            cancellationToken,
+                            connectionShutdownCts.Token);
+                        await issueAsync(linkedCts.Token).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        leaderConnection.ConnectionShutdownAsync -= OnLeaderConnectionShutdown;
+                    }
+                }
             }
         }
 
@@ -231,7 +215,10 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <inheritdoc />
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
 
         private async Task EnsureTopologyAndConsumerAsync(LetsEncryptOptions options, CancellationToken cancellationToken)
         {
@@ -241,36 +228,36 @@ namespace Vector.NNTP.Encryption.Cluster
             IConnection connection = await _connectionFactory.CreateConnectionAsync(_rabbitOptions, cancellationToken).ConfigureAwait(false);
             await using (connection.ConfigureAwait(false))
             {
-            IChannel channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-            await using (channel.ConfigureAwait(false))
-            {
-            await channel.ExchangeDeclareAsync(
-                exchange: exchange,
-                type: ExchangeType.Fanout,
-                durable: true,
-                autoDelete: false,
-                arguments: null,
-                passive: false,
-                noWait: false,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                IChannel channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                await using (channel.ConfigureAwait(false))
+                {
+                    await channel.ExchangeDeclareAsync(
+                        exchange: exchange,
+                        type: ExchangeType.Fanout,
+                        durable: true,
+                        autoDelete: false,
+                        arguments: null,
+                        passive: false,
+                        noWait: false,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            Dictionary<string, object?> queueArgs = new() { ["x-queue-type"] = "quorum" };
-            await channel.QueueDeclareAsync(
-                queue: queueName,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                arguments: queueArgs,
-                passive: false,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                    Dictionary<string, object?> queueArgs = new() { ["x-queue-type"] = "quorum" };
+                    _ = await channel.QueueDeclareAsync(
+                        queue: queueName,
+                        durable: true,
+                        exclusive: false,
+                        autoDelete: false,
+                        arguments: queueArgs,
+                        passive: false,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            await channel.QueueBindAsync(queue: queueName, exchange: exchange, routingKey: string.Empty, arguments: null, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+                    await channel.QueueBindAsync(queue: queueName, exchange: exchange, routingKey: string.Empty, arguments: null, cancellationToken: cancellationToken)
+                        .ConfigureAwait(false);
 
-            _consumerSubscriptionId = await _consumerManager.RegisterSubscriptionAsync(queueName, OnClusterMessageAsync, cancellationToken)
-                .ConfigureAwait(false);
-            LogClusterConsumerBound(queueName, exchange);
-            }
+                    _consumerSubscriptionId = await _consumerManager.RegisterSubscriptionAsync(queueName, OnClusterMessageAsync, cancellationToken)
+                        .ConfigureAwait(false);
+                    LogClusterConsumerBound(queueName, exchange);
+                }
             }
         }
 
@@ -445,8 +432,10 @@ namespace Vector.NNTP.Encryption.Cluster
             return new string(chars);
         }
 
-        private static string ClusterAdoptionStatePath(LetsEncryptOptions options) =>
-            Path.Combine(Path.GetFullPath(options.CertDir), "cluster-adoption.state");
+        private static string ClusterAdoptionStatePath(LetsEncryptOptions options)
+        {
+            return Path.Combine(Path.GetFullPath(options.CertDir), "cluster-adoption.state");
+        }
 
         private static async Task<(long Epoch, string Sha256Thumbprint)> ReadClusterAdoptionStateAsync(
             LetsEncryptOptions options,
@@ -488,21 +477,14 @@ namespace Vector.NNTP.Encryption.Cluster
             byte[]? current = GetClusterSigningSecretUtf8(options.ClusterBroadcastSigningSecret);
             byte[]? previous = GetClusterSigningSecretUtf8(options.ClusterBroadcastSigningSecretPrevious);
 
-            if (current is null && previous is null)
-                return string.IsNullOrEmpty(dto.Signature);
-
-            if (current is not null && ClusterCertificatePayloadHmac.IsSignatureValid(dto, current, dto.Signature))
-                return true;
-
-            return previous is not null && ClusterCertificatePayloadHmac.IsSignatureValid(dto, previous, dto.Signature);
+            return current is null && previous is null
+                ? string.IsNullOrEmpty(dto.Signature)
+                : (current is not null && ClusterCertificatePayloadHmac.IsSignatureValid(dto, current, dto.Signature)) || (previous is not null && ClusterCertificatePayloadHmac.IsSignatureValid(dto, previous, dto.Signature));
         }
 
         private static byte[]? GetClusterSigningSecretUtf8(string? secret)
         {
-            if (string.IsNullOrWhiteSpace(secret))
-                return null;
-
-            return Encoding.UTF8.GetBytes(secret.Trim());
+            return string.IsNullOrWhiteSpace(secret) ? null : Encoding.UTF8.GetBytes(secret.Trim());
         }
     }
 }

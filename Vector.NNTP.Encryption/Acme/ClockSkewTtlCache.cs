@@ -10,8 +10,8 @@ namespace Vector.NNTP.Encryption.Acme
     internal static class ClockSkewTtlCache
     {
         private static readonly object Gate = new();
-        private static DateTimeOffset? lastSuccessUtc;
-        private static string? lastDirectoryUri;
+        private static DateTimeOffset? _lastSuccessUtc;
+        private static string? _lastDirectoryUri;
 
         /// <summary>
         /// Returns true when a recent successful skew check applies to <paramref name="directoryUri"/>.
@@ -24,12 +24,7 @@ namespace Vector.NNTP.Encryption.Acme
             string key = directoryUri.AbsoluteUri;
             lock (Gate)
             {
-                if (lastSuccessUtc is null || lastDirectoryUri != key)
-                {
-                    return false;
-                }
-
-                return DateTimeOffset.UtcNow - lastSuccessUtc.Value < ttl;
+                return _lastSuccessUtc is not null && _lastDirectoryUri == key && DateTimeOffset.UtcNow - _lastSuccessUtc.Value < ttl;
             }
         }
 
@@ -41,8 +36,8 @@ namespace Vector.NNTP.Encryption.Acme
         {
             lock (Gate)
             {
-                lastDirectoryUri = directoryUri.AbsoluteUri;
-                lastSuccessUtc = DateTimeOffset.UtcNow;
+                _lastDirectoryUri = directoryUri.AbsoluteUri;
+                _lastSuccessUtc = DateTimeOffset.UtcNow;
             }
         }
 
@@ -53,8 +48,8 @@ namespace Vector.NNTP.Encryption.Acme
         {
             lock (Gate)
             {
-                lastDirectoryUri = null;
-                lastSuccessUtc = null;
+                _lastDirectoryUri = null;
+                _lastSuccessUtc = null;
             }
         }
     }

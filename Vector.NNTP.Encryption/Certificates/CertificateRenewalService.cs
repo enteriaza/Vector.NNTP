@@ -41,14 +41,11 @@
 //   CertificateStore.DisposeCertificate (CNG key cleanup on Windows, no-op on Linux).
 
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Vector.NNTP.Encryption.Certificates.Acme;
 using Vector.NNTP.Encryption.Cluster;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.Dns;
 using Vector.NNTP.Utilities.Disposal;
-using Vector.NNTP.Utilities.Retry;
 
 namespace Vector.NNTP.Encryption.Certificates
 {
@@ -262,7 +259,9 @@ namespace Vector.NNTP.Encryption.Certificates
         /// adds only the memory-ordering guarantee.</para>
         /// </remarks>
         public X509Certificate2? GetCurrentCertificate()
-            => Volatile.Read(ref _currentCertificate);
+        {
+            return Volatile.Read(ref _currentCertificate);
+        }
 
         /// <summary>
         /// Fired when a new certificate is activated -- either loaded from disk or renewed via ACME.  Subscribers are
@@ -352,7 +351,7 @@ namespace Vector.NNTP.Encryption.Certificates
             if (cert is not null)
                 CertificateStore.DisposeCertificate(cert, logger);
 
-            DisposalUtilities.TryDispose(_acmeProvider);
+            _ = DisposalUtilities.TryDispose(_acmeProvider);
             base.Dispose();
             GC.SuppressFinalize(this);
         }

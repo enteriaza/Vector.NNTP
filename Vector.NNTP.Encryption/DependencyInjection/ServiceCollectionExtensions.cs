@@ -7,12 +7,11 @@
 // The library never reads JSON files, environment variables, or IConfiguration directly.
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Vector.NNTP.Encryption.Certificates;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.Dns;
 
-namespace Vector.NNTP.Encryption
+namespace Vector.NNTP.Encryption.DependencyInjection
 {
     /// <summary>
     /// Dependency-injection registration for automatic TLS certificate provisioning and renewal.

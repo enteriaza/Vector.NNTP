@@ -32,7 +32,7 @@ namespace Vector.NNTP.Encryption.Acme
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
+            _ = response.EnsureSuccessStatusCode();
 
             if (response.Headers.Date is DateTimeOffset serverUtc)
             {

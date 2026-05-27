@@ -34,7 +34,7 @@ namespace Vector.NNTP.Encryption.Certificates
     /// <para><b>Why source generation:</b> This application disables reflection-based JSON serialisation via
     /// <c>JsonSerializerIsReflectionEnabledByDefault=false</c>.  Without an explicit <see cref="JsonSerializerContext"/>,
     /// the <see cref="System.Text.Json.JsonSerializerOptions.MakeReadOnly(bool)"/> call in
-    /// <see cref="CertificateDefaults.CreateJsonOptions"/> throws <see cref="System.InvalidOperationException"/> when
+    /// <see cref="CertificateDefaults.CreateJsonOptions"/> throws <see cref="InvalidOperationException"/> when
     /// attempting to populate the reflection-based resolver.</para>
     ///
     /// <para><b>Registered types:</b></para>

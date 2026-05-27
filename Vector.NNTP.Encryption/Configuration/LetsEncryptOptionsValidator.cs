@@ -4,7 +4,6 @@
 // LetsEncryptOptionsValidator.cs -- IValidateOptions implementation for LetsEncryptOptions.
 
 using System.ComponentModel.DataAnnotations;
-using Microsoft.Extensions.Options;
 
 namespace Vector.NNTP.Encryption.Configuration
 {
@@ -89,10 +88,9 @@ namespace Vector.NNTP.Encryption.Configuration
                     [nameof(LetsEncryptOptions.ClusterBroadcastExchange)]));
             }
 
-            if (errors.Count == 0)
-                return ValidateOptionsResult.Success;
-
-            return ValidateOptionsResult.Fail(errors.Select(static e => e.ErrorMessage ?? "Validation failed."));
+            return errors.Count == 0
+                ? ValidateOptionsResult.Success
+                : ValidateOptionsResult.Fail(errors.Select(static e => e.ErrorMessage ?? "Validation failed."));
         }
     }
 }

@@ -28,7 +28,7 @@ namespace Vector.NNTP.Encryption.Dns
         {
             try
             {
-                List<IPAddress> servers = new List<IPAddress>();
+                List<IPAddress> servers = [];
                 foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
                 {
                     if (ni.OperationalStatus != OperationalStatus.Up)
@@ -105,8 +105,10 @@ namespace Vector.NNTP.Encryption.Dns
         /// </summary>
         public static Task<IReadOnlyList<IPAddress>> ResolveAuthoritativeNameServerAddressesAsync(
             string recordFqdn,
-            CancellationToken cancellationToken) =>
-            ResolveAuthoritativeNameServerAddressesAsync(recordFqdn, null, TimeSpan.Zero, cancellationToken);
+            CancellationToken cancellationToken)
+        {
+            return ResolveAuthoritativeNameServerAddressesAsync(recordFqdn, null, TimeSpan.Zero, cancellationToken);
+        }
 
         /// <summary>
         /// Resolves distinct authoritative nameserver IPs for the zone that serves <paramref name="recordFqdn"/>.
@@ -170,7 +172,7 @@ namespace Vector.NNTP.Encryption.Dns
                         break;
                     }
 
-                    List<IPAddress> result = new List<IPAddress>();
+                    List<IPAddress> result = [];
                     foreach (string ns in nsHostnames)
                     {
                         if (glue.TryGetValue(NormalizeDnsName(ns), out List<IPAddress>? ips))
@@ -222,14 +224,17 @@ namespace Vector.NNTP.Encryption.Dns
             list.Add(ip);
         }
 
-        private static string NormalizeDnsName(string name) => name.TrimEnd('.').ToLowerInvariant();
+        private static string NormalizeDnsName(string name)
+        {
+            return name.TrimEnd('.').ToLowerInvariant();
+        }
 
         /// <summary>
         /// Resolves an NS hostname: glue-equivalent via recursive wire A/AAAA, then OS stub resolver.
         /// </summary>
         private static async Task<IReadOnlyList<IPAddress>> ResolveNsHostnameViaWireThenOsAsync(string host, CancellationToken cancellationToken)
         {
-            List<IPAddress> wire = new List<IPAddress>();
+            List<IPAddress> wire = [];
             foreach (IPAddress resolver in RecursiveResolvers)
             {
                 byte[] q4 = DnsWireQueryBuilder.Build(host, DnsWireRecordTypes.A, out ushort id4, recursionDesired: true);
@@ -357,13 +362,13 @@ namespace Vector.NNTP.Encryption.Dns
                 IPAddress[] all = await System.Net.Dns.GetHostAddressesAsync(host, ct).ConfigureAwait(false);
                 if (all.Length == 0)
                 {
-                    return Array.Empty<IPAddress>();
+                    return [];
                 }
 
-                List<IPAddress> ips = new List<IPAddress>(all.Length);
+                List<IPAddress> ips = new(all.Length);
                 foreach (IPAddress ip in all)
                 {
-                    if (ip.AddressFamily == AddressFamily.InterNetwork || ip.AddressFamily == AddressFamily.InterNetworkV6)
+                    if (ip.AddressFamily is AddressFamily.InterNetwork or AddressFamily.InterNetworkV6)
                     {
                         ips.Add(ip);
                     }
@@ -377,7 +382,7 @@ namespace Vector.NNTP.Encryption.Dns
             }
             catch (Exception)
             {
-                return Array.Empty<IPAddress>();
+                return [];
             }
         }
 
@@ -389,7 +394,7 @@ namespace Vector.NNTP.Encryption.Dns
 
             try
             {
-                await udp.SendAsync(query, new IPEndPoint(resolver, 53), timeoutCts.Token).ConfigureAwait(false);
+                _ = await udp.SendAsync(query, new IPEndPoint(resolver, 53), timeoutCts.Token).ConfigureAwait(false);
                 UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token).ConfigureAwait(false);
                 return result.Buffer;
             }
@@ -413,7 +418,7 @@ namespace Vector.NNTP.Encryption.Dns
             out List<string> nsHostnames,
             out Dictionary<string, List<IPAddress>> glue)
         {
-            nsHostnames = new List<string>();
+            nsHostnames = [];
             glue = new Dictionary<string, List<IPAddress>>(StringComparer.OrdinalIgnoreCase);
             ReadOnlySpan<byte> span = buffer;
             if (span.Length < DnsHeaderSize)
@@ -500,7 +505,7 @@ namespace Vector.NNTP.Encryption.Dns
             string key = NormalizeDnsName(owner);
             if (!glue.TryGetValue(key, out List<IPAddress>? list))
             {
-                list = new List<IPAddress>();
+                list = [];
                 glue[key] = list;
             }
 

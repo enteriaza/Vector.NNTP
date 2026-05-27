@@ -201,6 +201,20 @@ namespace Vector.NNTP.Encryption.Certificates
         private partial void LogFileReadFailed(Exception ex, string description, string path);
 
         #endregion
+
+        /// <summary>
+        /// Logs that directory creation or validation failed.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Caller:</b> <see cref="EnsureCertsDirectory"/> — when <see cref="Directory.CreateDirectory"/>
+        /// throws any of the documented exceptions (permission denied, invalid path, path too long, parent not found,
+        /// unsupported format, or I/O error).</para>
+        /// <para><b>Level rationale:</b> <see cref="LogLevel.Error"/> because directory creation failure is fatal to
+        /// certificate storage and requires immediate operator intervention.</para>
+        /// </remarks>
+        [LoggerMessage(EventId = 303, Level = LogLevel.Error,
+            Message = "Certificates: Failed to create or access certificate directory {Path} ({ExceptionType})")]
+        private partial void LogDirectoryCreationFailed(Exception ex, string path, string exceptionType);
     }
 
 }

@@ -64,7 +64,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// Registers TLS certificate bridging from Vector.NNTP.Encryption.
         /// </summary>
         /// <remarks>
-        /// <para>Requires <see cref="Vector.NNTP.Encryption.ServiceCollectionExtensions.AddEncryption"/> on the host first.</para>
+        /// <para>Requires <see cref="Encryption.DependencyInjection.ServiceCollectionExtensions.AddEncryption"/> on the host first.</para>
         /// </remarks>
         /// <param name="services">Service collection.</param>
         /// <returns>The service collection for chaining.</returns>

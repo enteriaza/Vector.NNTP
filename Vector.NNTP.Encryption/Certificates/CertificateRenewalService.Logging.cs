@@ -62,15 +62,15 @@ namespace Vector.NNTP.Encryption.Certificates
         /// Logs that the Let's Encrypt configuration is invalid and the service cannot start.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="ExecuteAsync"/> — when <see cref="Microsoft.Extensions.Options.IOptions{TOptions}.Value"/>
-        /// throws <see cref="Microsoft.Extensions.Options.OptionsValidationException"/>.</para>
+        /// <para><b>Caller:</b> <see cref="ExecuteAsync"/> — when <see cref="IOptions{TOptions}.Value"/>
+        /// throws <see cref="OptionsValidationException"/>.</para>
         ///
         /// <para><b>Impact:</b> <see cref="IHostApplicationLifetime.StopApplication"/> is called immediately after this log
         /// message.  The operator must fix the configuration and restart.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Critical"/> because this is a fatal configuration error that
         /// prevents the service from starting.  The <c>{Failures}</c> parameter contains the semicolon-delimited validation
-        /// failure messages from <see cref="Microsoft.Extensions.Options.OptionsValidationException.Failures"/> — providing
+        /// failure messages from <see cref="OptionsValidationException.Failures"/> — providing
         /// the operator with actionable detail on which configuration properties are invalid.</para>
         /// </remarks>
         [LoggerMessage(EventId = 100, Level = LogLevel.Critical,

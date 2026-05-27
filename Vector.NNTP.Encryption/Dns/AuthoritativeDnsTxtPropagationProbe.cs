@@ -6,10 +6,6 @@
 
 using System.Collections.Concurrent;
 using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Vector.NNTP.Encryption.Dns;
 using Vector.NNTP.Encryption.Configuration;
 
 namespace Vector.NNTP.Encryption.Dns
@@ -22,21 +18,16 @@ namespace Vector.NNTP.Encryption.Dns
     /// <para><b>Logging:</b> <see cref="LoggerMessageAttribute"/> partial methods in
     /// <c>AuthoritativeDnsTxtPropagationProbe.Logging.cs</c>.</para>
     /// </remarks>
-    public sealed partial class AuthoritativeDnsTxtPropagationProbe : IDnsTxtPropagationProbe
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="AuthoritativeDnsTxtPropagationProbe"/> class.
+    /// </remarks>
+    /// <param name="logger">Logger.</param>
+    public sealed partial class AuthoritativeDnsTxtPropagationProbe(ILogger<AuthoritativeDnsTxtPropagationProbe> logger) : IDnsTxtPropagationProbe
     {
         private const int QuorumParallelism = 8;
-        private readonly ILogger<AuthoritativeDnsTxtPropagationProbe> logger;
-        private readonly ConcurrentDictionary<string, (IReadOnlyList<IPAddress> Ips, DateTimeOffset ExpiresUtc)> authoritativeNsByZone =
+        private readonly ILogger<AuthoritativeDnsTxtPropagationProbe> _logger = logger;
+        private readonly ConcurrentDictionary<string, (IReadOnlyList<IPAddress> Ips, DateTimeOffset ExpiresUtc)> _authoritativeNsByZone =
             new(StringComparer.OrdinalIgnoreCase);
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="AuthoritativeDnsTxtPropagationProbe"/> class.
-        /// </summary>
-        /// <param name="logger">Logger.</param>
-        public AuthoritativeDnsTxtPropagationProbe(ILogger<AuthoritativeDnsTxtPropagationProbe> logger)
-        {
-            this.logger = logger;
-        }
 
         /// <inheritdoc />
         public async Task WaitForTxtRecordsAsync(
@@ -64,14 +55,14 @@ namespace Vector.NNTP.Encryption.Dns
 
             DateTimeOffset deadline = DateTimeOffset.UtcNow + budget;
 
-            Dictionary<string, IReadOnlyList<IPAddress>> nsByRecord = new Dictionary<string, IReadOnlyList<IPAddress>>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, IReadOnlyList<IPAddress>> nsByRecord = new(StringComparer.OrdinalIgnoreCase);
             foreach ((string recordName, _) in records)
             {
                 if (!nsByRecord.ContainsKey(recordName))
                 {
                     IReadOnlyList<IPAddress> ns = await DnsWireRecursiveResolver.ResolveAuthoritativeNameServerAddressesAsync(
                             recordName,
-                            authoritativeNsByZone,
+                            _authoritativeNsByZone,
                             nsCacheTtl,
                             cancellationToken)
                         .ConfigureAwait(false);
@@ -122,7 +113,7 @@ namespace Vector.NNTP.Encryption.Dns
             int required = DnsAuthoritativeQuorum.RequiredMatchCount(nameServers.Count, quorumRatio);
             int ok = 0;
             int doneGate = 0;
-            ParallelOptions parallelOptions = new ParallelOptions
+            ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = QuorumParallelism,
                 CancellationToken = cancellationToken,

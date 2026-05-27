@@ -246,7 +246,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="CreateAuthoritativeDnsClientAsync"/> -- on both the fast path (lock-free
-        /// <see cref="System.Threading.Volatile.Read(ref bool)"/> check) and the slow path (inner double-check after
+        /// <see cref="Volatile.Read(ref bool)"/> check) and the slow path (inner double-check after
         /// semaphore acquisition).  Guarded by <c>logger.IsEnabled(LogLevel.Debug)</c>.</para>
         /// </remarks>
         [LoggerMessage(EventId = 230, Level = LogLevel.Debug,
@@ -272,7 +272,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <para><b>Caller:</b> <see cref="CreateAuthoritativeDnsClientAsync"/> -- after
         /// <see cref="ResolveAuthoritativeNameserversAsync"/> returns a non-empty array, before caching the new
         /// <see cref="AuthoritativeDnsClient"/>.  The <c>{Servers}</c> parameter is a comma-delimited
-        /// <see cref="string.Join(string, System.Collections.Generic.IEnumerable{string})"/> of IP addresses.</para>
+        /// <see cref="string.Join(string, IEnumerable{string})"/> of IP addresses.</para>
         /// </remarks>
         [LoggerMessage(EventId = 232, Level = LogLevel.Information,
             Message = "Certificates: Resolved {Count} unique authoritative nameserver IP(s): {Servers}")]
@@ -319,7 +319,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="WaitForTxtRecordAsync"/> -- when the polled TXT value matches the expected
-        /// challenge digest.  The <c>{Elapsed}</c> parameter is computed from <see cref="System.Environment.TickCount64"/>
+        /// challenge digest.  The <c>{Elapsed}</c> parameter is computed from <see cref="Environment.TickCount64"/>
         /// for monotonic, allocation-free timing.</para>
         /// </remarks>
         [LoggerMessage(EventId = 236, Level = LogLevel.Information,

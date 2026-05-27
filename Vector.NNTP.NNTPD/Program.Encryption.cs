@@ -3,8 +3,8 @@
 // </copyright>
 
 using Microsoft.Extensions.Options;
-using Vector.NNTP.Encryption;
 using Vector.NNTP.Encryption.Configuration;
+using Vector.NNTP.Encryption.DependencyInjection;
 using EncryptionNntpServerOptions = Vector.NNTP.Encryption.Configuration.NntpServerOptions;
 
 namespace Vector.NNTP.NNTPD

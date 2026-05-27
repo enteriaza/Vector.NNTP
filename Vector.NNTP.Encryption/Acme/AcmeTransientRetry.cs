@@ -73,7 +73,7 @@ namespace Vector.NNTP.Encryption.Acme
             int maxAttempts,
             CancellationToken cancellationToken)
         {
-            await ExecuteAsync(
+            _ = await ExecuteAsync(
                 async () =>
                 {
                     await operation().ConfigureAwait(false);
@@ -85,21 +85,22 @@ namespace Vector.NNTP.Encryption.Acme
                 cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// The set of exceptions considered transient and worth retrying, including nested inner exceptions.
+        /// </summary>
+        /// <param name="ex"></param>
+        /// <returns></returns>
         private static bool IsRetriable(Exception ex)
         {
-            if (ex is HttpRequestException or IOException or TaskCanceledException)
-            {
-                return true;
-            }
-
-            if (ex is InvalidOperationException ioe && ioe.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return ex.InnerException is not null && IsRetriable(ex.InnerException);
+            return ex is HttpRequestException or IOException or TaskCanceledException || (ex is InvalidOperationException ioe && ioe.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase)) || (ex.InnerException is not null && IsRetriable(ex.InnerException));
         }
 
+        /// <summary>
+        /// Calculates the exponential backoff time in milliseconds for a given retry attempt, including a random
+        /// jitter.
+        /// </summary>
+        /// <param name="attemptOneBased">The one-based retry attempt number used to determine the backoff duration.</param>
+        /// <returns>The computed backoff time in milliseconds, capped at 30,000 ms and including up to 249 ms of random jitter.</returns>
         private static int ComputeBackoffMilliseconds(int attemptOneBased)
         {
             int cap = 30_000;

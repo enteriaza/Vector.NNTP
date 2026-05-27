@@ -64,7 +64,12 @@ using Vector.NNTP.Utilities.IO;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
-
+    /// <summary>
+    /// Provides functionality for managing ACME certificate issuance and renewal using Cloudflare's DNS.
+    /// </summary>
+    /// <remarks>Handles interaction with Cloudflare's API to manage DNS records necessary for ACME
+    /// challenges, including creating, updating, and deleting TXT records. Implements caching for authoritative DNS
+    /// resolution to optimize performance and reduce API calls.</remarks>
     internal sealed partial class AcmeCertificateProvider
     {
         #region Constants -- Cloudflare Response Validation
@@ -247,7 +252,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             }
             finally
             {
-                _dnsInitLock.Release();
+                _ = _dnsInitLock.Release();
             }
         }
 
@@ -279,8 +284,8 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             for (int i = 0; i < nameservers.Length; i++)
             {
                 if (i > 0)
-                    sb.Append(", ");
-                sb.Append(nameservers[i]);
+                    _ = sb.Append(", ");
+                _ = sb.Append(nameservers[i]);
             }
             return sb.ToString();
         }
@@ -368,7 +373,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
                             resolved = await System.Net.Dns.GetHostAddressesAsync(hostname, AddressFamily.InterNetworkV6, ct).ConfigureAwait(false);
 
                         foreach (IPAddress ip in resolved)
-                            addresses.Add(ip);
+                            _ = addresses.Add(ip);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
@@ -516,31 +521,40 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         private async Task<string> CreateCloudflareTxtRecordAsync(string name, string content, CancellationToken ct)
         {
             string apiName = CloudflareDnsRecordNaming.NormalizeTxtRecordNameForApi(name, options.DomainNames);
-            string? existingId = await this.TryFindCloudflareTxtRecordIdAsync(apiName, name, ct).ConfigureAwait(false);
-            if (existingId is not null)
-            {
-                return await this.UpdateCloudflareTxtRecordAsync(existingId, apiName, content, ct).ConfigureAwait(false);
-            }
-
-            return await this.CreateCloudflareTxtRecordCoreAsync(apiName, content, ct).ConfigureAwait(false);
+            string? existingId = await TryFindCloudflareTxtRecordIdAsync(apiName, name, ct).ConfigureAwait(false);
+            return existingId is not null
+                ? await UpdateCloudflareTxtRecordAsync(existingId, apiName, content, ct).ConfigureAwait(false)
+                : await CreateCloudflareTxtRecordCoreAsync(apiName, content, ct).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Attempts to retrieve the Cloudflare TXT record ID for the specified API or fully qualified domain name
+        /// asynchronously.
+        /// </summary>
+        /// <param name="apiName">The API name to search for the TXT record ID.</param>
+        /// <param name="fqdnName">The fully qualified domain name to search for the TXT record ID.</param>
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>A task that represents the asynchronous operation. The task result contains the TXT record ID if found;
+        /// otherwise, null.</returns>
         private async Task<string?> TryFindCloudflareTxtRecordIdAsync(string apiName, string fqdnName, CancellationToken ct)
         {
             if (string.Equals(apiName, fqdnName, StringComparison.OrdinalIgnoreCase))
             {
-                return await this.TryFindCloudflareTxtRecordIdByNameAsync(apiName, ct).ConfigureAwait(false);
+                return await TryFindCloudflareTxtRecordIdByNameAsync(apiName, ct).ConfigureAwait(false);
             }
 
-            string? relativeMatch = await this.TryFindCloudflareTxtRecordIdByNameAsync(apiName, ct).ConfigureAwait(false);
-            if (relativeMatch is not null)
-            {
-                return relativeMatch;
-            }
-
-            return await this.TryFindCloudflareTxtRecordIdByNameAsync(fqdnName, ct).ConfigureAwait(false);
+            string? relativeMatch = await TryFindCloudflareTxtRecordIdByNameAsync(apiName, ct).ConfigureAwait(false);
+            return relativeMatch is not null
+                ? relativeMatch
+                : await TryFindCloudflareTxtRecordIdByNameAsync(fqdnName, ct).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Asynchronously searches for a Cloudflare TXT DNS record by name and returns its identifier if found.
+        /// </summary>
+        /// <param name="recordName">The DNS record name to search for.</param>
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>The identifier of the TXT record if found; otherwise, null.</returns>
         private async Task<string?> TryFindCloudflareTxtRecordIdByNameAsync(string recordName, CancellationToken ct)
         {
             string encodedName = Uri.EscapeDataString(recordName);
@@ -564,16 +578,29 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             return null;
         }
 
+        /// <summary>
+        /// Creates a new TXT DNS record via the Cloudflare <c>POST /zones/{zoneId}/dns_records</c> API.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Consumer:</b> Called by <see cref="ValidateChallengeAsync"/> during ACME DNS-01 challenge validation.
+        /// This method sends a JSON payload with the DNS record name and content to Cloudflare, then extracts and returns
+        /// the record ID from the response for later reference or cleanup.</para>
+        /// <para><b>Error handling:</b> Propagates exceptions (including JSON parsing errors) to the caller; no retry logic.</para>
+        /// </remarks>
+        /// <param name="apiName">The DNS record name (FQDN) to create in Cloudflare.</param>
+        /// <param name="content">The TXT record content value (typically the ACME challenge token).</param>
+        /// <param name="ct">Cancellation token to stop the operation.</param>
+        /// <returns>The Cloudflare DNS record ID assigned to the newly created record.</returns>
         private async Task<string> CreateCloudflareTxtRecordCoreAsync(string apiName, string content, CancellationToken ct)
         {
             using HttpRequestMessage request = new(HttpMethod.Post, $"zones/{options.CloudflareZoneId}/dns_records");
             request.Content = new StringContent(
-                JsonSerializer.Serialize(this.BuildTxtRecordRequest(apiName, content), CertificateDefaults.JsonOptions),
+                JsonSerializer.Serialize(BuildTxtRecordRequest(apiName, content), CertificateDefaults.JsonOptions),
                 Encoding.UTF8,
                 "application/json");
 
             using JsonDocument doc = await SendCloudflareRequestAsync(request, "POST /dns_records", ct).ConfigureAwait(false);
-            string recordId = this.ReadCloudflareRecordId(doc, "POST /dns_records");
+            string recordId = ReadCloudflareRecordId(doc, "POST /dns_records");
             if (logger.IsEnabled(LogLevel.Debug))
             {
                 LogCreatedCloudflareTxtRecord(recordId, apiName);
@@ -582,6 +609,35 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             return recordId;
         }
 
+        /// <summary>
+        /// Updates an existing TXT DNS record via the Cloudflare <c>PATCH /zones/{zoneId}/dns_records/{recordId}</c> API.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Consumer:</b> Called by <see cref="CreateCloudflareTxtRecordAsync"/> when a TXT record with the same name
+        /// already exists (for example from a prior failed renewal attempt). This avoids HTTP 400 duplicate-name errors by
+        /// updating the existing record instead of creating a new one.</para>
+        /// <para><b>Payload:</b> Sends a JSON body with <c>type=TXT</c>, the record name, the challenge digest value,
+        /// <c>proxied=false</c>, and the low TTL (<see cref="TxtRecordTtlSeconds"/>).</para>
+        /// <para><b>Serialisation:</b> The payload is serialised from a <see cref="CloudflareDnsRecordRequest"/> using the
+        /// shared <see cref="CertificateDefaults.JsonOptions"/> (frozen, camelCase naming).</para>
+        /// <para><b>Record ID extraction:</b> The updated record ID is extracted from the Cloudflare response and returned
+        /// to the caller for potential reference in cleanup operations.</para>
+        /// <para><b>Credential safety and response size guard:</b> Handled by <see cref="SendCloudflareRequestAsync"/>.
+        /// See file-level Security comment for the full rationale.</para>
+        /// </remarks>
+        /// <param name="recordId">The Cloudflare record ID to update.</param>
+        /// <param name="apiName">The DNS record name to update in Cloudflare.</param>
+        /// <param name="content">The new TXT record value (the ACME DNS-01 challenge token digest).</param>
+        /// <param name="ct">Cancellation token for host shutdown.</param>
+        /// <returns>The Cloudflare DNS record ID for the updated record.</returns>
+        /// <exception cref="HttpRequestException">Thrown when the Cloudflare API returns a non-success HTTP status
+        /// code.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when the Cloudflare API returns HTTP 200 with
+        /// <c>"success": false</c> (logical error -- invalid zone ID, permission denied, rate limit), the response body
+        /// exceeds <see cref="MaxCloudflareResponseBytes"/>, or the response contains a <see langword="null"/> record
+        /// ID.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <paramref name="ct"/> is cancelled (host
+        /// shutdown).</exception>
         private async Task<string> UpdateCloudflareTxtRecordAsync(
             string recordId,
             string apiName,
@@ -592,7 +648,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
                 HttpMethod.Patch,
                 $"zones/{options.CloudflareZoneId}/dns_records/{recordId}");
             request.Content = new StringContent(
-                JsonSerializer.Serialize(this.BuildTxtRecordRequest(apiName, content), CertificateDefaults.JsonOptions),
+                JsonSerializer.Serialize(BuildTxtRecordRequest(apiName, content), CertificateDefaults.JsonOptions),
                 Encoding.UTF8,
                 "application/json");
 
@@ -602,11 +658,34 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
                 LogCreatedCloudflareTxtRecord(recordId, apiName);
             }
 
-            return this.ReadCloudflareRecordId(doc, "PATCH /dns_records");
+            return ReadCloudflareRecordId(doc, "PATCH /dns_records");
         }
 
-        private CloudflareDnsRecordRequest BuildTxtRecordRequest(string apiName, string content) =>
-            new()
+        /// <summary>
+        /// Constructs a Cloudflare DNS record request payload for a TXT record.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Consumer:</b> Called by <see cref="CreateCloudflareTxtRecordCoreAsync"/> and
+        /// <see cref="UpdateCloudflareTxtRecordAsync"/> to build the JSON request body for POST and PATCH operations.</para>
+        /// <para><b>Payload structure:</b> Constructs a <see cref="CloudflareDnsRecordRequest"/> with fixed properties:
+        /// <c>type=TXT</c>, <c>proxied=false</c>, and <c>ttl=<see cref="TxtRecordTtlSeconds"/></c> (typically 120 seconds
+        /// for rapid propagation and automatic cleanup). The <c>name</c> and <c>content</c> parameters are populated from
+        /// the caller's arguments.</para>
+        /// <para><b>No serialisation:</b> This method returns a POCO object; JSON serialisation is performed by the
+        /// caller via <see cref="JsonSerializer.Serialize(object?, System.Text.Json.JsonSerializerOptions?)"/>
+        /// using <see cref="CertificateDefaults.JsonOptions"/> (camelCase naming policy).</para>
+        /// <para><b>Allocation:</b> A single <see cref="CloudflareDnsRecordRequest"/> object is allocated per ACME
+        /// challenge (at most once per domain per renewal cycle). This is a cold-path operation that occurs every 60 days
+        /// per domain.</para>
+        /// </remarks>
+        /// <param name="apiName">The zone-relative or fully-qualified DNS record name (e.g. <c>_acme-challenge</c> or
+        /// <c>_acme-challenge.example.com</c>).</param>
+        /// <param name="content">The TXT record value, typically a base64url-encoded ACME DNS-01 challenge token digest.</param>
+        /// <returns>A <see cref="CloudflareDnsRecordRequest"/> with the specified name and content, fixed type and proxied
+        /// settings, and the configured TTL.</returns>
+        private CloudflareDnsRecordRequest BuildTxtRecordRequest(string apiName, string content)
+        {
+            return new()
             {
                 Type = "TXT",
                 Name = apiName,
@@ -614,7 +693,36 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
                 Ttl = TxtRecordTtlSeconds,
                 Proxied = false,
             };
+        }
 
+        /// <summary>
+        /// Extracts the Cloudflare DNS record ID from a successful API response envelope.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Consumer:</b> Called by <see cref="CreateCloudflareTxtRecordCoreAsync"/> and
+        /// <see cref="UpdateCloudflareTxtRecordAsync"/> after a successful POST or PATCH operation to extract the record ID
+        /// for later reference in cleanup operations.</para>
+        /// <para><b>Navigation:</b> Traverses the Cloudflare response structure: <c>doc.RootElement</c> → <c>"result"</c>
+        /// property → <c>"id"</c> property → string value. Both properties are required; missing or null values throw
+        /// <see cref="InvalidOperationException"/>.</para>
+        /// <para><b>Null-forgiving rationale:</b> The record ID is extracted via <see cref="JsonElement.GetString()"/>,
+        /// which returns <see langword="null"/> if the element is not a string. Per CONTRIBUTING.md, the <c>!</c>
+        /// null-forgiving operator is reserved for DI-guarantee scenarios. Here, a <see langword="null"/> ID indicates a
+        /// Cloudflare API contract violation or a malformed response, so an explicit null check with a descriptive error
+        /// message is more defensive than the operator.</para>
+        /// <para><b>Error context:</b> The <paramref name="operation"/> parameter (e.g. <c>"POST /dns_records"</c>) is
+        /// included in the exception message for diagnostic clarity, allowing log consumers to identify which API call
+        /// produced the unexpected response.</para>
+        /// </remarks>
+        /// <param name="doc">The parsed Cloudflare JSON response, already validated by <see cref="SendCloudflareRequestAsync"/>
+        /// for HTTP status and the <c>"success"</c> field.</param>
+        /// <param name="operation">A short description of the API call (e.g. <c>"POST /dns_records"</c> or <c>"PATCH
+        /// /dns_records"</c>) for the error message. Must not contain credentials or infrastructure identifiers.</param>
+        /// <returns>The Cloudflare-assigned record ID string.</returns>
+        /// <exception cref="KeyNotFoundException">Thrown when the <c>"result"</c> or <c>"id"</c> property is missing from
+        /// the response envelope.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when the <c>"id"</c> property value is <see langword="null"/>
+        /// (indicating a Cloudflare API contract violation or malformed response).</exception>
         private string ReadCloudflareRecordId(JsonDocument doc, string operation)
         {
             return doc.RootElement.GetProperty("result").GetProperty("id").GetString()
@@ -791,6 +899,12 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             }
         }
 
+        /// <summary>
+        /// Validates that the HTTP response content size does not exceed the maximum allowed limit.
+        /// </summary>
+        /// <param name="response">The HTTP response message to check.</param>
+        /// <param name="operation">The operation name for error reporting.</param>
+        /// <exception cref="InvalidOperationException">Thrown if the response content size exceeds the maximum allowed limit.</exception>
         private static void EnsureResponseSizeWithinLimit(HttpResponseMessage response, string operation)
         {
             long? contentLength = response.Content.Headers.ContentLength;
@@ -848,6 +962,11 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             throw new InvalidOperationException($"Cloudflare API {operation} failed: {FormatCloudflareErrorDetail(doc)}");
         }
 
+        /// <summary>
+        /// Formats error messages from a Cloudflare JSON response into a single string.
+        /// </summary>
+        /// <param name="doc">The JSON document containing Cloudflare error information.</param>
+        /// <returns>A formatted string of error messages, or "unknown error" if no errors are present.</returns>
         private static string FormatCloudflareErrorDetail(JsonDocument doc)
         {
             string errorDetail = "unknown error";
@@ -880,20 +999,20 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
 
                 if (sb.Length > 0)
                 {
-                    sb.Append("; ");
+                    _ = sb.Append("; ");
                 }
 
                 if (hasCode)
                 {
-                    sb.Append('[').Append(codeEl.GetInt32()).Append("] ");
+                    _ = sb.Append('[').Append(codeEl.GetInt32()).Append("] ");
                 }
 
-                sb.Append(message);
+                _ = sb.Append(message);
             }
 
             if (truncated)
             {
-                sb.Append(" [truncated]");
+                _ = sb.Append(" [truncated]");
             }
 
             return sb.Length > 0 ? sb.ToString() : errorDetail;

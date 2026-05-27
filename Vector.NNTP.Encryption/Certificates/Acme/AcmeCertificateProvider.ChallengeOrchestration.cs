@@ -40,14 +40,15 @@
 //   AcmeCertificateProvider.RequestCertificateAsync -- sole consumer via ProcessDns01ChallengeAsync (once per
 //   authorization in the ACME order).
 
-using Certes;
 using Certes.Acme;
 using Certes.Acme.Resource;
 using Vector.NNTP.Encryption.Acme;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
-
+    /// <summary>
+    /// Provides functionality for managing ACME DNS-01 challenges.
+    /// </summary>
     internal sealed partial class AcmeCertificateProvider
     {
         /// <summary>
@@ -119,7 +120,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             // Certes' Validate() does not accept a CancellationToken -- check before initiating the outbound ACME request.
             ct.ThrowIfCancellationRequested();
             Challenge challenge = await AcmeTransientRetry.ExecuteAsync(
-                () => dns01.Validate(),
+                dns01.Validate,
                 logger,
                 "Acme.Validate",
                 options.AcmeTransientRetryMaxAttempts,
@@ -139,7 +140,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
                 // cancellation check for this iteration.  If Resource() hangs, the underlying HttpClient.Timeout
                 // (Certes default: 100 s) will eventually surface as an exception.
                 challenge = await AcmeTransientRetry.ExecuteAsync(
-                    () => dns01.Resource(),
+                    dns01.Resource,
                     logger,
                     "Acme.ChallengeResource",
                     options.AcmeTransientRetryMaxAttempts,

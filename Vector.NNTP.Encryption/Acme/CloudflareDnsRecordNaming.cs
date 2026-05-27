@@ -38,6 +38,11 @@ namespace Vector.NNTP.Encryption.Acme
             return relative.Length > 0 ? relative : "@";
         }
 
+        /// <summary>
+        /// Attempts to retrieve the zone apex from a list of configured domain names.
+        /// </summary>
+        /// <param name="configuredDomainNames">A read-only list of domain names to evaluate for the zone apex.</param>
+        /// <returns>The zone apex if found; otherwise, null.</returns>
         private static string? TryGetZoneApex(IReadOnlyList<string> configuredDomainNames)
         {
             foreach (string domain in configuredDomainNames)

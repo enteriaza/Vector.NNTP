@@ -38,9 +38,7 @@ using Certes;
 using Certes.Acme;
 using Certes.Acme.Resource;
 using System.Security.Cryptography.X509Certificates;
-
 using Vector.NNTP.Encryption.Acme;
-using Vector.NNTP.Encryption.Certificates.Acme;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
@@ -70,7 +68,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <see cref="WaitForOrderStatusAsync"/> confirms <c>Ready</c>, but by the time <c>Generate()</c> re-fetches, the
         /// order may have transiently moved to <c>Processing</c> (from a prior finalize attempt on a retry cycle) or the
         /// ACME server may return a stale response -- causing <c>Generate()</c> to throw
-        /// <see cref="Certes.AcmeException"/>(<c>"Fail to finalize order"</c>).  Calling <c>Finalize()</c> directly
+        /// <see cref="AcmeException"/>(<c>"Fail to finalize order"</c>).  Calling <c>Finalize()</c> directly
         /// submits the CSR without redundant status checks, then <see cref="WaitForOrderStatusAsync"/> polls until the
         /// certificate is issued.</para>
         ///

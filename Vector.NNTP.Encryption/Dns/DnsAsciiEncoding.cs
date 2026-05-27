@@ -20,7 +20,10 @@ namespace Vector.NNTP.Encryption.Dns
         /// Returns true when every character is US-ASCII.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAscii(ReadOnlySpan<char> value) => Ascii.IsValid(value);
+        public static bool IsAscii(ReadOnlySpan<char> value)
+        {
+            return Ascii.IsValid(value);
+        }
 
         /// <summary>
         /// Encodes ASCII into <paramref name="destination"/>; returns bytes written.
@@ -47,14 +50,18 @@ namespace Vector.NNTP.Encryption.Dns
         }
 
         [DoesNotReturn]
-        private static void ThrowNonAsciiSpanInput(int sourceLength, string paramName) =>
+        private static void ThrowNonAsciiSpanInput(int sourceLength, string paramName)
+        {
             throw new ArgumentException($"Input contains non-ASCII characters (source length={sourceLength}).", paramName);
+        }
 
         [DoesNotReturn]
-        private static void ThrowDestinationTooShort(int requiredLength, int actualLength, string paramName) =>
+        private static void ThrowDestinationTooShort(int requiredLength, int actualLength, string paramName)
+        {
             throw new ArgumentException(
                 $"Destination span is too short (required={requiredLength}, actual={actualLength}). " +
                 "ASCII encoding requires destination.Length >= source.Length.",
                 paramName);
+        }
     }
 }

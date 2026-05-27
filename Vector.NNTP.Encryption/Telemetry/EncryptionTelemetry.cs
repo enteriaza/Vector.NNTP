@@ -19,6 +19,6 @@ namespace Vector.NNTP.Encryption.Telemetry
         /// <summary>
         /// Shared activity source for certificate renewal and issuance.
         /// </summary>
-        public static ActivitySource ActivitySource { get; } = new(SourceName, "1.0.0");
+        public static ActivitySource ActivitySource { get; } = new(SourceName, Utilities.Diagnostics.AssemblyInfoUtilities.ApplicationVersion);
     }
 }

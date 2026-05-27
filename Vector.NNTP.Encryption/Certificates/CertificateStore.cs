@@ -123,15 +123,89 @@ namespace Vector.NNTP.Encryption.Certificates
         /// Creates the certificate directory if it does not already exist and sets permissions to <c>0700</c> on Linux.
         /// Idempotent — safe to call multiple times.
         /// </summary>
+        /// <remarks>
+        /// <para><b>Exception handling:</b> <see cref="Directory.CreateDirectory(string)"/> can throw various exceptions
+        /// depending on the failure mode. This method catches all exceptions and logs them at <see cref="LogLevel.Error"/>
+        /// before rethrowing, ensuring that permission issues, path validation failures, and I/O errors are never silently
+        /// ignored. Common exceptions include:</para>
+        /// <list type="bullet">
+        ///   <item><description><c>UnauthorizedAccessException</c> — caller lacks permission to create the directory or
+        ///     write to the parent directory.</description></item>
+        ///   <item><description><c>ArgumentException</c> — the path contains invalid characters or is empty.</description></item>
+        ///   <item><description><c>PathTooLongException</c> — the path or a component exceeds platform limits.</description></item>
+        ///   <item><description><c>DirectoryNotFoundException</c> — the parent directory does not exist and could not be
+        ///     created (e.g. on a disconnected network drive).</description></item>
+        ///   <item><description><c>NotSupportedException</c> — the path format is not supported on the current platform.</description></item>
+        ///   <item><description><c>IOException</c> — the directory path points to a file instead of a directory, or a
+        ///     general I/O error occurs.</description></item>
+        /// </list>
+        /// <para><b>Permission setting:</b> After successful directory creation, <see cref="FileIOUtilities.TrySetSecureDirectoryPermissions(string)"/>
+        /// is called to restrict access to the owner on Linux (0700). Permission failures are logged at
+        /// <see cref="LogLevel.Warning"/> and do not prevent host startup — the directory is usable even if permissions
+        /// cannot be set (e.g. on Windows or when running in a container without capability escalation).</para>
+        /// <para><b>Logging:</b> All paths are logged for diagnostics; no credentials are included.</para>
+        /// </remarks>
+        /// <exception cref="UnauthorizedAccessException">Thrown when the process lacks permission to create the directory.
+        /// </exception>
+        /// <exception cref="ArgumentException">Thrown when the path is empty or contains invalid characters.</exception>
+        /// <exception cref="PathTooLongException">Thrown when the path or a component exceeds the platform's path length
+        /// limit.</exception>
+        /// <exception cref="DirectoryNotFoundException">Thrown when the parent directory does not exist or is inaccessible.
+        /// </exception>
+        /// <exception cref="NotSupportedException">Thrown when the path format is not supported on the current platform.
+        /// </exception>
+        /// <exception cref="IOException">Thrown when the path references an existing file, or a general I/O error occurs.
+        /// </exception>
         internal void EnsureCertsDirectory()
         {
-            Directory.CreateDirectory(_certsDirectoryPath);
+            try
+            {
+                _ = Directory.CreateDirectory(_certsDirectoryPath);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                LogDirectoryCreationFailed(ex, _certsDirectoryPath, "Access denied");
+                throw;
+            }
+            catch (ArgumentException ex)
+            {
+                LogDirectoryCreationFailed(ex, _certsDirectoryPath, "Invalid path characters or empty path");
+                throw;
+            }
+            catch (PathTooLongException ex)
+            {
+                LogDirectoryCreationFailed(ex, _certsDirectoryPath, "Path exceeds maximum length");
+                throw;
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                LogDirectoryCreationFailed(ex, _certsDirectoryPath, "Parent directory not found or inaccessible");
+                throw;
+            }
+            catch (NotSupportedException ex)
+            {
+                LogDirectoryCreationFailed(ex, _certsDirectoryPath, "Path format not supported on this platform");
+                throw;
+            }
+            catch (IOException ex)
+            {
+                LogDirectoryCreationFailed(ex, _certsDirectoryPath, "Path references a file or I/O error occurred");
+                throw;
+            }
 
-            Exception? permEx = FileIOUtilities.TrySetSecureDirectoryPermissions(_certsDirectoryPath);
-            if (permEx is not null)
-                LogDirectoryPermissionFailed(permEx, _certsDirectoryPath);
+            try
+            {
+                Exception? permEx = FileIOUtilities.TrySetSecureDirectoryPermissions(_certsDirectoryPath);
+                if (permEx is not null)
+                    LogDirectoryPermissionFailed(permEx, _certsDirectoryPath);
 
-            LogCertificateDirectory(_certsDirectoryPath);
+                LogCertificateDirectory(_certsDirectoryPath);
+            }
+            catch (Exception ex)
+            {
+                LogDirectoryPermissionFailed(ex, _certsDirectoryPath);
+                throw;
+            }
         }
 
         #endregion
@@ -260,7 +334,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <para><b>Callers:</b></para>
         /// <list type="bullet">
         ///   <item><description><see cref="CertificateRenewalService.DeferCertificateDisposal"/> — superseded certificate
-        ///     after <see cref="System.Threading.Interlocked.Exchange{T}"/>.</description></item>
+        ///     after <see cref="Interlocked.Exchange{T}"/>.</description></item>
         ///   <item><description><see cref="Nntp.NntpListener.OnCertificateChanged"/> — the previous
         ///     <c>_tlsCertificate</c> swapped out when the
         ///     <see cref="CertificateRenewalService.CertificateChanged"/> event fires.</description></item>

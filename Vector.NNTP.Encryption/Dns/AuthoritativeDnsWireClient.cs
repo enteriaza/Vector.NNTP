@@ -9,14 +9,13 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Vector.NNTP.Encryption.Dns;
 
 namespace Vector.NNTP.Encryption.Dns
 {
     /// <summary>
     /// Stateless helpers to send TXT queries directly to one authoritative nameserver (UDP, then TCP when needed).
     /// </summary>
-        internal static class AuthoritativeDnsWireClient
+    internal static class AuthoritativeDnsWireClient
     {
         private const int ReceiveTimeoutMs = 5_000;
         private const int DnsHeaderSize = 12;
@@ -70,7 +69,7 @@ namespace Vector.NNTP.Encryption.Dns
 
             try
             {
-                await udp.SendAsync(queryPacket, new IPEndPoint(nameserver, 53), timeoutCts.Token).ConfigureAwait(false);
+                _ = await udp.SendAsync(queryPacket, new IPEndPoint(nameserver, 53), timeoutCts.Token).ConfigureAwait(false);
                 UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token).ConfigureAwait(false);
                 return result.Buffer;
             }
@@ -111,7 +110,7 @@ namespace Vector.NNTP.Encryption.Dns
                 byte[] lenBuf = new byte[2];
                 await stream.ReadExactlyAsync(lenBuf.AsMemory(0, 2), timeoutCts.Token).ConfigureAwait(false);
                 int msgLen = BinaryPrimitives.ReadUInt16BigEndian(lenBuf);
-                if (msgLen <= 0 || msgLen > 65535)
+                if (msgLen is <= 0 or > 65535)
                 {
                     return null;
                 }
@@ -244,7 +243,7 @@ namespace Vector.NNTP.Encryption.Dns
             }
 
             StringBuilder sb = new(rdLength);
-            sb.Append(Encoding.ASCII.GetString(span.Slice(offset, firstStrLen)));
+            _ = sb.Append(Encoding.ASCII.GetString(span.Slice(offset, firstStrLen)));
             offset += firstStrLen;
 
             while (offset < rdEnd)
@@ -260,7 +259,7 @@ namespace Vector.NNTP.Encryption.Dns
                     break;
                 }
 
-                sb.Append(Encoding.ASCII.GetString(span.Slice(offset, strLen)));
+                _ = sb.Append(Encoding.ASCII.GetString(span.Slice(offset, strLen)));
                 offset += strLen;
             }
 

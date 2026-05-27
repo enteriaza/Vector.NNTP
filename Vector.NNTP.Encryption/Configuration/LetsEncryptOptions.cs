@@ -216,7 +216,7 @@ namespace Vector.NNTP.Encryption.Configuration
 
             try
             {
-                KeyFactory.FromPem(AccountKeyPem);
+                _ = KeyFactory.FromPem(AccountKeyPem);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
             {

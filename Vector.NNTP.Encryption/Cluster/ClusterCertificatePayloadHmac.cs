@@ -23,7 +23,7 @@ namespace Vector.NNTP.Encryption.Cluster
         {
             byte[] signable = BuildSignableUtf8(payload);
             Span<byte> mac = stackalloc byte[32];
-            HMACSHA256.HashData(secretUtf8, signable, mac);
+            _ = HMACSHA256.HashData(secretUtf8, signable, mac);
             return Convert.ToHexString(mac);
         }
 
@@ -54,10 +54,16 @@ namespace Vector.NNTP.Encryption.Cluster
 
             byte[] signable = BuildSignableUtf8(payload);
             Span<byte> mac = stackalloc byte[32];
-            HMACSHA256.HashData(secretUtf8, signable, mac);
+            _ = HMACSHA256.HashData(secretUtf8, signable, mac);
             return CryptographicOperations.FixedTimeEquals(mac, expected);
         }
 
+        /// <summary>
+        /// Builds a UTF-8 encoded byte array representing the signable payload from the specified cluster certificate
+        /// data.
+        /// </summary>
+        /// <param name="p">The cluster certificate payload containing the data to encode.</param>
+        /// <returns>A byte array containing the UTF-8 encoded signable payload.</returns>
         private static byte[] BuildSignableUtf8(ClusterCertificatePayload p)
         {
             int estimated = 128 + (p.PfxBase64?.Length ?? 0) + ((p.Sha256Thumbprint?.Length ?? 0) * 2);

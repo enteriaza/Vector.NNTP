@@ -418,14 +418,14 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </list>
         ///
         /// <para><b>Delegates to <see cref="CertificateStore.DeferDisposal"/>:</b> The centralised implementation uses
-        /// <see cref="Task.Delay(TimeSpan, System.Threading.CancellationToken)"/> followed by
-        /// <see cref="Task.ContinueWith{TResult}(Func{Task, object?, TResult}, object?, System.Threading.CancellationToken, TaskContinuationOptions, TaskScheduler)"/>
+        /// <see cref="Task.Delay(TimeSpan, CancellationToken)"/> followed by
+        /// <see cref="Task.ContinueWith{TResult}(Func{Task, object?, TResult}, object?, CancellationToken, TaskContinuationOptions, TaskScheduler)"/>
         /// with a <see langword="static"/> lambda and state-passing to avoid a compiler-generated closure allocation.
         /// <see cref="TaskContinuationOptions.ExecuteSynchronously"/> avoids a thread-pool hop for the trivial
         /// <see cref="IDisposable.Dispose"/> call.</para>
         ///
         /// <para><b>Timer lifecycle and cancellation:</b> The delay is linked to <see cref="_stoppingToken"/> so the timer
-        /// is cancelled cleanly during host shutdown.  The continuation uses <see cref="System.Threading.CancellationToken.None"/>
+        /// is cancelled cleanly during host shutdown.  The continuation uses <see cref="CancellationToken.None"/>
         /// to ensure it always schedules — the <c>t.Status == TaskStatus.RanToCompletion</c> guard inside the continuation
         /// prevents disposal during shutdown when <see cref="Dispose"/> may have already cleaned up
         /// <see cref="_currentCertificate"/>.</para>

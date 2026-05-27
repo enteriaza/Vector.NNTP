@@ -42,7 +42,9 @@ using Vector.NNTP.Utilities.IO;
 
 namespace Vector.NNTP.Encryption.Certificates
 {
-
+    /// <summary>
+    /// Manages the storage and retrieval of certificates and their associated keys.
+    /// </summary>
     internal sealed partial class CertificateStore
     {
         #region Internal Methods — Certificate
@@ -175,9 +177,11 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <returns>The PFX bytes, or <see langword="null"/> if the file is absent or unreadable.</returns>
         /// <exception cref="OperationCanceledException"><paramref name="ct"/> was cancelled.</exception>
         internal async Task<byte[]?> TryLoadCertificateBytesAsync(CancellationToken ct)
-            => await FileIOUtilities.TryReadFileAsync(
-                File.ReadAllBytesAsync, CertificatePath,
-                ex => LogFileReadFailed(ex, "certificate bytes", CertificatePath), ct).ConfigureAwait(false);
+        {
+            return await FileIOUtilities.TryReadFileAsync(
+                        File.ReadAllBytesAsync, CertificatePath,
+                        ex => LogFileReadFailed(ex, "certificate bytes", CertificatePath), ct).ConfigureAwait(false);
+        }
 
         #endregion
 
@@ -228,9 +232,11 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <returns>The PEM string, or <see langword="null"/> if the file is absent or unreadable.</returns>
         /// <exception cref="OperationCanceledException"><paramref name="ct"/> was cancelled.</exception>
         internal async Task<string?> TryLoadAccountKeyAsync(CancellationToken ct)
-            => await FileIOUtilities.TryReadFileAsync(
-                File.ReadAllTextAsync, AccountKeyPath,
-                ex => LogFileReadFailed(ex, "ACME account key", AccountKeyPath), ct).ConfigureAwait(false);
+        {
+            return await FileIOUtilities.TryReadFileAsync(
+                        File.ReadAllTextAsync, AccountKeyPath,
+                        ex => LogFileReadFailed(ex, "ACME account key", AccountKeyPath), ct).ConfigureAwait(false);
+        }
 
         #endregion
 
@@ -281,9 +287,11 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <returns>The PEM string, or <see langword="null"/> if the file is absent or unreadable.</returns>
         /// <exception cref="OperationCanceledException"><paramref name="ct"/> was cancelled.</exception>
         internal async Task<string?> TryLoadCertificateKeyAsync(CancellationToken ct)
-            => await FileIOUtilities.TryReadFileAsync(
-                File.ReadAllTextAsync, CertificateKeyPath,
-                ex => LogFileReadFailed(ex, "certificate key", CertificateKeyPath), ct).ConfigureAwait(false);
+        {
+            return await FileIOUtilities.TryReadFileAsync(
+                        File.ReadAllTextAsync, CertificateKeyPath,
+                        ex => LogFileReadFailed(ex, "certificate key", CertificateKeyPath), ct).ConfigureAwait(false);
+        }
 
         #endregion
     }

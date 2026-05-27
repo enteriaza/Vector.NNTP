@@ -186,7 +186,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             ct.ThrowIfCancellationRequested();
             try
             {
-                await acme.Account().ConfigureAwait(false);
+                _ = await acme.Account().ConfigureAwait(false);
 
                 if (logger.IsEnabled(LogLevel.Debug))
                     LogLoadedExistingAcmeAccount("appsettings.json (AccountKeyPem)");
@@ -199,7 +199,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
                 LogAccountKeyNotRegistered(ex);
 
                 ct.ThrowIfCancellationRequested();
-                await acme.NewAccount(options.AcmeAccountEmail, termsOfServiceAgreed: true).ConfigureAwait(false);
+                _ = await acme.NewAccount(options.AcmeAccountEmail, termsOfServiceAgreed: true).ConfigureAwait(false);
 
                 LogCreatedNewAcmeAccount(options.AcmeAccountEmail, "appsettings.json (AccountKeyPem)");
             }

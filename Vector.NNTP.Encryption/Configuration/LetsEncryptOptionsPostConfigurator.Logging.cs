@@ -5,8 +5,6 @@
 
 namespace Vector.NNTP.Encryption.Configuration
 {
-    using Microsoft.Extensions.Logging;
-
     /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for
     /// <see cref="LetsEncryptOptionsPostConfigurator"/>.

@@ -39,17 +39,12 @@
 //   downstream subsystems (CertificateStore, CertificateDefaults).
 
 using System.Diagnostics;
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Vector.NNTP.Encryption.Certificates.Acme;
 using Vector.NNTP.Encryption.Cluster;
 using Vector.NNTP.Encryption.Configuration;
-using Vector.NNTP.Encryption.Dns;
 using Vector.NNTP.Encryption.Telemetry;
-using Vector.NNTP.Utilities.Async;
-using Vector.NNTP.Utilities.IO;
 using Vector.NNTP.Utilities.Retry;
 using Vector.NNTP.MessageBus.Connections;
 using Vector.NNTP.MessageBus.Configuration;
@@ -360,7 +355,7 @@ namespace Vector.NNTP.Encryption.Certificates
 
             if (_options.ClusterEnabled && _clusterSync is not null)
             {
-                await _clusterSync.TryRenewAsLeaderAsync(innerCt => PerformRenewalAsync(innerCt), ct).ConfigureAwait(false);
+                await _clusterSync.TryRenewAsLeaderAsync(PerformRenewalAsync, ct).ConfigureAwait(false);
                 return;
             }
 

@@ -5,30 +5,20 @@
 
 namespace Vector.NNTP.Encryption.Configuration
 {
-    using Microsoft.Extensions.Hosting;
-    using Microsoft.Extensions.Logging;
-    using Microsoft.Extensions.Options;
-
     /// <summary>
     /// Hydrates Let's Encrypt options from disk and applies development fallbacks before <c>ValidateOnStart</c>.
     /// </summary>
-    internal sealed partial class LetsEncryptOptionsPostConfigurator : IPostConfigureOptions<LetsEncryptOptions>
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="LetsEncryptOptionsPostConfigurator"/> class.
+    /// </remarks>
+    /// <param name="hostEnvironment">Hosting environment (Development vs Production).</param>
+    /// <param name="logger">Logger.</param>
+    internal sealed partial class LetsEncryptOptionsPostConfigurator(
+        IHostEnvironment hostEnvironment,
+        ILogger<LetsEncryptOptionsPostConfigurator> logger) : IPostConfigureOptions<LetsEncryptOptions>
     {
-        private readonly IHostEnvironment _hostEnvironment;
-        private readonly ILogger<LetsEncryptOptionsPostConfigurator> _logger;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="LetsEncryptOptionsPostConfigurator"/> class.
-        /// </summary>
-        /// <param name="hostEnvironment">Hosting environment (Development vs Production).</param>
-        /// <param name="logger">Logger.</param>
-        public LetsEncryptOptionsPostConfigurator(
-            IHostEnvironment hostEnvironment,
-            ILogger<LetsEncryptOptionsPostConfigurator> logger)
-        {
-            this._hostEnvironment = hostEnvironment ?? throw new ArgumentNullException(nameof(hostEnvironment));
-            this._logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
+        private readonly IHostEnvironment _hostEnvironment = hostEnvironment ?? throw new ArgumentNullException(nameof(hostEnvironment));
+        private readonly ILogger<LetsEncryptOptionsPostConfigurator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         /// <inheritdoc />
         public void PostConfigure(string? name, LetsEncryptOptions options)
@@ -42,12 +32,12 @@ namespace Vector.NNTP.Encryption.Configuration
                 return;
             }
 
-            if (!this._hostEnvironment.IsDevelopment())
+            if (!_hostEnvironment.IsDevelopment())
             {
                 return;
             }
 
-            this.LogDevelopmentAccountKeyMissing(LetsEncryptOptions.AccountKeyFileName);
+            LogDevelopmentAccountKeyMissing(LetsEncryptOptions.AccountKeyFileName);
             options.Enabled = false;
         }
     }

@@ -44,7 +44,9 @@ namespace Vector.NNTP.Encryption.Cluster
             return true;
         }
 
-        private static string NormalizeDomain(string? value) =>
-            string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().TrimEnd('.');
+        private static string NormalizeDomain(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().TrimEnd('.');
+        }
     }
 }

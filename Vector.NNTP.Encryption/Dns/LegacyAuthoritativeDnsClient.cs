@@ -88,8 +88,6 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-
-using Vector.NNTP.Utilities.Dns;
 using Vector.NNTP.Utilities.Encoding;
 
 namespace Vector.NNTP.Encryption.Dns
@@ -307,7 +305,7 @@ namespace Vector.NNTP.Encryption.Dns
 
             try
             {
-                await udp.SendAsync(queryPacket, new IPEndPoint(nameserver, 53), timeoutCts.Token).ConfigureAwait(false);
+                _ = await udp.SendAsync(queryPacket, new IPEndPoint(nameserver, 53), timeoutCts.Token).ConfigureAwait(false);
 
                 UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token).ConfigureAwait(false);
                 return ParseTxtResponse(result.Buffer, queryId);
@@ -651,7 +649,7 @@ namespace Vector.NNTP.Encryption.Dns
 
             // Multi-segment fallback: concatenate all character-strings via StringBuilder.
             StringBuilder sb = new(rdLength); // Hint capacity with rdLength -- close enough for total text bytes.
-            sb.Append(Encoding.ASCII.GetString(span.Slice(offset, firstStrLen)));
+            _ = sb.Append(Encoding.ASCII.GetString(span.Slice(offset, firstStrLen)));
             offset += firstStrLen;
 
             while (offset < rdEnd)
@@ -663,7 +661,7 @@ namespace Vector.NNTP.Encryption.Dns
                 if (offset + strLen > span.Length || offset + strLen > rdEnd)
                     break;
 
-                sb.Append(Encoding.ASCII.GetString(span.Slice(offset, strLen)));
+                _ = sb.Append(Encoding.ASCII.GetString(span.Slice(offset, strLen)));
                 offset += strLen;
             }
 

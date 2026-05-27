@@ -78,7 +78,7 @@ namespace Vector.NNTP.Encryption.Dns
                 }
 
                 pos++;
-                labels ??= new List<string>();
+                labels ??= [];
 
                 // Expanded name length limit (RFC 1035: 255 bytes including length octets); we conservatively
                 // cap the dotted string to 255 to avoid pathological packet-induced growth.
