@@ -19,6 +19,9 @@ namespace Vector.NNTP.Sockets.HostProfile
         public bool AllowsReaderCommands => false;
 
         /// <inheritdoc />
+        public bool AllowsAuthentication => true;
+
+        /// <inheritdoc />
         public bool AllowsStreamingCommands => true;
 
         /// <inheritdoc />

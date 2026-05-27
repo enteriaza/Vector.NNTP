@@ -39,6 +39,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             CapabilitiesWriter writer = new CapabilitiesWriter();
             bool dedicatedReader = IsDedicatedReader(session.Profile);
             bool isAuthenticated = session.Connection.IsAuthenticated;
+            bool isAuthAdvertised = session.Profile.AllowsAuthentication;
 
             writer.AppendLine("VERSION 2");
             writer.AppendLine(NntpImplementationCapability.GetLine());
@@ -63,12 +64,12 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 writer.AppendLine("STARTTLS");
             }
 
-            if (ShouldAdvertiseAuthInfoUser(session, dedicatedReader, isAuthenticated))
+            if (ShouldAdvertiseAuthInfoUser(session, isAuthAdvertised, isAuthenticated))
             {
                 writer.AppendLine("AUTHINFO USER");
             }
 
-            if (ShouldAdvertiseSasl(session, dedicatedReader, isAuthenticated))
+            if (ShouldAdvertiseSasl(session, isAuthAdvertised, isAuthenticated))
             {
                 writer.AppendLine(BuildSaslLine(scramStore));
             }
@@ -103,9 +104,9 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         private static bool IsDedicatedReader(INntpHostProfile profile) =>
             profile.Role == NntpHostRole.Reader && profile.AllowsReaderCommands;
 
-        private static bool ShouldAdvertiseAuthInfoUser(NntpSession session, bool dedicatedReader, bool isAuthenticated)
+        private static bool ShouldAdvertiseAuthInfoUser(NntpSession session, bool isAuthAdvertised, bool isAuthenticated)
         {
-            if (!dedicatedReader || isAuthenticated)
+            if (!isAuthAdvertised || isAuthenticated)
             {
                 return false;
             }
@@ -113,9 +114,9 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             return session.IsAuthInfoPermitted;
         }
 
-        private static bool ShouldAdvertiseSasl(NntpSession session, bool dedicatedReader, bool isAuthenticated)
+        private static bool ShouldAdvertiseSasl(NntpSession session, bool isAuthAdvertised, bool isAuthenticated)
         {
-            if (!dedicatedReader || isAuthenticated)
+            if (!isAuthAdvertised || isAuthenticated)
             {
                 return false;
             }

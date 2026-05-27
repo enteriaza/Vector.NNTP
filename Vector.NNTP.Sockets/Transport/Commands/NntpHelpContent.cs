@@ -33,6 +33,8 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             "  MODE STREAM",
             "  HELP",
             "  DATE",
+            "  AUTHINFO USER <username>",
+            "  AUTHINFO PASS <password>",
             "  STARTTLS",
             "  COMPRESS DEFLATE",
             "  CHECK <message-id>",

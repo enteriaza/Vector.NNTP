@@ -165,11 +165,11 @@ namespace Vector.NNTP.Tests.Sockets
         }
 
         /// <summary>
-        /// Verifies transit CAPABILITIES omits reader authentication and lists STREAM once.
+        /// Verifies transit CAPABILITIES advertises authentication and lists STREAM once.
         /// </summary>
         /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
         [Test]
-        public async Task Capabilities_Transit_OmitsAuthAndSingleStream()
+        public async Task Capabilities_Transit_AdvertisesAuthAndSingleStream()
         {
             NntpProtocolHarness harness = NntpProtocolHarness.CreateTransit();
             try
@@ -181,8 +181,8 @@ namespace Vector.NNTP.Tests.Sockets
                 Assert.That(lines, Does.Contain("VERSION 2"));
                 Assert.That(lines, Does.Contain("STREAM"));
                 Assert.That(lines.Count(l => l == "STREAM"), Is.EqualTo(1));
-                Assert.That(lines.Any(l => l.StartsWith("AUTHINFO", StringComparison.Ordinal)), Is.False);
-                Assert.That(lines.Any(l => l.StartsWith("SASL", StringComparison.Ordinal)), Is.False);
+                Assert.That(lines.Any(l => l.StartsWith("AUTHINFO USER", StringComparison.Ordinal)), Is.True);
+                Assert.That(lines.Any(l => l.StartsWith("SASL", StringComparison.Ordinal)), Is.True);
             }
             finally
             {

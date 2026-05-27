@@ -31,6 +31,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 .Build();
 
             ServiceCollection services = new ServiceCollection();
+            services.AddLogging();
             services.AddNntpMySqlAuthFromHostConfiguration(configuration);
             services.AddNntpSocketsTransit();
 

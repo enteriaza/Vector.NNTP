@@ -22,6 +22,18 @@ namespace Vector.NNTP.Sockets.HostProfile
         bool AllowsReaderCommands { get; }
 
         /// <summary>
+        /// Gets a value indicating whether RFC 3977 authentication commands are advertised and accepted.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Transit deployments commonly require authentication for peering and posting policy. This flag controls
+        /// whether AUTHINFO USER/PASS and SASL are included in CAPABILITIES/HELP and whether clients are expected
+        /// to authenticate before issuing commands that the command gate protects with a 480 response.
+        /// </para>
+        /// </remarks>
+        bool AllowsAuthentication { get; }
+
+        /// <summary>
         /// Gets a value indicating whether RFC 4644 streaming commands are permitted.
         /// </summary>
         bool AllowsStreamingCommands { get; }
