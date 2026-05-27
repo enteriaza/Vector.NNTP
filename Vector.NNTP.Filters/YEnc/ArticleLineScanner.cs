@@ -136,17 +136,11 @@ namespace Vector.NNTP.Filters.YEnc
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int AdvancePastLineTerminator(ReadOnlySpan<byte> span, int lineEndIndex)
         {
-            if (lineEndIndex < 0)
-            {
-                return span.Length;
-            }
-
-            if (span[lineEndIndex] == CR && lineEndIndex + 1 < span.Length && span[lineEndIndex + 1] == LF)
-            {
-                return lineEndIndex + 2;
-            }
-
-            return lineEndIndex + 1;
+            return lineEndIndex < 0
+                ? span.Length
+                : span[lineEndIndex] == CR && lineEndIndex + 1 < span.Length && span[lineEndIndex + 1] == LF
+                ? lineEndIndex + 2
+                : lineEndIndex + 1;
         }
 
         /// <summary>

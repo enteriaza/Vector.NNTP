@@ -23,8 +23,10 @@ namespace Vector.NNTP.Filters.DateParser
     public static partial class NewsDateParser
     {
         /// <inheritdoc cref="TryParseToUtc(ReadOnlySpan{char}, DateParseOptions, out DateTime, out DateParseFailureReason)"/>
-        public static bool TryParseToUtc(ReadOnlySpan<char> dateSpan, out DateTime result) =>
-            TryParseToUtc(dateSpan, DateParseOptions.Default, out result, out _);
+        public static bool TryParseToUtc(ReadOnlySpan<char> dateSpan, out DateTime result)
+        {
+            return TryParseToUtc(dateSpan, DateParseOptions.Default, out result, out _);
+        }
 
         /// <summary>
         /// Attempts to parse a date header value to UTC, with failure classification.
@@ -71,8 +73,10 @@ namespace Vector.NNTP.Filters.DateParser
         }
 
         /// <inheritdoc cref="TryParseToUtc(string, DateParseOptions, out DateTime, out DateParseFailureReason)"/>
-        public static bool TryParseToUtc(string dateRaw, out DateTime result) =>
-            TryParseToUtc(dateRaw, DateParseOptions.Default, out result, out _);
+        public static bool TryParseToUtc(string dateRaw, out DateTime result)
+        {
+            return TryParseToUtc(dateRaw, DateParseOptions.Default, out result, out _);
+        }
 
         /// <summary>
         /// Full string pipeline: optional interior space collapse, parenthesis strip, quick parse, timezone substitution, and exact parse.
@@ -153,8 +157,10 @@ namespace Vector.NNTP.Filters.DateParser
         }
 
         /// <inheritdoc cref="ParseToUnixTimestamp(ReadOnlySpan{char}, DateParseOptions)"/>
-        public static uint ParseToUnixTimestamp(ReadOnlySpan<char> dateSpan) =>
-            ParseToUnixTimestamp(dateSpan, DateParseOptions.Default);
+        public static uint ParseToUnixTimestamp(ReadOnlySpan<char> dateSpan)
+        {
+            return ParseToUnixTimestamp(dateSpan, DateParseOptions.Default);
+        }
 
         /// <summary>
         /// Parses to Unix seconds, or <c>0</c> when parsing fails or the instant is outside the <see cref="uint"/> epoch range.
@@ -165,21 +171,14 @@ namespace Vector.NNTP.Filters.DateParser
         public static uint ParseToUnixTimestamp(ReadOnlySpan<char> dateSpan, DateParseOptions options)
         {
             ReadOnlySpan<char> trimmed = dateSpan.Trim();
-            if (trimmed.IsEmpty)
-            {
-                return 0;
-            }
-
-            if (TryParseToUtc(trimmed, options, out DateTime utc, out _))
-            {
-                return UsenetEpoch.ToUnixTimestamp(utc);
-            }
-
-            return 0;
+            return trimmed.IsEmpty ? 0 : TryParseToUtc(trimmed, options, out DateTime utc, out _) ? UsenetEpoch.ToUnixTimestamp(utc) : 0;
         }
 
         /// <inheritdoc cref="ParseToUnixTimestamp(string, DateParseOptions)"/>
-        public static uint ParseToUnixTimestamp(string dateRaw) => ParseToUnixTimestamp(dateRaw, DateParseOptions.Default);
+        public static uint ParseToUnixTimestamp(string dateRaw)
+        {
+            return ParseToUnixTimestamp(dateRaw, DateParseOptions.Default);
+        }
 
         /// <summary>
         /// Parses a string date value to Unix seconds, or <c>0</c> on failure or out-of-range.
@@ -189,12 +188,7 @@ namespace Vector.NNTP.Filters.DateParser
         /// <returns>Seconds since 1970-01-01Z, or <c>0</c> on failure or overflow.</returns>
         public static uint ParseToUnixTimestamp(string dateRaw, DateParseOptions options)
         {
-            if (TryParseToUtc(dateRaw, options, out DateTime utc, out _))
-            {
-                return UsenetEpoch.ToUnixTimestamp(utc);
-            }
-
-            return 0;
+            return TryParseToUtc(dateRaw, options, out DateTime utc, out _) ? UsenetEpoch.ToUnixTimestamp(utc) : 0;
         }
 
         /// <summary>
@@ -223,8 +217,10 @@ namespace Vector.NNTP.Filters.DateParser
         /// <param name="raw">The raw date characters.</param>
         /// <param name="canonicalValue">When this method returns <see langword="true"/>, the canonical string.</param>
         /// <returns><see langword="true"/> when parsing succeeds.</returns>
-        public static bool TryGetCanonicalDateValue(ReadOnlySpan<char> raw, out string canonicalValue) =>
-            TryGetCanonicalDateValue(raw, DateParseOptions.Default, out canonicalValue, out _);
+        public static bool TryGetCanonicalDateValue(ReadOnlySpan<char> raw, out string canonicalValue)
+        {
+            return TryGetCanonicalDateValue(raw, DateParseOptions.Default, out canonicalValue, out _);
+        }
 
         /// <summary>
         /// Parses and returns the canonical RFC 5322-style UTC header value (<c>... +0000</c>), with failure classification.
@@ -247,8 +243,10 @@ namespace Vector.NNTP.Filters.DateParser
         }
 
         /// <inheritdoc cref="TryGetCanonicalDateValue(ReadOnlySpan{char}, DateParseOptions, out string, out DateParseFailureReason)"/>
-        public static bool TryGetCanonicalDateValue(string raw, DateParseOptions options, out string canonicalValue, out DateParseFailureReason failure) =>
-            TryGetCanonicalDateValue(raw.AsSpan(), options, out canonicalValue, out failure);
+        public static bool TryGetCanonicalDateValue(string raw, DateParseOptions options, out string canonicalValue, out DateParseFailureReason failure)
+        {
+            return TryGetCanonicalDateValue(raw.AsSpan(), options, out canonicalValue, out failure);
+        }
 
         /// <summary>
         /// Fast path: invariant <see cref="DateTimeOffset.TryParse(ReadOnlySpan{char}, IFormatProvider?, DateTimeStyles, out DateTimeOffset)"/> after a printable-ASCII SIMD pre-check.

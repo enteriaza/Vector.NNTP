@@ -49,12 +49,7 @@ namespace Vector.NNTP.Filters.DateParser
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsAllPrintableAscii(ReadOnlySpan<char> span)
         {
-            if (span.Length == 0)
-            {
-                return true;
-            }
-
-            return IsAllInRange(span, PrintableLoVec256, PrintableRangeVec256, PrintableLoVec128, PrintableRangeVec128, scalarLo: 0x20, scalarRange: 0x5E);
+            return span.Length == 0 || IsAllInRange(span, PrintableLoVec256, PrintableRangeVec256, PrintableLoVec128, PrintableRangeVec128, scalarLo: 0x20, scalarRange: 0x5E);
         }
 
         /// <summary>

@@ -133,12 +133,12 @@ namespace Vector.NNTP.Filters.PostFilter
         /// <summary>
         /// RBL zone suffixes (for example <c>zen.spamhaus.org</c>); client IPv4 is reversed and appended as labels.
         /// </summary>
-        public List<string> RblZones { get; set; } = new();
+        public List<string> RblZones { get; set; } = [];
 
         /// <summary>
         /// URIBL zone suffixes; each discovered hostname is queried as <c>{host}.{zone}</c>.
         /// </summary>
-        public List<string> UriblZones { get; set; } = new();
+        public List<string> UriblZones { get; set; } = [];
 
         /// <summary>
         /// Tor DNS suffix used for exit-node checks (default matches Tor Project <c>dnsel.torproject.org</c> style usage).
@@ -175,7 +175,7 @@ namespace Vector.NNTP.Filters.PostFilter
         /// <summary>
         /// Header field names that must not be present (case-insensitive); presence triggers rejection code 4.
         /// </summary>
-        public List<string> ForbiddenHeaderNames { get; set; } = new();
+        public List<string> ForbiddenHeaderNames { get; set; } = [];
 
         /// <summary>
         /// Maximum distinct newsgroups allowed in a <c>Newsgroups</c> header (0 disables the crosspost limit).

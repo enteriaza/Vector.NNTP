@@ -14,13 +14,13 @@ namespace Vector.NNTP.Filters.PostFilter
     /// </remarks>
     public sealed class PostFilterAccessTracker
     {
-        /// <summary>Lock protecting mutations to <see cref="postsByKey"/>.</summary>
-        private readonly object sync = new();
+        /// <summary>Lock protecting mutations to <see cref="_postsByKey"/>.</summary>
+        private readonly object _sync = new();
 
         /// <summary>
         /// Sliding-window post timestamps keyed by identity (IP string or username), compared ordinal for stable dictionary behavior.
         /// </summary>
-        private readonly Dictionary<string, List<long>> postsByKey = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, List<long>> _postsByKey = new(StringComparer.Ordinal);
 
         /// <summary>
         /// Records a post for <paramref name="key"/> and returns <see langword="false"/> when the sliding window is exceeded.
@@ -40,17 +40,17 @@ namespace Vector.NNTP.Filters.PostFilter
                 return true;
             }
 
-            lock (this.sync)
+            lock (_sync)
             {
                 long cutoff = utcNowSeconds - windowSeconds;
-                if (!this.postsByKey.TryGetValue(key, out List<long>? stamps))
+                if (!_postsByKey.TryGetValue(key, out List<long>? stamps))
                 {
                     stamps = new List<long>(capacity: 8);
-                    this.postsByKey[key] = stamps;
+                    _postsByKey[key] = stamps;
                 }
                 else
                 {
-                    stamps.RemoveAll(t => t < cutoff);
+                    _ = stamps.RemoveAll(t => t < cutoff);
                 }
 
                 if (stamps.Count >= maxPosts)

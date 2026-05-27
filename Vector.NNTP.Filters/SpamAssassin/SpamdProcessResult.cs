@@ -9,31 +9,25 @@ namespace Vector.NNTP.Filters.SpamAssassin
     /// <summary>
     /// Outcome of a spamd <c>PROCESS</c> command: the rewritten article and optional <c>Spam:</c> metadata.
     /// </summary>
-    public sealed class SpamdProcessResult
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="SpamdProcessResult"/> class.
+    /// </remarks>
+    /// <param name="processedArticle">Article bytes after spamd processing (headers may include X-Spam-* fields).</param>
+    /// <param name="classification">Parsed <c>Spam:</c> header when spamd included it; otherwise <see langword="null"/>.</param>
+    /// <param name="rawResponseHeaders">Unparsed response header lines (excluding the status line).</param>
+    public sealed class SpamdProcessResult(
+        byte[] processedArticle,
+        SpamdCheckResult? classification,
+        IReadOnlyDictionary<string, string> rawResponseHeaders)
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="SpamdProcessResult"/> class.
-        /// </summary>
-        /// <param name="processedArticle">Article bytes after spamd processing (headers may include X-Spam-* fields).</param>
-        /// <param name="classification">Parsed <c>Spam:</c> header when spamd included it; otherwise <see langword="null"/>.</param>
-        /// <param name="rawResponseHeaders">Unparsed response header lines (excluding the status line).</param>
-        public SpamdProcessResult(
-            byte[] processedArticle,
-            SpamdCheckResult? classification,
-            IReadOnlyDictionary<string, string> rawResponseHeaders)
-        {
-            this.ProcessedArticle = processedArticle ?? throw new ArgumentNullException(nameof(processedArticle));
-            this.Classification = classification;
-            this.RawResponseHeaders = rawResponseHeaders;
-        }
 
         /// <summary>Rewritten article octets (typically RFC 822 / NNTP POST buffer with added SpamAssassin headers).</summary>
-        public byte[] ProcessedArticle { get; }
+        public byte[] ProcessedArticle { get; } = processedArticle ?? throw new ArgumentNullException(nameof(processedArticle));
 
         /// <summary>Classification parsed from response headers when present.</summary>
-        public SpamdCheckResult? Classification { get; }
+        public SpamdCheckResult? Classification { get; } = classification;
 
         /// <summary>Additional response headers returned by spamd (keys are lower-case).</summary>
-        public IReadOnlyDictionary<string, string> RawResponseHeaders { get; }
+        public IReadOnlyDictionary<string, string> RawResponseHeaders { get; } = rawResponseHeaders;
     }
 }

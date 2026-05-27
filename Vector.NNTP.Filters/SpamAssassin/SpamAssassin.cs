@@ -20,19 +20,14 @@ namespace Vector.NNTP.Filters.SpamAssassin
     ///
     /// <para><b>Thread safety:</b> Instances are safe for concurrent use; each call uses its own connection.</para>
     /// </remarks>
-    public sealed class SpamAssassin
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="SpamAssassin"/> class.
+    /// </remarks>
+    /// <param name="options">spamd host, port, and timeout settings.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is <see langword="null"/>.</exception>
+    public sealed class SpamAssassin(SpamAssassinOptions options)
     {
-        private readonly SpamAssassinOptions options;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="SpamAssassin"/> class.
-        /// </summary>
-        /// <param name="options">spamd host, port, and timeout settings.</param>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is <see langword="null"/>.</exception>
-        public SpamAssassin(SpamAssassinOptions options)
-        {
-            this.options = options ?? throw new ArgumentNullException(nameof(options));
-        }
+        private readonly SpamAssassinOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SpamAssassin"/> class from <see cref="IOptions{TOptions}"/>.
@@ -52,7 +47,7 @@ namespace Vector.NNTP.Filters.SpamAssassin
         /// <exception cref="SpamdProtocolException">Thrown on wire or protocol errors.</exception>
         public async Task<bool> PingAsync(CancellationToken cancellationToken = default)
         {
-            SpamdWireResponse response = await this.ExecuteAsync(SpamdCommand.Ping, ReadOnlyMemory<byte>.Empty, extraRequestHeaders: null, cancellationToken)
+            SpamdWireResponse response = await ExecuteAsync(SpamdCommand.Ping, ReadOnlyMemory<byte>.Empty, extraRequestHeaders: null, cancellationToken)
                 .ConfigureAwait(false);
             bool pong = response.StatusLine.Contains("PONG", StringComparison.OrdinalIgnoreCase);
             return pong;
@@ -65,8 +60,10 @@ namespace Vector.NNTP.Filters.SpamAssassin
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Spam score and threshold from the <c>Spam:</c> response header.</returns>
         /// <exception cref="SpamdProtocolException">Thrown when spamd rejects the request or the <c>Spam:</c> header is missing.</exception>
-        public Task<SpamdCheckResult> CheckAsync(ReadOnlyMemory<byte> articleUtf8, CancellationToken cancellationToken = default) =>
-            this.CheckCoreAsync(SpamdCommand.Check, articleUtf8, cancellationToken);
+        public Task<SpamdCheckResult> CheckAsync(ReadOnlyMemory<byte> articleUtf8, CancellationToken cancellationToken = default)
+        {
+            return CheckCoreAsync(SpamdCommand.Check, articleUtf8, cancellationToken);
+        }
 
         /// <summary>
         /// Classifies an article and returns hit symbols (<c>SYMBOLS</c>).
@@ -75,8 +72,10 @@ namespace Vector.NNTP.Filters.SpamAssassin
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Classification plus comma-separated rule names.</returns>
         /// <exception cref="SpamdProtocolException">Thrown when spamd rejects the request or the <c>Spam:</c> header is missing.</exception>
-        public Task<SpamdCheckResult> SymbolsAsync(ReadOnlyMemory<byte> articleUtf8, CancellationToken cancellationToken = default) =>
-            this.CheckCoreAsync(SpamdCommand.Symbols, articleUtf8, cancellationToken);
+        public Task<SpamdCheckResult> SymbolsAsync(ReadOnlyMemory<byte> articleUtf8, CancellationToken cancellationToken = default)
+        {
+            return CheckCoreAsync(SpamdCommand.Symbols, articleUtf8, cancellationToken);
+        }
 
         /// <summary>
         /// Classifies an article and returns a full text report (<c>REPORT</c>).
@@ -85,8 +84,10 @@ namespace Vector.NNTP.Filters.SpamAssassin
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Classification plus report body text.</returns>
         /// <exception cref="SpamdProtocolException">Thrown when spamd rejects the request or the <c>Spam:</c> header is missing.</exception>
-        public Task<SpamdCheckResult> ReportAsync(ReadOnlyMemory<byte> articleUtf8, CancellationToken cancellationToken = default) =>
-            this.CheckCoreAsync(SpamdCommand.Report, articleUtf8, cancellationToken);
+        public Task<SpamdCheckResult> ReportAsync(ReadOnlyMemory<byte> articleUtf8, CancellationToken cancellationToken = default)
+        {
+            return CheckCoreAsync(SpamdCommand.Report, articleUtf8, cancellationToken);
+        }
 
         /// <summary>
         /// Classifies an article and returns a report only when spamd marks it as spam (<c>REPORT_IFSPAM</c>).
@@ -97,15 +98,12 @@ namespace Vector.NNTP.Filters.SpamAssassin
         /// <exception cref="SpamdProtocolException">Thrown on wire errors.</exception>
         public async Task<SpamdCheckResult?> ReportIfSpamAsync(ReadOnlyMemory<byte> articleUtf8, CancellationToken cancellationToken = default)
         {
-            SpamdWireResponse response = await this.ExecuteAsync(SpamdCommand.ReportIfSpam, articleUtf8, extraRequestHeaders: null, cancellationToken)
+            SpamdWireResponse response = await ExecuteAsync(SpamdCommand.ReportIfSpam, articleUtf8, extraRequestHeaders: null, cancellationToken)
                 .ConfigureAwait(false);
             SpamdCheckResult? parsed = SpamdWireSession.TryParseSpamHeader(response.Headers, response.Body, SpamdCommand.ReportIfSpam);
-            if (parsed is null && response.Body.Length == 0)
-            {
-                return null;
-            }
-
-            return parsed ?? throw new SpamdProtocolException("spamd REPORT_IFSPAM response did not include a Spam header.");
+            return parsed is null && response.Body.Length == 0
+                ? null
+                : parsed ?? throw new SpamdProtocolException("spamd REPORT_IFSPAM response did not include a Spam header.");
         }
 
         /// <summary>
@@ -117,7 +115,7 @@ namespace Vector.NNTP.Filters.SpamAssassin
         /// <exception cref="SpamdProtocolException">Thrown on wire or protocol errors.</exception>
         public async Task<SpamdProcessResult> ProcessAsync(ReadOnlyMemory<byte> articleUtf8, CancellationToken cancellationToken = default)
         {
-            SpamdWireResponse response = await this.ExecuteAsync(SpamdCommand.Process, articleUtf8, extraRequestHeaders: null, cancellationToken)
+            SpamdWireResponse response = await ExecuteAsync(SpamdCommand.Process, articleUtf8, extraRequestHeaders: null, cancellationToken)
                 .ConfigureAwait(false);
 
             if (response.Body.Length == 0)
@@ -163,7 +161,7 @@ namespace Vector.NNTP.Filters.SpamAssassin
                 tellHeaders["Remove"] = removeTargets;
             }
 
-            SpamdWireResponse response = await this.ExecuteAsync(SpamdCommand.Tell, articleUtf8, tellHeaders, cancellationToken)
+            SpamdWireResponse response = await ExecuteAsync(SpamdCommand.Tell, articleUtf8, tellHeaders, cancellationToken)
                 .ConfigureAwait(false);
             return response.Headers;
         }
@@ -176,15 +174,10 @@ namespace Vector.NNTP.Filters.SpamAssassin
             ReadOnlyMemory<byte> articleUtf8,
             CancellationToken cancellationToken)
         {
-            SpamdWireResponse response = await this.ExecuteAsync(command, articleUtf8, extraRequestHeaders: null, cancellationToken)
+            SpamdWireResponse response = await ExecuteAsync(command, articleUtf8, extraRequestHeaders: null, cancellationToken)
                 .ConfigureAwait(false);
             SpamdCheckResult? parsed = SpamdWireSession.TryParseSpamHeader(response.Headers, response.Body, command);
-            if (parsed is null)
-            {
-                throw new SpamdProtocolException($"spamd {command} response did not include a Spam header.");
-            }
-
-            return parsed;
+            return parsed is null ? throw new SpamdProtocolException($"spamd {command} response did not include a Spam header.") : parsed;
         }
 
         /// <summary>
@@ -197,9 +190,9 @@ namespace Vector.NNTP.Filters.SpamAssassin
             CancellationToken cancellationToken)
         {
             using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(this.options.OperationTimeoutMilliseconds);
+            timeoutCts.CancelAfter(_options.OperationTimeoutMilliseconds);
 
-            await using SpamdWireSession session = await SpamdWireSession.ConnectAsync(this.options, timeoutCts.Token).ConfigureAwait(false);
+            await using SpamdWireSession session = await SpamdWireSession.ConnectAsync(_options, timeoutCts.Token).ConfigureAwait(false);
             return await session.ExecuteAsync(command, articleUtf8, extraRequestHeaders, timeoutCts.Token).ConfigureAwait(false);
         }
     }

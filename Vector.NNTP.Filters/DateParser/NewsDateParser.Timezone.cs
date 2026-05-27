@@ -49,12 +49,7 @@ namespace Vector.NNTP.Filters.DateParser
             }
 
             string abbr = match.Groups[1].Value;
-            if (!TimezoneMappings.TryGetValue(abbr, out string? offset))
-            {
-                return input;
-            }
-
-            return string.Concat(input.AsSpan(0, match.Index), offset.AsSpan());
+            return !TimezoneMappings.TryGetValue(abbr, out string? offset) ? input : string.Concat(input.AsSpan(0, match.Index), offset.AsSpan());
         }
     }
 }

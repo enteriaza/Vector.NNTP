@@ -37,12 +37,7 @@ namespace Vector.NNTP.Filters.DateParser
             Debug.Assert(utc.Kind != DateTimeKind.Local, "UsenetEpoch.ToUnixTimestamp requires UTC.");
 
             long epoch = (utc.Ticks - UnixEpochTicks) / TimeSpan.TicksPerSecond;
-            if (epoch is > 0 and <= uint.MaxValue)
-            {
-                return (uint)epoch;
-            }
-
-            return 0;
+            return epoch is > 0 and <= uint.MaxValue ? (uint)epoch : 0;
         }
     }
 }

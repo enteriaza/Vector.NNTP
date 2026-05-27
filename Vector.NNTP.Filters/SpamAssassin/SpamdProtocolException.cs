@@ -39,9 +39,9 @@ namespace Vector.NNTP.Filters.SpamAssassin
         public SpamdProtocolException(int exitCode, string statusMessage, string statusLine)
             : base($"spamd returned exit code {exitCode} ({statusMessage}): {statusLine}")
         {
-            this.ExitCode = exitCode;
-            this.StatusMessage = statusMessage;
-            this.StatusLine = statusLine;
+            ExitCode = exitCode;
+            StatusMessage = statusMessage;
+            StatusLine = statusLine;
         }
 
         /// <summary>sysexits.h code from the spamd status line (0 means <c>EX_OK</c>).</summary>

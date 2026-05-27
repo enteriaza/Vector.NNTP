@@ -47,8 +47,10 @@ namespace Vector.NNTP.Filters.DateParser
         public static bool TryGetCanonicalArticleDate(
             IReadOnlyList<(string Name, string Value)> headers,
             out string canonicalValue,
-            out DateParseFailureReason failure) =>
-            TryGetCanonicalArticleDate(headers, DateParseOptions.Default, out canonicalValue, out failure);
+            out DateParseFailureReason failure)
+        {
+            return TryGetCanonicalArticleDate(headers, DateParseOptions.Default, out canonicalValue, out failure);
+        }
 
         /// <summary>
         /// Tries each candidate header name in order using the supplied <see cref="DateParseOptions"/>; returns the first canonical date.

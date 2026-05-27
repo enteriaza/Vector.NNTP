@@ -62,12 +62,9 @@ namespace Vector.NNTP.Filters.PostFilter
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(options.Dns.TorDnsSuffix))
-            {
-                return ValidateOptionsResult.Fail("PostFilter: Dns.TorDnsSuffix must not be empty when Tor checks are used.");
-            }
-
-            return ValidateOptionsResult.Success;
+            return string.IsNullOrWhiteSpace(options.Dns.TorDnsSuffix)
+                ? ValidateOptionsResult.Fail("PostFilter: Dns.TorDnsSuffix must not be empty when Tor checks are used.")
+                : ValidateOptionsResult.Success;
         }
     }
 }

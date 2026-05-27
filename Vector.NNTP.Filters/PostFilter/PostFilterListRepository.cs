@@ -18,22 +18,22 @@ namespace Vector.NNTP.Filters.PostFilter
     public sealed partial class PostFilterListRepository : IDisposable
     {
         /// <summary>Logger for reload and load-failure events.</summary>
-        private readonly ILogger<PostFilterListRepository> logger;
+        private readonly ILogger<PostFilterListRepository> _logger;
 
         /// <summary><see cref="IOptionsMonitor{T}.OnChange"/> subscription; disposed with the repository.</summary>
-        private readonly IDisposable? subscription;
+        private readonly IDisposable? _subscription;
 
-        /// <summary>Lock protecting swaps of <see cref="banlist"/>, <see cref="badwords"/>, and <see cref="whitelist"/>.</summary>
-        private readonly object sync = new();
+        /// <summary>Lock protecting swaps of <see cref="_banlist"/>, <see cref="_badwords"/>, and <see cref="_whitelist"/>.</summary>
+        private readonly object _sync = new();
 
         /// <summary>Current banlist lines (lowercase substrings/tokens); replaced atomically on reload.</summary>
-        private IReadOnlyList<string> banlist = Array.Empty<string>();
+        private IReadOnlyList<string> _banlist = [];
 
         /// <summary>Current badword substrings; replaced atomically on reload.</summary>
-        private IReadOnlyList<string> badwords = Array.Empty<string>();
+        private IReadOnlyList<string> _badwords = [];
 
         /// <summary>Current whitelist patterns; replaced atomically on reload.</summary>
-        private IReadOnlyList<string> whitelist = Array.Empty<string>();
+        private IReadOnlyList<string> _whitelist = [];
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PostFilterListRepository"/> class.
@@ -44,13 +44,16 @@ namespace Vector.NNTP.Filters.PostFilter
         public PostFilterListRepository(IOptionsMonitor<PostFilterOptions> options, ILogger<PostFilterListRepository> logger)
         {
             ArgumentNullException.ThrowIfNull(options);
-            this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            this.Reload(options.CurrentValue);
-            this.subscription = options.OnChange((o, _) => this.Reload(o));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            Reload(options.CurrentValue);
+            _subscription = options.OnChange((o, _) => Reload(o));
         }
 
         /// <inheritdoc />
-        public void Dispose() => this.subscription?.Dispose();
+        public void Dispose()
+        {
+            _subscription?.Dispose();
+        }
 
         /// <summary>
         /// Gets a snapshot of banlist entries (lowercase substrings / tokens).
@@ -58,9 +61,9 @@ namespace Vector.NNTP.Filters.PostFilter
         /// <returns>Banlist lines.</returns>
         public IReadOnlyList<string> BanlistSnapshot()
         {
-            lock (this.sync)
+            lock (_sync)
             {
-                return this.banlist;
+                return _banlist;
             }
         }
 
@@ -70,9 +73,9 @@ namespace Vector.NNTP.Filters.PostFilter
         /// <returns>Badword lines.</returns>
         public IReadOnlyList<string> BadwordsSnapshot()
         {
-            lock (this.sync)
+            lock (_sync)
             {
-                return this.badwords;
+                return _badwords;
             }
         }
 
@@ -82,30 +85,30 @@ namespace Vector.NNTP.Filters.PostFilter
         /// <returns>Whitelist lines.</returns>
         public IReadOnlyList<string> WhitelistSnapshot()
         {
-            lock (this.sync)
+            lock (_sync)
             {
-                return this.whitelist;
+                return _whitelist;
             }
         }
 
         /// <summary>
-        /// Reloads all three list files from <paramref name="o"/> and swaps snapshots under <see cref="sync"/>.
+        /// Reloads all three list files from <paramref name="o"/> and swaps snapshots under <see cref="_sync"/>.
         /// </summary>
         /// <param name="o">Current options snapshot (paths relative to <see cref="PostFilterOptions.DataDirectory"/>).</param>
         private void Reload(PostFilterOptions o)
         {
             string dir = o.DataDirectory.Trim();
-            List<string> b = this.LoadLines(Path.Combine(dir, o.BanlistFileName));
-            List<string> w = this.LoadLines(Path.Combine(dir, o.BadwordsFileName));
-            List<string> wl = this.LoadLines(Path.Combine(dir, o.WhitelistFileName));
-            lock (this.sync)
+            List<string> b = LoadLines(Path.Combine(dir, o.BanlistFileName));
+            List<string> w = LoadLines(Path.Combine(dir, o.BadwordsFileName));
+            List<string> wl = LoadLines(Path.Combine(dir, o.WhitelistFileName));
+            lock (_sync)
             {
-                this.banlist = b;
-                this.badwords = w;
-                this.whitelist = wl;
+                _banlist = b;
+                _badwords = w;
+                _whitelist = wl;
             }
 
-            PostFilterListRepositoryLog.ListsReloaded(this.logger, b.Count, w.Count, wl.Count, null);
+            PostFilterListRepositoryLog.ListsReloaded(_logger, b.Count, w.Count, wl.Count, null);
         }
 
         /// <summary>
@@ -115,7 +118,7 @@ namespace Vector.NNTP.Filters.PostFilter
         /// <returns>Trimmed lines (comments starting with <c>#</c> and blank lines are skipped).</returns>
         private List<string> LoadLines(string path)
         {
-            List<string> list = new();
+            List<string> list = [];
             try
             {
                 if (!File.Exists(path))
@@ -136,7 +139,7 @@ namespace Vector.NNTP.Filters.PostFilter
             }
             catch (Exception ex)
             {
-                PostFilterListRepositoryLog.FailedToLoadListFile(this.logger, ex, path);
+                PostFilterListRepositoryLog.FailedToLoadListFile(_logger, ex, path);
             }
 
             return list;

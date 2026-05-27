@@ -74,7 +74,10 @@ namespace Vector.NNTP.Filters.YEnc
         /// <see langword="true"/> if every section with a CRC keyword validates, or there are no yEnc sections;
         /// <see langword="false"/> on CRC mismatch or malformed structure (e.g. missing <c>=yend</c>).
         /// </returns>
-        public static bool Validate(ReadOnlySpan<byte> body) => ValidateYEncSectionCrc(body);
+        public static bool Validate(ReadOnlySpan<byte> body)
+        {
+            return ValidateYEncSectionCrc(body);
+        }
 
         /// <summary>
         /// Scans the body for consecutive <c>=ybegin</c> sections, decodes each payload, and verifies CRC (and size when declared).
@@ -218,7 +221,7 @@ namespace Vector.NNTP.Filters.YEnc
                 dataStart = ArticleLineScanner.AdvancePastLineTerminator(body, partLineEnd);
             }
 
-            if (!TryFindYEncEndLine(body, dataStart, multi, out int endLineStart, out int endLineEnd, out ReadOnlySpan<byte> endLine))
+            if (!TryFindYEncEndLine(body, dataStart, multi, out int endLineStart, out _, out ReadOnlySpan<byte> endLine))
             {
                 return false;
             }
@@ -265,14 +268,9 @@ namespace Vector.NNTP.Filters.YEnc
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsYEncControlLine(ReadOnlySpan<byte> line)
         {
-            if (line.Length < 2 || line[0] != EscapeChar || line[1] != (byte)'y')
-            {
-                return false;
-            }
-
-            return line.StartsWith(YEncBegin)
+            return line.Length >= 2 && line[0] == EscapeChar && line[1] == (byte)'y' && (line.StartsWith(YEncBegin)
                 || line.StartsWith(YEncPart)
-                || line.StartsWith(YEncEnd);
+                || line.StartsWith(YEncEnd));
         }
 
         /// <summary>
@@ -436,17 +434,7 @@ namespace Vector.NNTP.Filters.YEnc
             List<byte>? materializeDecoded,
             int maxDecodedBytesPerLine = -1)
         {
-            if (!TryComputeEncodedPayloadCrc32(encodedPayload, materializeDecoded, out uint crc32, out long decodedByteCount, maxDecodedBytesPerLine))
-            {
-                return false;
-            }
-
-            if (declaredSize >= 0 && decodedByteCount != declaredSize)
-            {
-                return false;
-            }
-
-            return crc32 == declaredCrc;
+            return TryComputeEncodedPayloadCrc32(encodedPayload, materializeDecoded, out uint crc32, out long decodedByteCount, maxDecodedBytesPerLine) && (declaredSize < 0 || decodedByteCount == declaredSize) && crc32 == declaredCrc;
         }
 
         /// <summary>

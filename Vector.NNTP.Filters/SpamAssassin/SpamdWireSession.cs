@@ -6,7 +6,6 @@
 
 using System.Buffers;
 using System.Globalization;
-using System.Net.Sockets;
 
 namespace Vector.NNTP.Filters.SpamAssassin
 {
@@ -27,13 +26,13 @@ namespace Vector.NNTP.Filters.SpamAssassin
             RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         /// <summary>TCP client for the spamd connection.</summary>
-        private readonly TcpClient tcpClient;
+        private readonly TcpClient _tcpClient;
 
         /// <summary>Network stream used for bidirectional I/O until disposed.</summary>
-        private readonly NetworkStream stream;
+        private readonly NetworkStream _stream;
 
         /// <summary>Options snapshot for this session.</summary>
-        private readonly SpamAssassinOptions options;
+        private readonly SpamAssassinOptions _options;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SpamdWireSession"/> class (connection completed by <see cref="ConnectAsync"/>).
@@ -44,11 +43,11 @@ namespace Vector.NNTP.Filters.SpamAssassin
         private SpamdWireSession(SpamAssassinOptions options, TcpClient tcpClient, NetworkStream stream)
         {
             ArgumentNullException.ThrowIfNull(options);
-            this.options = options;
-            this.tcpClient = tcpClient;
-            this.stream = stream;
-            this.stream.ReadTimeout = options.OperationTimeoutMilliseconds;
-            this.stream.WriteTimeout = options.OperationTimeoutMilliseconds;
+            _options = options;
+            _tcpClient = tcpClient;
+            _stream = stream;
+            _stream.ReadTimeout = options.OperationTimeoutMilliseconds;
+            _stream.WriteTimeout = options.OperationTimeoutMilliseconds;
         }
 
         /// <summary>
@@ -85,8 +84,8 @@ namespace Vector.NNTP.Filters.SpamAssassin
         /// <inheritdoc />
         public ValueTask DisposeAsync()
         {
-            this.stream.Dispose();
-            this.tcpClient.Dispose();
+            _stream.Dispose();
+            _tcpClient.Dispose();
             return ValueTask.CompletedTask;
         }
 
@@ -105,8 +104,8 @@ namespace Vector.NNTP.Filters.SpamAssassin
             CancellationToken cancellationToken)
         {
             bool sendBody = command is not SpamdCommand.Ping and not SpamdCommand.Skip;
-            await this.WriteRequestAsync(command, article, sendBody, extraRequestHeaders, cancellationToken).ConfigureAwait(false);
-            return await this.ReadResponseAsync(cancellationToken).ConfigureAwait(false);
+            await WriteRequestAsync(command, article, sendBody, extraRequestHeaders, cancellationToken).ConfigureAwait(false);
+            return await ReadResponseAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -120,15 +119,15 @@ namespace Vector.NNTP.Filters.SpamAssassin
             CancellationToken cancellationToken)
         {
             byte[] requestPrefix = BuildRequestHeaderBytes(command, sendBody ? article.Length : 0, extraRequestHeaders);
-            await this.stream.WriteAsync(requestPrefix.AsMemory(0, requestPrefix.Length), cancellationToken).ConfigureAwait(false);
+            await _stream.WriteAsync(requestPrefix.AsMemory(0, requestPrefix.Length), cancellationToken).ConfigureAwait(false);
 
             if (sendBody && !article.IsEmpty)
             {
-                await this.stream.WriteAsync(article, cancellationToken).ConfigureAwait(false);
+                await _stream.WriteAsync(article, cancellationToken).ConfigureAwait(false);
             }
 
-            await this.stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            this.tcpClient.Client.Shutdown(SocketShutdown.Send);
+            await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            _tcpClient.Client.Shutdown(SocketShutdown.Send);
         }
 
         /// <summary>
@@ -140,37 +139,37 @@ namespace Vector.NNTP.Filters.SpamAssassin
             IReadOnlyDictionary<string, string>? extraRequestHeaders)
         {
             StringBuilder sb = new(128);
-            sb.Append(GetCommandName(command));
-            sb.Append(" SPAMC/");
-            sb.Append(this.options.SpamdProtocolVersion);
-            sb.Append("\r\n");
+            _ = sb.Append(GetCommandName(command));
+            _ = sb.Append(" SPAMC/");
+            _ = sb.Append(_options.SpamdProtocolVersion);
+            _ = sb.Append("\r\n");
 
             if (contentLength > 0)
             {
-                sb.Append("Content-length: ");
-                sb.Append(contentLength);
-                sb.Append("\r\n");
+                _ = sb.Append("Content-length: ");
+                _ = sb.Append(contentLength);
+                _ = sb.Append("\r\n");
             }
 
-            if (!string.IsNullOrEmpty(this.options.User))
+            if (!string.IsNullOrEmpty(_options.User))
             {
-                sb.Append("User: ");
-                sb.Append(this.options.User);
-                sb.Append("\r\n");
+                _ = sb.Append("User: ");
+                _ = sb.Append(_options.User);
+                _ = sb.Append("\r\n");
             }
 
             if (extraRequestHeaders is not null)
             {
                 foreach (KeyValuePair<string, string> header in extraRequestHeaders)
                 {
-                    sb.Append(header.Key);
-                    sb.Append(": ");
-                    sb.Append(header.Value);
-                    sb.Append("\r\n");
+                    _ = sb.Append(header.Key);
+                    _ = sb.Append(": ");
+                    _ = sb.Append(header.Value);
+                    _ = sb.Append("\r\n");
                 }
             }
 
-            sb.Append("\r\n");
+            _ = sb.Append("\r\n");
             return Encoding.ASCII.GetBytes(sb.ToString());
         }
 
@@ -179,7 +178,7 @@ namespace Vector.NNTP.Filters.SpamAssassin
         /// </summary>
         private async Task<SpamdWireResponse> ReadResponseAsync(CancellationToken cancellationToken)
         {
-            string? statusLine = await this.ReadAsciiLineAsync(cancellationToken).ConfigureAwait(false);
+            string? statusLine = await ReadAsciiLineAsync(cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(statusLine))
             {
                 throw new SpamdProtocolException("spamd returned an empty response.");
@@ -194,7 +193,7 @@ namespace Vector.NNTP.Filters.SpamAssassin
             Dictionary<string, string> headers = new(StringComparer.OrdinalIgnoreCase);
             while (true)
             {
-                string? headerLine = await this.ReadAsciiLineAsync(cancellationToken).ConfigureAwait(false);
+                string? headerLine = await ReadAsciiLineAsync(cancellationToken).ConfigureAwait(false);
                 if (headerLine is null || headerLine.Length == 0)
                 {
                     break;
@@ -226,11 +225,11 @@ namespace Vector.NNTP.Filters.SpamAssassin
                 }
 
                 body = new byte[contentLength];
-                await this.ReadExactlyAsync(body.AsMemory(), cancellationToken).ConfigureAwait(false);
+                await ReadExactlyAsync(body.AsMemory(), cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                body = await this.ReadAvailableBodyAsync(cancellationToken).ConfigureAwait(false);
+                body = await ReadAvailableBodyAsync(cancellationToken).ConfigureAwait(false);
             }
 
             return new SpamdWireResponse(statusLine, headers, body);
@@ -245,15 +244,10 @@ namespace Vector.NNTP.Filters.SpamAssassin
             while (true)
             {
                 byte[] one = new byte[1];
-                int read = await this.stream.ReadAsync(one.AsMemory(), cancellationToken).ConfigureAwait(false);
+                int read = await _stream.ReadAsync(one.AsMemory(), cancellationToken).ConfigureAwait(false);
                 if (read == 0)
                 {
-                    if (lineBuffer.Length == 0)
-                    {
-                        return null;
-                    }
-
-                    return Encoding.ASCII.GetString(lineBuffer.GetBuffer(), 0, (int)lineBuffer.Length);
+                    return lineBuffer.Length == 0 ? null : Encoding.ASCII.GetString(lineBuffer.GetBuffer(), 0, (int)lineBuffer.Length);
                 }
 
                 byte b = one[0];
@@ -285,7 +279,7 @@ namespace Vector.NNTP.Filters.SpamAssassin
             {
                 while (true)
                 {
-                    int read = await this.stream.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+                    int read = await _stream.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
                     if (read == 0)
                     {
                         break;
@@ -314,7 +308,7 @@ namespace Vector.NNTP.Filters.SpamAssassin
             int total = 0;
             while (total < destination.Length)
             {
-                int read = await this.stream.ReadAsync(destination[total..], cancellationToken).ConfigureAwait(false);
+                int read = await _stream.ReadAsync(destination[total..], cancellationToken).ConfigureAwait(false);
                 if (read == 0)
                 {
                     throw new SpamdProtocolException($"spamd closed the connection after {total} of {destination.Length} body bytes.");
@@ -327,8 +321,9 @@ namespace Vector.NNTP.Filters.SpamAssassin
         /// <summary>
         /// Maps <paramref name="command"/> to the wire command token.
         /// </summary>
-        private static string GetCommandName(SpamdCommand command) =>
-            command switch
+        private static string GetCommandName(SpamdCommand command)
+        {
+            return command switch
             {
                 SpamdCommand.Check => "CHECK",
                 SpamdCommand.Symbols => "SYMBOLS",
@@ -340,6 +335,7 @@ namespace Vector.NNTP.Filters.SpamAssassin
                 SpamdCommand.Tell => "TELL",
                 _ => throw new ArgumentOutOfRangeException(nameof(command), command, "Unknown spamd command."),
             };
+        }
 
         /// <summary>
         /// Parses <c>SPAMD/x.y CODE MESSAGE</c> from the first line.
@@ -380,14 +376,14 @@ namespace Vector.NNTP.Filters.SpamAssassin
             double score = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
             double threshold = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
 
-            IReadOnlyList<string> symbols = Array.Empty<string>();
+            IReadOnlyList<string> symbols = [];
             string? reportText = null;
 
             if (command == SpamdCommand.Symbols && trailingBody.Length > 0)
             {
                 string symbolLine = Encoding.UTF8.GetString(trailingBody).Trim();
                 symbols = string.IsNullOrEmpty(symbolLine)
-                    ? Array.Empty<string>()
+                    ? []
                     : symbolLine.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             }
             else if (command is SpamdCommand.Report or SpamdCommand.ReportIfSpam && trailingBody.Length > 0)

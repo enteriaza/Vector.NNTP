@@ -25,22 +25,9 @@ namespace Vector.NNTP.Filters.YEnc
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int HexByteToNibble(byte b)
         {
-            if ((uint)(b - (byte)'0') <= 9)
-            {
-                return b - (byte)'0';
-            }
-
-            if ((uint)(b - (byte)'a') <= 5)
-            {
-                return b - (byte)'a' + 10;
-            }
-
-            if ((uint)(b - (byte)'A') <= 5)
-            {
-                return b - (byte)'A' + 10;
-            }
-
-            return -1;
+            return (uint)(b - (byte)'0') <= 9
+                ? b - (byte)'0'
+                : (uint)(b - (byte)'a') <= 5 ? b - (byte)'a' + 10 : (uint)(b - (byte)'A') <= 5 ? b - (byte)'A' + 10 : -1;
         }
 
         /// <summary>

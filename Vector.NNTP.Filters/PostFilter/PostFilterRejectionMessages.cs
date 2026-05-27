@@ -20,24 +20,27 @@ namespace Vector.NNTP.Filters.PostFilter
         /// </summary>
         /// <param name="code">Numeric rejection code.</param>
         /// <returns>Human-readable text.</returns>
-        public static string GetMessage(int code) => code switch
+        public static string GetMessage(int code)
         {
-            0 => "Message accepted",
-            1 => "Syntax error in article",
-            2 => "Invalid or missing Newsgroups header",
-            3 => "Cross-post limit exceeded",
-            4 => "Forbidden header present",
-            5 => "Listed in DNS blocklist",
-            6 => "URI domain listed in blocklist",
-            7 => "Tor exit node not permitted",
-            8 => "Banlist match",
-            9 => "Bad word filter match",
-            10 => "Posting rate limit exceeded",
-            11 => "Custom filter rejected the message",
-            12 => "Article too large",
-            48 => "Server closed to posting",
-            _ => $"Message rejected (code {code})",
-        };
+            return code switch
+            {
+                0 => "Message accepted",
+                1 => "Syntax error in article",
+                2 => "Invalid or missing Newsgroups header",
+                3 => "Cross-post limit exceeded",
+                4 => "Forbidden header present",
+                5 => "Listed in DNS blocklist",
+                6 => "URI domain listed in blocklist",
+                7 => "Tor exit node not permitted",
+                8 => "Banlist match",
+                9 => "Bad word filter match",
+                10 => "Posting rate limit exceeded",
+                11 => "Custom filter rejected the message",
+                12 => "Article too large",
+                48 => "Server closed to posting",
+                _ => $"Message rejected (code {code})",
+            };
+        }
     }
 }
 
