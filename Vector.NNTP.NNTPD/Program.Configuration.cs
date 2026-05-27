@@ -34,7 +34,7 @@ namespace Vector.NNTP.NNTPD
                     path);
             }
 
-            builder.Configuration.AddJsonFile(path, optional: false, reloadOnChange: true);
+            _ = builder.Configuration.AddJsonFile(path, optional: false, reloadOnChange: true);
         }
     }
 }

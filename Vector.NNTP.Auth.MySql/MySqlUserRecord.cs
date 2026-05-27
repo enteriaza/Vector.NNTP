@@ -40,15 +40,15 @@ namespace Vector.NNTP.Auth.MySql
             string customerId)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountName);
-            this.AccountName = accountName;
-            this.AccountPassword = accountPassword ?? string.Empty;
-            this.AccountType = accountType;
-            this.RateLimit = rateLimit;
-            this.ByteLimit = byteLimit;
-            this.SessionLimit = sessionLimit;
-            this.SrcIpLimit = srcIpLimit;
-            this.IsEnabled = isEnabled;
-            this.CustomerId = customerId ?? string.Empty;
+            AccountName = accountName;
+            AccountPassword = accountPassword ?? string.Empty;
+            AccountType = accountType;
+            RateLimit = rateLimit;
+            ByteLimit = byteLimit;
+            SessionLimit = sessionLimit;
+            SrcIpLimit = srcIpLimit;
+            IsEnabled = isEnabled;
+            CustomerId = customerId ?? string.Empty;
         }
 
         /// <summary>

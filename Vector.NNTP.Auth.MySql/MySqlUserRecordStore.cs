@@ -5,8 +5,6 @@
 
 using System.Data;
 using System.Globalization;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
 using MySqlConnector;
 
@@ -30,38 +28,33 @@ namespace Vector.NNTP.Auth.MySql
     ///   is_enabled,
     ///   customer_id
     /// FROM nntpusers
-    /// WHERE account_name = @account_name;
+    /// WHERE account_name = MD5(@account_name);
     /// </code>
     /// <para>
     /// <b>Thread safety:</b> This type is safe for concurrent use and is registered as a singleton. It opens a new
     /// <see cref="MySqlConnection"/> for each lookup and relies on the underlying ADO.NET pooling for efficiency.
     /// </para>
     /// </remarks>
-    internal sealed class MySqlUserRecordStore : INntpUserRecordStore
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="MySqlUserRecordStore"/> class.
+    /// </remarks>
+    /// <param name="options">NNTP user store options.</param>
+    internal sealed class MySqlUserRecordStore(IOptions<NntpUsersOptions> options) : INntpUserRecordStore
     {
         private const string UserLookupSql =
             "SELECT CAST(AES_DECRYPT(account_pass, UNHEX(SHA2(account_name, 256))) AS CHAR) AS account_pass, " +
             "account_type, account_rate_limit, account_byte_limit, account_session_limit, account_srcip_limit, " +
             "is_enabled, customer_id FROM nntpusers WHERE account_name = MD5(@account_name)";
 
-        private readonly IOptions<NntpUsersOptions> _options;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="MySqlUserRecordStore"/> class.
-        /// </summary>
-        /// <param name="options">NNTP user store options.</param>
-        public MySqlUserRecordStore(IOptions<NntpUsersOptions> options)
-        {
-            this._options = options ?? throw new ArgumentNullException(nameof(options));
-        }
+        private readonly IOptions<NntpUsersOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
 
         /// <inheritdoc />
         public async Task<MySqlUserRecord?> TryGetUserAsync(string accountName, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountName);
 
-            NntpUsersOptions current = this._options.Value;
-            using MySqlConnection connection = new MySqlConnection(current.ConnectionString);
+            NntpUsersOptions current = _options.Value;
+            using MySqlConnection connection = new(current.ConnectionString);
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
             using MySqlCommand command = connection.CreateCommand();

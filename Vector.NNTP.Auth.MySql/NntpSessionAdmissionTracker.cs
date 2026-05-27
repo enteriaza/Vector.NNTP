@@ -24,21 +24,14 @@ namespace Vector.NNTP.Auth.MySql
     /// </remarks>
     public sealed class NntpSessionAdmissionTracker : INntpSessionAdmissionTracker
     {
-        private readonly ConcurrentDictionary<string, int> _accountCounts = new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
-        private readonly ConcurrentDictionary<string, int> _accountIpCounts = new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, int> _accountCounts = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, int> _accountIpCounts = new(StringComparer.Ordinal);
 
         /// <inheritdoc />
         public bool TryEnter(NntpSessionPolicy policy, IPAddress clientIp)
         {
-            if (policy is null)
-            {
-                throw new ArgumentNullException(nameof(policy));
-            }
-
-            if (clientIp is null)
-            {
-                throw new ArgumentNullException(nameof(clientIp));
-            }
+            ArgumentNullException.ThrowIfNull(policy);
+            ArgumentNullException.ThrowIfNull(clientIp);
 
             string username = policy.Username;
             int sessionLimit = policy.SessionLimit;
@@ -49,15 +42,15 @@ namespace Vector.NNTP.Auth.MySql
                 return true;
             }
 
-            if (!NntpSessionAdmissionTracker.TryIncrement(username, sessionLimit, this._accountCounts))
+            if (!TryIncrement(username, sessionLimit, _accountCounts))
             {
                 return false;
             }
 
-            string ipKey = this.CreateAccountIpKey(username, clientIp);
-            if (!NntpSessionAdmissionTracker.TryIncrement(ipKey, srcIpLimit, this._accountIpCounts))
+            string ipKey = CreateAccountIpKey(username, clientIp);
+            if (!TryIncrement(ipKey, srcIpLimit, _accountIpCounts))
             {
-                this.Decrement(username, this._accountCounts);
+                Decrement(username, _accountCounts);
                 return false;
             }
 
@@ -67,21 +60,14 @@ namespace Vector.NNTP.Auth.MySql
         /// <inheritdoc />
         public void Leave(NntpSessionPolicy policy, IPAddress clientIp)
         {
-            if (policy is null)
-            {
-                throw new ArgumentNullException(nameof(policy));
-            }
-
-            if (clientIp is null)
-            {
-                throw new ArgumentNullException(nameof(clientIp));
-            }
+            ArgumentNullException.ThrowIfNull(policy);
+            ArgumentNullException.ThrowIfNull(clientIp);
 
             string username = policy.Username;
-            this.Decrement(username, this._accountCounts);
+            Decrement(username, _accountCounts);
 
-            string ipKey = this.CreateAccountIpKey(username, clientIp);
-            this.Decrement(ipKey, this._accountIpCounts);
+            string ipKey = CreateAccountIpKey(username, clientIp);
+            Decrement(ipKey, _accountIpCounts);
         }
 
         /// <summary>
@@ -130,14 +116,7 @@ namespace Vector.NNTP.Auth.MySql
             while (!removed && counters.TryGetValue(key, out int current))
             {
                 int next = current - 1;
-                if (next <= 0)
-                {
-                    removed = counters.TryRemove(key, out int _);
-                }
-                else
-                {
-                    removed = counters.TryUpdate(key, next, current);
-                }
+                removed = next <= 0 ? counters.TryRemove(key, out int _) : counters.TryUpdate(key, next, current);
             }
         }
 

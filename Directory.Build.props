@@ -8,7 +8,7 @@
     <LangVersion>13</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;SA1101</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,8 +4,6 @@
 // COLD PATH: INntpCredentialValidator implementation backed by a MySQL nntpusers table.
 
 using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Vector.NNTP.Sockets.Authentication;
 
@@ -27,27 +25,20 @@ namespace Vector.NNTP.Auth.MySql
     /// limits are exceeded the validator returns <see cref="NntpAuthResult.TransientFailure"/>.
     /// </para>
     /// </remarks>
-    public sealed class MySqlNntpCredentialValidator : INntpCredentialValidator
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="MySqlNntpCredentialValidator"/> class.
+    /// </remarks>
+    /// <param name="recordStore">Backing user record store.</param>
+    /// <param name="admissionTracker">Session admission tracker enforcing concurrency limits.</param>
+    /// <param name="logger">Logger for backend/auth failures.</param>
+    public sealed class MySqlNntpCredentialValidator(
+        INntpUserRecordStore recordStore,
+        INntpSessionAdmissionTracker admissionTracker,
+        ILogger<MySqlNntpCredentialValidator> logger) : INntpCredentialValidator
     {
-        private readonly INntpUserRecordStore _recordStore;
-        private readonly INntpSessionAdmissionTracker _admissionTracker;
-        private readonly ILogger<MySqlNntpCredentialValidator> _logger;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="MySqlNntpCredentialValidator"/> class.
-        /// </summary>
-        /// <param name="recordStore">Backing user record store.</param>
-        /// <param name="admissionTracker">Session admission tracker enforcing concurrency limits.</param>
-        /// <param name="logger">Logger for backend/auth failures.</param>
-        public MySqlNntpCredentialValidator(
-            INntpUserRecordStore recordStore,
-            INntpSessionAdmissionTracker admissionTracker,
-            ILogger<MySqlNntpCredentialValidator> logger)
-        {
-            this._recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
-            this._admissionTracker = admissionTracker ?? throw new ArgumentNullException(nameof(admissionTracker));
-            this._logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
+        private readonly INntpUserRecordStore _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
+        private readonly INntpSessionAdmissionTracker _admissionTracker = admissionTracker ?? throw new ArgumentNullException(nameof(admissionTracker));
+        private readonly ILogger<MySqlNntpCredentialValidator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         /// <inheritdoc />
         public async ValueTask<NntpAuthResult> ValidatePasswordAsync(
@@ -66,7 +57,7 @@ namespace Vector.NNTP.Auth.MySql
 
             try
             {
-                MySqlUserRecord? record = await this._recordStore
+                MySqlUserRecord? record = await _recordStore
                     .TryGetUserAsync(username, cancellationToken)
                     .ConfigureAwait(false);
 
@@ -75,18 +66,13 @@ namespace Vector.NNTP.Auth.MySql
                     return NntpAuthResult.InvalidCredentials();
                 }
 
-                if (!this.PasswordEquals(record.AccountPassword, password))
+                if (!PasswordEquals(record.AccountPassword, password))
                 {
                     return NntpAuthResult.InvalidCredentials();
                 }
 
-                NntpSessionPolicy policy = this.CreatePolicy(record);
-                if (!this._admissionTracker.TryEnter(policy, clientIp))
-                {
-                    return NntpAuthResult.TransientFailure();
-                }
-
-                return NntpAuthResult.Success(policy);
+                NntpSessionPolicy policy = CreatePolicy(record);
+                return !_admissionTracker.TryEnter(policy, clientIp) ? NntpAuthResult.TransientFailure() : NntpAuthResult.Success(policy);
             }
             catch (OperationCanceledException)
             {
@@ -97,7 +83,7 @@ namespace Vector.NNTP.Auth.MySql
             {
                 // Prevent backend failures from escaping to the session loop (which would drop the connection).
                 // Treat as transient authentication failure to match NNTP semantics (503).
-                MySqlNntpCredentialValidatorLog.CredentialValidationBackendFailed(this._logger, ex, username);
+                MySqlNntpCredentialValidatorLog.CredentialValidationBackendFailed(_logger, ex, username);
                 return NntpAuthResult.TransientFailure();
             }
         }

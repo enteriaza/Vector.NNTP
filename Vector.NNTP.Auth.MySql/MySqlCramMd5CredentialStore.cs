@@ -3,10 +3,7 @@
 // </copyright>
 // COLD PATH: ICramMd5CredentialStore implementation backed by the MySQL nntpusers table.
 
-using System;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Vector.NNTP.Sockets.Authentication;
 
 namespace Vector.NNTP.Auth.MySql
@@ -20,26 +17,21 @@ namespace Vector.NNTP.Auth.MySql
     /// CRAM-MD5 shared secret. This matches the password comparison used for <see cref="INntpCredentialValidator"/>.
     /// </para>
     /// </remarks>
-    public sealed class MySqlCramMd5CredentialStore : ICramMd5CredentialStore
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="MySqlCramMd5CredentialStore"/> class.
+    /// </remarks>
+    /// <param name="recordStore">Backing user record store.</param>
+    public sealed class MySqlCramMd5CredentialStore(INntpUserRecordStore recordStore) : ICramMd5CredentialStore
     {
-        private readonly INntpUserRecordStore _recordStore;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="MySqlCramMd5CredentialStore"/> class.
-        /// </summary>
-        /// <param name="recordStore">Backing user record store.</param>
-        public MySqlCramMd5CredentialStore(INntpUserRecordStore recordStore)
-        {
-            this._recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
-        }
+        private readonly INntpUserRecordStore _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
 
         /// <inheritdoc />
         public bool TryGetCramSecret(string username, out ReadOnlyMemory<byte> secret)
         {
             // CRAM-MD5 lookups are expected to be relatively rare. We perform a synchronous wait on the asynchronous
             // store API here; higher-level SASL negotiation already runs on the thread-pool and is not on a hot path.
-            using CancellationTokenSource cancellationSource = new CancellationTokenSource();
-            Task<MySqlUserRecord?> task = this._recordStore.TryGetUserAsync(username, cancellationSource.Token);
+            using CancellationTokenSource cancellationSource = new();
+            Task<MySqlUserRecord?> task = _recordStore.TryGetUserAsync(username, cancellationSource.Token);
             MySqlUserRecord? record = task.GetAwaiter().GetResult();
             if (record is null || !record.IsEnabled)
             {

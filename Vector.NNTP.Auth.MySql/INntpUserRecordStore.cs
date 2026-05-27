@@ -3,9 +3,6 @@
 // </copyright>
 // COLD PATH: abstraction for retrieving NNTP user records.
 
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace Vector.NNTP.Auth.MySql
 {
     /// <summary>
@@ -27,6 +24,6 @@ namespace Vector.NNTP.Auth.MySql
         /// <returns>
         /// A task producing a <see cref="MySqlUserRecord"/> when the account exists; otherwise, <see langword="null"/>.
         /// </returns>
-        Task<MySqlUserRecord?> TryGetUserAsync(string accountName, CancellationToken cancellationToken);
+        public Task<MySqlUserRecord?> TryGetUserAsync(string accountName, CancellationToken cancellationToken);
     }
 }

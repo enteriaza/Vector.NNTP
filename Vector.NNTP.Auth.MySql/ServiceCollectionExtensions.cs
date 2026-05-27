@@ -1,7 +1,6 @@
 // <copyright file="ServiceCollectionExtensions.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-// COLD PATH: DI registration helpers for MySQL-based NNTP authentication.
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,8 +19,8 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Resolves the database connection in order: <c>NntpUsers:ConnectionString</c>, then
-        /// <c>ConnectionStrings:MainDB</c>. When neither is set, this method is a no-op and development credential stubs remain active.
+        /// Uses the host connection string named <c>ConnectionStrings:MainDB</c>. If that connection string is not set,
+        /// this method is a no-op and development credential stubs remain active.
         /// </para>
         /// </remarks>
         /// <param name="services">Service collection.</param>
@@ -31,34 +30,13 @@ namespace Vector.NNTP.Auth.MySql
             this IServiceCollection services,
             IConfiguration configuration)
         {
-            if (services is null)
-            {
-                throw new ArgumentNullException(nameof(services));
-            }
-
-            if (configuration is null)
-            {
-                throw new ArgumentNullException(nameof(configuration));
-            }
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(configuration);
 
             IConfigurationSection nntpUsersSection = configuration.GetSection(NntpUsersOptions.SectionName);
-            string? connectionString = nntpUsersSection["ConnectionString"];
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                connectionString = configuration.GetConnectionString("MainDB");
-            }
+            string? connectionString = configuration.GetConnectionString("MainDB");
 
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                return services;
-            }
-
-            if (!string.IsNullOrWhiteSpace(nntpUsersSection["ConnectionString"]))
-            {
-                return services.AddNntpMySqlAuth(nntpUsersSection);
-            }
-
-            return services.AddNntpMySqlAuth(nntpUsersSection, connectionString);
+            return string.IsNullOrWhiteSpace(connectionString) ? services : services.AddNntpMySqlAuth(nntpUsersSection, connectionString);
         }
 
         /// <summary>
@@ -78,8 +56,10 @@ namespace Vector.NNTP.Auth.MySql
         /// <param name="services">Service collection.</param>
         /// <param name="configurationSection">Configuration section containing <see cref="NntpUsersOptions"/> values.</param>
         /// <returns>The service collection for chaining.</returns>
-        public static IServiceCollection AddNntpMySqlAuth(this IServiceCollection services, IConfiguration configurationSection) =>
-            AddNntpMySqlAuth(services, configurationSection, configurationSection["ConnectionString"] ?? string.Empty);
+        public static IServiceCollection AddNntpMySqlAuth(this IServiceCollection services, IConfiguration configurationSection)
+        {
+            return AddNntpMySqlAuth(services, configurationSection, configurationSection["ConnectionString"] ?? string.Empty);
+        }
 
         /// <summary>
         /// Registers MySQL-backed authentication using <paramref name="configurationSection"/> for options and an explicit connection string.
@@ -94,34 +74,27 @@ namespace Vector.NNTP.Auth.MySql
             IConfiguration configurationSection,
             string connectionString)
         {
-            if (services is null)
-            {
-                throw new ArgumentNullException(nameof(services));
-            }
-
-            if (configurationSection is null)
-            {
-                throw new ArgumentNullException(nameof(configurationSection));
-            }
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(configurationSection);
 
             if (string.IsNullOrWhiteSpace(connectionString))
             {
                 throw new ArgumentException("Connection string is required.", nameof(connectionString));
             }
 
-            services.RemoveAll<INntpCredentialValidator>();
-            services.RemoveAll<ICramMd5CredentialStore>();
-            services.RemoveAll<INntpSessionAdmissionTracker>();
+            _ = services.RemoveAll<INntpCredentialValidator>();
+            _ = services.RemoveAll<ICramMd5CredentialStore>();
+            _ = services.RemoveAll<INntpSessionAdmissionTracker>();
 
-            services.AddOptions<NntpUsersOptions>()
+            _ = services.AddOptions<NntpUsersOptions>()
                 .Bind(configurationSection)
                 .Configure(options => options.ConnectionString = connectionString)
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
-            services.AddSingleton<INntpSessionAdmissionTracker, NntpSessionAdmissionTracker>();
-            services.TryAddSingleton<INntpUserRecordStore, MySqlUserRecordStore>();
-            services.AddSingleton<INntpCredentialValidator, MySqlNntpCredentialValidator>();
-            services.AddSingleton<ICramMd5CredentialStore, MySqlCramMd5CredentialStore>();
+            _ = services.AddSingleton<INntpSessionAdmissionTracker, NntpSessionAdmissionTracker>();
+            _ = services.AddSingleton<INntpUserRecordStore, MySqlUserRecordStore>();
+            _ = services.AddSingleton<INntpCredentialValidator, MySqlNntpCredentialValidator>();
+            _ = services.AddSingleton<ICramMd5CredentialStore, MySqlCramMd5CredentialStore>();
 
             return services;
         }
