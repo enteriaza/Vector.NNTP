@@ -44,7 +44,13 @@ namespace Vector.NNTP.Tests.Auth.MySql
             FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
             MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
 
-            NntpAuthResult result = await validator.ValidatePasswordAsync("user1", "secret", IPAddress.Loopback, true, CancellationToken.None).ConfigureAwait(false);
+            NntpAuthResult result = await validator.ValidatePasswordAsync(
+                NntpAuthMechanisms.AuthInfoUserPass,
+                "user1",
+                "secret",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
 
             Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.Success));
             Assert.That(result.Policy, Is.Not.Null);
@@ -81,7 +87,13 @@ namespace Vector.NNTP.Tests.Auth.MySql
             FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
             MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
 
-            NntpAuthResult result = await validator.ValidatePasswordAsync("user1", "wrong", IPAddress.Loopback, true, CancellationToken.None).ConfigureAwait(false);
+            NntpAuthResult result = await validator.ValidatePasswordAsync(
+                NntpAuthMechanisms.SaslPlain,
+                "user1",
+                "wrong",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
 
             Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.InvalidCredentials));
         }
@@ -113,9 +125,94 @@ namespace Vector.NNTP.Tests.Auth.MySql
             FakeAdmissionTracker tracker = new FakeAdmissionTracker(false);
             MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
 
-            NntpAuthResult result = await validator.ValidatePasswordAsync("user1", "secret", IPAddress.Loopback, true, CancellationToken.None).ConfigureAwait(false);
+            NntpAuthResult result = await validator.ValidatePasswordAsync(
+                NntpAuthMechanisms.AuthInfoUserPass,
+                "user1",
+                "secret",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
 
             Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.TransientFailure));
+        }
+
+        /// <summary>
+        /// Ensures that SCRAM completion after proof verification yields a success result with policy from the record.
+        /// </summary>
+        /// <returns>A task that completes when the assertion is evaluated.</returns>
+        [Test]
+        public async Task CompleteSaslAccountAsync_Scram_ValidAccount_Succeeds()
+        {
+            MySqlUserRecord record = new MySqlUserRecord(
+                "user1",
+                "secret",
+                allowAuthPlain: false,
+                allowAuthScram256: true,
+                scramSalt: new byte[] { 1, 2, 3 },
+                scramIterations: 4096,
+                scramStoredKey: new byte[32],
+                scramServerKey: new byte[32],
+                'B',
+                10,
+                1000L,
+                2,
+                1,
+                true,
+                "00000000-0000-0000-0000-0000000042");
+            FakeUserRecordStore store = new FakeUserRecordStore(record);
+            FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
+
+            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+                NntpAuthMechanisms.SaslScramSha256,
+                "user1",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
+
+            Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.Success));
+            Assert.That(result.Policy, Is.Not.Null);
+            Assert.That(result.Policy!.Username, Is.EqualTo("user1"));
+            Assert.That(result.Policy!.AllowPosting, Is.True);
+        }
+
+        /// <summary>
+        /// Ensures that CRAM-MD5 completion after proof verification yields a success result with policy from the record.
+        /// </summary>
+        /// <returns>A task that completes when the assertion is evaluated.</returns>
+        [Test]
+        public async Task CompleteSaslAccountAsync_Cram_ValidAccount_Succeeds()
+        {
+            MySqlUserRecord record = new MySqlUserRecord(
+                "user1",
+                "secret",
+                allowAuthPlain: true,
+                allowAuthScram256: false,
+                scramSalt: ReadOnlyMemory<byte>.Empty,
+                scramIterations: 0,
+                scramStoredKey: ReadOnlyMemory<byte>.Empty,
+                scramServerKey: ReadOnlyMemory<byte>.Empty,
+                'B',
+                10,
+                1000L,
+                2,
+                1,
+                true,
+                "00000000-0000-0000-0000-0000000042");
+            FakeUserRecordStore store = new FakeUserRecordStore(record);
+            FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
+
+            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+                NntpAuthMechanisms.SaslCramMd5,
+                "user1",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
+
+            Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.Success));
+            Assert.That(result.Policy, Is.Not.Null);
+            Assert.That(result.Policy!.Username, Is.EqualTo("user1"));
         }
 
         /// <summary>
@@ -129,7 +226,13 @@ namespace Vector.NNTP.Tests.Auth.MySql
             FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
             MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
 
-            NntpAuthResult result = await validator.ValidatePasswordAsync("user1", "secret", IPAddress.Loopback, true, CancellationToken.None).ConfigureAwait(false);
+            NntpAuthResult result = await validator.ValidatePasswordAsync(
+                NntpAuthMechanisms.AuthInfoUserPass,
+                "user1",
+                "secret",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
 
             Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.TransientFailure));
         }

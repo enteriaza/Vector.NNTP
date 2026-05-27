@@ -37,7 +37,9 @@ namespace Vector.NNTP.Tests.Auth.MySql
 
             using ServiceProvider provider = services.BuildServiceProvider();
             INntpCredentialValidator validator = provider.GetRequiredService<INntpCredentialValidator>();
+            INntpSaslAccountAuthenticator saslAccountAuthenticator = provider.GetRequiredService<INntpSaslAccountAuthenticator>();
             Assert.That(validator, Is.InstanceOf<MySqlNntpCredentialValidator>());
+            Assert.That(saslAccountAuthenticator, Is.SameAs(validator));
         }
     }
 }

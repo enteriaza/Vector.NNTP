@@ -17,14 +17,17 @@ namespace Vector.NNTP.Sockets.Authentication
     /// <param name="validator">Password validator for USER/PASS, PLAIN, and LOGIN.</param>
     /// <param name="scramStore">Optional SCRAM credential store.</param>
     /// <param name="cramStore">Optional CRAM-MD5 secret store.</param>
+    /// <param name="saslAccountAuthenticator">Optional SASL completion handler for policy, admission, and audit logging.</param>
     public sealed class NntpAuthenticationService(
         INntpCredentialValidator validator,
         IScramCredentialStore? scramStore = null,
-        ICramMd5CredentialStore? cramStore = null)
+        ICramMd5CredentialStore? cramStore = null,
+        INntpSaslAccountAuthenticator? saslAccountAuthenticator = null)
     {
         private readonly INntpCredentialValidator _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         private readonly IScramCredentialStore? _scramStore = scramStore;
         private readonly ICramMd5CredentialStore? _cramStore = cramStore;
+        private readonly INntpSaslAccountAuthenticator? _saslAccountAuthenticator = saslAccountAuthenticator;
 
         /// <summary>
         /// Handles an AUTHINFO command line.
@@ -91,28 +94,25 @@ namespace Vector.NNTP.Sockets.Authentication
                 return;
             }
 
+            if (mech.Equals("LOGIN", StringComparison.OrdinalIgnoreCase))
+            {
+                await HandleLoginContinuationAsync(session, payload, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             if (mech.Equals("CRAM-MD5", StringComparison.OrdinalIgnoreCase) && session.State.SaslServerState is string challenge)
             {
                 await HandleCramResponseAsync(session, payload, challenge, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            if (mech.StartsWith("SCRAM-", StringComparison.OrdinalIgnoreCase) && session.State.SaslServerState is ScramMechanism scram)
+            if (mech.StartsWith("SCRAM-", StringComparison.OrdinalIgnoreCase) && session.State.SaslServerState is ScramSaslState scramState)
             {
-                string? serverFinal = scram.TryFinish(DecodeMaybeBase64(payload));
-                if (serverFinal is null)
-                {
-                    ResetAuth(session);
-                    await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-
-                await session.Writer.WriteLineAsync($"235 {serverFinal}", cancellationToken).ConfigureAwait(false);
-                session.Connection.SetAuthenticated(new NntpSessionPolicy("scram-user", allowPosting: true, 'R', string.Empty, 0, 0, 0, 0));
-                ResetAuth(session);
+                await HandleScramFinishAsync(session, scramState, payload, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
+            ResetAuth(session);
             await session.Writer.WriteLineAsync("503 SASL continuation not supported", cancellationToken).ConfigureAwait(false);
         }
 
@@ -141,6 +141,7 @@ namespace Vector.NNTP.Sockets.Authentication
             string? pass = ExtractLastToken(line.AsSpan());
             string user = session.State.PendingAuthInfoUser ?? string.Empty;
             NntpAuthResult result = await _validator.ValidatePasswordAsync(
+                NntpAuthMechanisms.AuthInfoUserPass,
                 user,
                 pass ?? string.Empty,
                 session.Connection.ClientRemoteEndPoint.Address,
@@ -209,11 +210,13 @@ namespace Vector.NNTP.Sockets.Authentication
             string[] parts = decoded.Split('\0');
             if (parts.Length < 3)
             {
+                ResetAuth(session);
                 await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
                 return;
             }
 
             NntpAuthResult result = await _validator.ValidatePasswordAsync(
+                NntpAuthMechanisms.SaslPlain,
                 parts[1],
                 parts[2],
                 session.Connection.ClientRemoteEndPoint.Address,
@@ -222,10 +225,78 @@ namespace Vector.NNTP.Sockets.Authentication
             await WriteAuthResultAsync(session, result, cancellationToken).ConfigureAwait(false);
         }
 
+        private async ValueTask HandleLoginContinuationAsync(NntpSession session, string payload, CancellationToken cancellationToken)
+        {
+            string value = DecodeMaybeBase64(payload);
+            if (session.State.SaslServerState is not LoginSaslState state)
+            {
+                state = new LoginSaslState(null);
+            }
+
+            if (string.IsNullOrEmpty(state.Username))
+            {
+                session.State.SaslServerState = new LoginSaslState(value);
+                await session.Writer.WriteLineAsync("334 UGFzc3dvcmQ6", cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            NntpAuthResult result = await _validator.ValidatePasswordAsync(
+                NntpAuthMechanisms.SaslLogin,
+                state.Username,
+                value,
+                session.Connection.ClientRemoteEndPoint.Address,
+                session.State.IsTlsActive,
+                cancellationToken).ConfigureAwait(false);
+            await WriteAuthResultAsync(session, result, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async ValueTask HandleScramFinishAsync(
+            NntpSession session,
+            ScramSaslState scramState,
+            string payload,
+            CancellationToken cancellationToken)
+        {
+            string? serverFinal = scramState.Mechanism.TryFinish(DecodeMaybeBase64(payload));
+            if (serverFinal is null)
+            {
+                ResetAuth(session);
+                await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            NntpSessionPolicy policy;
+            if (this._saslAccountAuthenticator is not null)
+            {
+                NntpAuthResult result = await this._saslAccountAuthenticator.CompleteSaslAccountAsync(
+                    NntpAuthMechanisms.SaslScramSha256,
+                    scramState.Username,
+                    session.Connection.ClientRemoteEndPoint.Address,
+                    session.State.IsTlsActive,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (result.Status != NntpAuthStatus.Success)
+                {
+                    await WriteAuthResultAsync(session, result, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                policy = result.Policy!;
+            }
+            else
+            {
+                policy = new NntpSessionPolicy(scramState.Username, allowPosting: true, 'R', string.Empty, 0, 0, 0, 0);
+            }
+
+            await session.Writer.WriteLineAsync($"235 {serverFinal}", cancellationToken).ConfigureAwait(false);
+            session.Connection.SetAuthenticated(policy);
+            ResetAuth(session);
+        }
+
         private async ValueTask HandleScramStartAsync(NntpSession session, string mech, string? initial, CancellationToken cancellationToken)
         {
             if (_scramStore is null || string.IsNullOrEmpty(initial))
             {
+                ResetAuth(session);
                 await session.Writer.WriteLineAsync("503 SCRAM not available", cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -234,12 +305,13 @@ namespace Vector.NNTP.Sockets.Authentication
             if (!ScramMechanismBegin.TryGetUsername(clientFirst, out string? username) ||
                 !_scramStore.TryGetScramCredential(username!, out ScramStoredCredential? cred))
             {
+                ResetAuth(session);
                 await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
                 return;
             }
 
             (ScramMechanism state, string serverFirst) = ScramMechanism.Begin(mech, clientFirst, cred);
-            session.State.SaslServerState = state;
+            session.State.SaslServerState = new ScramSaslState(username!, state);
             await session.Writer.WriteLineAsync($"383 {serverFirst}", cancellationToken).ConfigureAwait(false);
         }
 
@@ -247,6 +319,7 @@ namespace Vector.NNTP.Sockets.Authentication
         {
             if (_cramStore is null)
             {
+                ResetAuth(session);
                 await session.Writer.WriteLineAsync("503 CRAM-MD5 not available", cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -255,6 +328,7 @@ namespace Vector.NNTP.Sockets.Authentication
             int space = decoded.IndexOf(' ');
             if (space <= 0)
             {
+                ResetAuth(session);
                 await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -263,11 +337,33 @@ namespace Vector.NNTP.Sockets.Authentication
             if (!_cramStore.TryGetCramSecret(user, out ReadOnlyMemory<byte> secret) ||
                 !CramMd5Mechanism.Verify(user, decoded, challenge, secret.Span))
             {
+                ResetAuth(session);
                 await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            session.Connection.SetAuthenticated(new NntpSessionPolicy(user, allowPosting: true, 'R', string.Empty, 0, 0, 0, 0));
+            if (this._saslAccountAuthenticator is not null)
+            {
+                NntpAuthResult result = await this._saslAccountAuthenticator.CompleteSaslAccountAsync(
+                    NntpAuthMechanisms.SaslCramMd5,
+                    user,
+                    session.Connection.ClientRemoteEndPoint.Address,
+                    session.State.IsTlsActive,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (result.Status != NntpAuthStatus.Success)
+                {
+                    await WriteAuthResultAsync(session, result, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                session.Connection.SetAuthenticated(result.Policy!);
+            }
+            else
+            {
+                session.Connection.SetAuthenticated(new NntpSessionPolicy(user, allowPosting: true, 'R', string.Empty, 0, 0, 0, 0));
+            }
+
             ResetAuth(session);
             await session.Writer.WriteLineAsync("235 Authentication succeeded", cancellationToken).ConfigureAwait(false);
         }
@@ -282,11 +378,15 @@ namespace Vector.NNTP.Sockets.Authentication
                     await session.Writer.WriteLineAsync("281 Authentication accepted", cancellationToken).ConfigureAwait(false);
                     break;
                 case NntpAuthStatus.TransientFailure:
+                    ResetAuth(session);
                     await session.Writer.WriteLineAsync("503 Temporary authentication failure", cancellationToken).ConfigureAwait(false);
                     break;
                 case NntpAuthStatus.InvalidCredentials:
+                    ResetAuth(session);
+                    await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
                     break;
                 default:
+                    ResetAuth(session);
                     await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
                     break;
             }
@@ -299,6 +399,10 @@ namespace Vector.NNTP.Sockets.Authentication
             session.State.PendingSaslMechanism = null;
             session.State.SaslServerState = null;
         }
+
+        private sealed record LoginSaslState(string? Username);
+
+        private sealed record ScramSaslState(string Username, ScramMechanism Mechanism);
 
         private static bool ContainsToken(string line, string token)
         {

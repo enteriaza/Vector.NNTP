@@ -19,7 +19,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 300,
             Level = LogLevel.Debug,
-            Message = "MySQL CRAM-MD5 secret lookup started for user '{Username}'")]
+            Message = "MySQL SASL CRAM-MD5 credential lookup started for user '{Username}'")]
         public static partial void CramLookupStarted(ILogger logger, string username);
 
         /// <summary>
@@ -30,7 +30,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 301,
             Level = LogLevel.Debug,
-            Message = "MySQL CRAM-MD5 secret lookup rejected for user '{Username}': user not found")]
+            Message = "MySQL SASL CRAM-MD5 credential lookup rejected for user '{Username}': user not found")]
         public static partial void CramLookupUserNotFound(ILogger logger, string username);
 
         /// <summary>
@@ -41,7 +41,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 302,
             Level = LogLevel.Warning,
-            Message = "MySQL CRAM-MD5 secret lookup rejected for user '{Username}': account disabled")]
+            Message = "MySQL SASL CRAM-MD5 credential lookup rejected for user '{Username}': account disabled")]
         public static partial void CramLookupAccountDisabled(ILogger logger, string username);
 
         /// <summary>
@@ -52,7 +52,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 305,
             Level = LogLevel.Debug,
-            Message = "MySQL CRAM-MD5 secret lookup rejected for user '{Username}': password-based authentication not permitted")]
+            Message = "MySQL SASL CRAM-MD5 credential lookup rejected for user '{Username}': password-based authentication not permitted")]
         public static partial void CramLookupNotPermitted(ILogger logger, string username);
 
         /// <summary>
@@ -63,7 +63,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 303,
             Level = LogLevel.Debug,
-            Message = "MySQL CRAM-MD5 secret lookup succeeded for user '{Username}'")]
+            Message = "MySQL SASL CRAM-MD5 credential lookup succeeded for user '{Username}'")]
         public static partial void CramLookupSucceeded(ILogger logger, string username);
 
         /// <summary>
@@ -75,7 +75,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 304,
             Level = LogLevel.Error,
-            Message = "MySQL CRAM-MD5 secret lookup failed for user '{Username}' due to backend error")]
+            Message = "MySQL SASL CRAM-MD5 credential lookup failed for user '{Username}' due to backend error")]
         public static partial void CramLookupFailed(ILogger logger, Exception ex, string username);
     }
 }

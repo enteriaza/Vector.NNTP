@@ -125,6 +125,35 @@ namespace Vector.NNTP.Tests.Sockets
         }
 
         /// <summary>
+        /// Verifies SASL LOGIN authenticates with base64 username and password continuations.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task SaslLogin_WithContinuations_Authenticates()
+        {
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateReader();
+            try
+            {
+                _ = await harness.ReadGreetingAsync().ConfigureAwait(false);
+                await harness.SendAsync("AUTHINFO SASL LOGIN").ConfigureAwait(false);
+                string prompt1 = await harness.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(prompt1, Is.EqualTo("334 VXNlcm5hbWU6"));
+
+                await harness.SendAsync("YWxpY2U=").ConfigureAwait(false);
+                string prompt2 = await harness.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(prompt2, Is.EqualTo("334 UGFzc3dvcmQ6"));
+
+                await harness.SendAsync("c2VjcmV0").ConfigureAwait(false);
+                string ok = await harness.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(ok, Does.StartWith("281 "));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
         /// Verifies MODE READER re-sends the no-posting greeting when unauthenticated.
         /// </summary>
         /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>

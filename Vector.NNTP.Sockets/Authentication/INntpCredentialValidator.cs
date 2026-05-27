@@ -13,6 +13,10 @@ namespace Vector.NNTP.Sockets.Authentication
         /// <summary>
         /// Validates a username and password for the connecting client.
         /// </summary>
+        /// <param name="mechanism">
+        /// Mechanism label (for example <see cref="NntpAuthMechanisms.AuthInfoUserPass"/> or
+        /// <see cref="NntpAuthMechanisms.SaslPlain"/>).
+        /// </param>
         /// <param name="username">NNTP username.</param>
         /// <param name="password">Cleartext password from AUTHINFO or SASL.</param>
         /// <param name="clientIp">Effective client IP (post-PROXY).</param>
@@ -20,6 +24,7 @@ namespace Vector.NNTP.Sockets.Authentication
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Validation outcome and optional session policy.</returns>
         public ValueTask<NntpAuthResult> ValidatePasswordAsync(
+            string mechanism,
             string username,
             string password,
             IPAddress clientIp,

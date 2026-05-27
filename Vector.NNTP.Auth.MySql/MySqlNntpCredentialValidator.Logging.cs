@@ -12,58 +12,80 @@ namespace Vector.NNTP.Auth.MySql
     internal static partial class MySqlNntpCredentialValidatorLog
     {
         /// <summary>
-        /// Logs the start of a credential validation attempt.
+        /// Logs that host-side authentication finalization is starting.
         /// </summary>
         /// <param name="logger">Logger instance.</param>
+        /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         /// <param name="clientIp">Client IP address.</param>
         /// <param name="isTls">Whether the connection is TLS-protected.</param>
         [LoggerMessage(
             EventId = 200,
             Level = LogLevel.Debug,
-            Message = "Validating NNTP credentials via MySQL for user '{Username}' from {ClientIp} (TLS={IsTls})")]
-        public static partial void ValidationAttemptStarted(ILogger logger, string username, string clientIp, bool isTls);
+            Message = "Finalizing MySQL {Mechanism} authentication for user '{Username}' from {ClientIp} (TLS={IsTls})")]
+        public static partial void AuthenticationFinalizing(
+            ILogger logger,
+            string mechanism,
+            string username,
+            string clientIp,
+            bool isTls);
 
         /// <summary>
         /// Logs that a user was not found or did not have a usable record.
         /// </summary>
         /// <param name="logger">Logger instance.</param>
+        /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         /// <param name="clientIp">Client IP address.</param>
         [LoggerMessage(
             EventId = 201,
             Level = LogLevel.Debug,
-            Message = "MySQL credential validation rejected for user '{Username}' from {ClientIp}: user not found")]
-        public static partial void ValidationRejectedUserNotFound(ILogger logger, string username, string clientIp);
+            Message = "MySQL {Mechanism} authentication rejected for user '{Username}' from {ClientIp}: user not found")]
+        public static partial void AuthenticationRejectedUserNotFound(
+            ILogger logger,
+            string mechanism,
+            string username,
+            string clientIp);
 
         /// <summary>
         /// Logs that a user is disabled.
         /// </summary>
         /// <param name="logger">Logger instance.</param>
+        /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         /// <param name="clientIp">Client IP address.</param>
         [LoggerMessage(
             EventId = 202,
             Level = LogLevel.Warning,
-            Message = "MySQL credential validation rejected for user '{Username}' from {ClientIp}: account disabled")]
-        public static partial void ValidationRejectedAccountDisabled(ILogger logger, string username, string clientIp);
+            Message = "MySQL {Mechanism} authentication rejected for user '{Username}' from {ClientIp}: account disabled")]
+        public static partial void AuthenticationRejectedAccountDisabled(
+            ILogger logger,
+            string mechanism,
+            string username,
+            string clientIp);
 
         /// <summary>
-        /// Logs that a password did not match.
+        /// Logs that credentials did not match or the mechanism is not permitted.
         /// </summary>
         /// <param name="logger">Logger instance.</param>
+        /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         /// <param name="clientIp">Client IP address.</param>
         [LoggerMessage(
             EventId = 203,
             Level = LogLevel.Debug,
-            Message = "MySQL credential validation rejected for user '{Username}' from {ClientIp}: invalid credentials")]
-        public static partial void ValidationRejectedInvalidCredentials(ILogger logger, string username, string clientIp);
+            Message = "MySQL {Mechanism} authentication rejected for user '{Username}' from {ClientIp}: invalid credentials")]
+        public static partial void AuthenticationRejectedInvalidCredentials(
+            ILogger logger,
+            string mechanism,
+            string username,
+            string clientIp);
 
         /// <summary>
         /// Logs that authentication succeeded and a policy was issued.
         /// </summary>
         /// <param name="logger">Logger instance.</param>
+        /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">Authenticated username.</param>
         /// <param name="clientIp">Client IP address.</param>
         /// <param name="allowPosting">Whether posting is permitted.</param>
@@ -72,9 +94,10 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 204,
             Level = LogLevel.Information,
-            Message = "MySQL authentication succeeded for user '{Username}' from {ClientIp} (Posting={AllowPosting}, Type={AccountType}, CustomerId={CustomerId})")]
+            Message = "MySQL {Mechanism} authentication succeeded for user '{Username}' from {ClientIp} (Posting={AllowPosting}, Type={AccountType}, CustomerId={CustomerId})")]
         public static partial void AuthenticationSucceeded(
             ILogger logger,
+            string mechanism,
             string username,
             string clientIp,
             bool allowPosting,
@@ -85,6 +108,7 @@ namespace Vector.NNTP.Auth.MySql
         /// Logs that authentication succeeded but admission limits blocked the session.
         /// </summary>
         /// <param name="logger">Logger instance.</param>
+        /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">Authenticated username.</param>
         /// <param name="clientIp">Client IP address.</param>
         /// <param name="sessionLimit">Configured per-account session limit.</param>
@@ -92,24 +116,30 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 205,
             Level = LogLevel.Warning,
-            Message = "MySQL authentication admitted user '{Username}' from {ClientIp} but admission limits blocked entry (SessionLimit={SessionLimit}, SrcIpLimit={SrcIpLimit})")]
+            Message = "MySQL {Mechanism} authentication rejected for user '{Username}' from {ClientIp}: admission limits exceeded (SessionLimit={SessionLimit}, SrcIpLimit={SrcIpLimit})")]
         public static partial void AdmissionRejected(
             ILogger logger,
+            string mechanism,
             string username,
             string clientIp,
             int sessionLimit,
             int srcIpLimit);
 
         /// <summary>
-        /// Logs that MySQL credential validation failed due to an exception from the backing store.
+        /// Logs that MySQL authentication failed due to an exception from the backing store.
         /// </summary>
         /// <param name="logger">Logger instance.</param>
         /// <param name="ex">Underlying exception for diagnostics.</param>
+        /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         [LoggerMessage(
             EventId = 206,
             Level = LogLevel.Error,
-            Message = "MySQL credential validation failed for user '{Username}' due to backend error")]
-        public static partial void CredentialValidationBackendFailed(ILogger logger, Exception ex, string username);
+            Message = "MySQL {Mechanism} authentication failed for user '{Username}' due to backend error")]
+        public static partial void AuthenticationBackendFailed(
+            ILogger logger,
+            Exception ex,
+            string mechanism,
+            string username);
     }
 }

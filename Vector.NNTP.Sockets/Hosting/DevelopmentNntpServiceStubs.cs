@@ -97,12 +97,14 @@ namespace Vector.NNTP.Sockets.Hosting
             private int _logged;
 
             public ValueTask<NntpAuthResult> ValidatePasswordAsync(
+                string mechanism,
                 string username,
                 string password,
                 IPAddress clientIp,
                 bool isTls,
                 CancellationToken cancellationToken)
             {
+                _ = mechanism;
                 _ = username;
                 _ = password;
                 _ = clientIp;

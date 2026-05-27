@@ -52,6 +52,18 @@ namespace Vector.NNTP.Sockets.Transport
             string line,
             CancellationToken cancellationToken)
         {
+            if (session.State.AuthenticationState == AuthenticationState.SaslInProgress &&
+                !line.StartsWith("AUTHINFO", StringComparison.OrdinalIgnoreCase))
+            {
+                if (line.Equals("QUIT", StringComparison.OrdinalIgnoreCase))
+                {
+                    return await NntpCmdQuit.DispatchAsync(session, cancellationToken).ConfigureAwait(false);
+                }
+
+                await _auth.HandleSaslContinuationAsync(session, line.Trim(), cancellationToken).ConfigureAwait(false);
+                return !session.State.QuitRequested;
+            }
+
             NntpKnownVerb verb = NntpCommandVerb.Classify(line.AsSpan());
             if (verb == NntpKnownVerb.Unknown)
             {
@@ -64,13 +76,6 @@ namespace Vector.NNTP.Sockets.Transport
             if (gate != NntpGateResult.Allow)
             {
                 await NntpCommandGate.WriteRejectionAsync(session, gate, cancellationToken).ConfigureAwait(false);
-                return !session.State.QuitRequested;
-            }
-
-            if (session.State.AuthenticationState == AuthenticationState.SaslInProgress &&
-                !line.StartsWith("AUTHINFO", StringComparison.OrdinalIgnoreCase))
-            {
-                await _auth.HandleSaslContinuationAsync(session, line.Trim(), cancellationToken).ConfigureAwait(false);
                 return !session.State.QuitRequested;
             }
 

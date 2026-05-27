@@ -3,6 +3,10 @@
 // </copyright>
 // COLD PATH: RFC 5802 SCRAM-SHA-256 and SCRAM-SHA-1 server-side exchange.
 
+using System.Diagnostics.CodeAnalysis;
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Vector.NNTP.Sockets.Authentication.Sasl
 {
     /// <summary>
@@ -10,20 +14,27 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
     /// </summary>
     internal sealed class ScramMechanism
     {
-        private readonly string _hashName;
         private readonly HashAlgorithmName _hashAlgorithm;
         private readonly ScramStoredCredential _credential;
+        private readonly string _gs2Header;
         private readonly string _clientFirstBare;
-        private readonly string _serverNonce;
-        private string? _clientProof;
+        private readonly string _serverFirst;
+        private readonly string _combinedNonce;
 
-        private ScramMechanism(string hashName, HashAlgorithmName hashAlgorithm, ScramStoredCredential credential, string clientFirstBare, string serverNonce)
+        private ScramMechanism(
+            HashAlgorithmName hashAlgorithm,
+            ScramStoredCredential credential,
+            string gs2Header,
+            string clientFirstBare,
+            string serverFirst,
+            string combinedNonce)
         {
-            _hashName = hashName;
             _hashAlgorithm = hashAlgorithm;
             _credential = credential;
+            _gs2Header = gs2Header;
             _clientFirstBare = clientFirstBare;
-            _serverNonce = serverNonce;
+            _serverFirst = serverFirst;
+            _combinedNonce = combinedNonce;
         }
 
         /// <summary>
@@ -38,11 +49,20 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             HashAlgorithmName hash = mechanism.Contains("SHA-256", StringComparison.OrdinalIgnoreCase)
                 ? HashAlgorithmName.SHA256
                 : HashAlgorithmName.SHA1;
-            string hashName = hash == HashAlgorithmName.SHA256 ? "SHA-256" : "SHA-1";
+
+            if (!TrySplitClientFirst(clientFirst, out string? gs2Header, out string? clientFirstBare) ||
+                !TryParseAttribute(clientFirstBare!, 'r', out string? clientNonce) ||
+                string.IsNullOrEmpty(clientNonce))
+            {
+                throw new ArgumentException("Invalid SCRAM client-first message.", nameof(clientFirst));
+            }
+
             string serverNonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
-            string clientFirstBare = StripGs2Header(clientFirst);
-            string serverFirst = $"r={serverNonce},s={Convert.ToBase64String(credential.Salt.Span)},i={credential.IterationCount}";
-            ScramMechanism state = new(hashName, hash, credential, clientFirstBare, serverNonce);
+            string combinedNonce = clientNonce + serverNonce;
+            string saltB64 = Convert.ToBase64String(credential.Salt.Span);
+            string serverFirst = $"r={combinedNonce},s={saltB64},i={credential.IterationCount}";
+
+            ScramMechanism state = new(hash, credential, gs2Header!, clientFirstBare!, serverFirst, combinedNonce);
             return (state, serverFirst);
         }
 
@@ -54,42 +74,48 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
         internal string? TryFinish(string clientFinal)
         {
             if (!TryParseAttribute(clientFinal, 'p', out string? proofB64) ||
-                !TryParseAttribute(clientFinal, 'r', out string? combinedNonce))
+                !TryParseAttribute(clientFinal, 'r', out string? combinedNonce) ||
+                !TryParseAttribute(clientFinal, 'c', out string? channelBinding))
             {
                 return null;
             }
 
-            _clientProof = proofB64;
-            if (combinedNonce is null || !combinedNonce.EndsWith(_serverNonce, StringComparison.Ordinal))
+            if (combinedNonce is null || !string.Equals(combinedNonce, _combinedNonce, StringComparison.Ordinal))
             {
                 return null;
             }
 
-            if (!TryParseAttribute(_clientFirstBare, 'n', out string? username))
+            if (channelBinding is null ||
+                !string.Equals(channelBinding, Convert.ToBase64String(Encoding.ASCII.GetBytes(_gs2Header)), StringComparison.Ordinal))
             {
                 return null;
             }
 
-            _ = username;
-            byte[] clientProof = Convert.FromBase64String(proofB64!);
-            byte[] serverSignature = ComputeServerSignature(combinedNonce!);
-            byte[] expectedProof = Xor(clientProof, serverSignature);
+            byte[] clientProof;
+            try
+            {
+                clientProof = Convert.FromBase64String(proofB64!);
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+
+            string clientFinalWithoutProof = clientFinal.Replace($",p={proofB64}", string.Empty, StringComparison.Ordinal);
+            string authMessage = $"{_clientFirstBare},{_serverFirst},{clientFinalWithoutProof}";
+
             byte[] storedKey = _credential.StoredKey.Span.ToArray();
-            if (!CryptographicOperations.FixedTimeEquals(expectedProof, storedKey))
+            byte[] clientSignature = Hmac(storedKey, Encoding.UTF8.GetBytes(authMessage));
+            byte[] clientKey = Xor(clientProof, clientSignature);
+            byte[] computedStoredKey = Hash(clientKey);
+            if (!CryptographicOperations.FixedTimeEquals(computedStoredKey, storedKey))
             {
                 return null;
             }
 
             byte[] serverKey = _credential.ServerKey.Span.ToArray();
-            byte[] serverFinalProof = Hmac(serverKey, Encoding.UTF8.GetBytes($"c=biws,r={combinedNonce}"));
-            return $"v={Convert.ToBase64String(serverFinalProof)}";
-        }
-
-        private byte[] ComputeServerSignature(string combinedNonce)
-        {
-            string authMessage = $"{_clientFirstBare},{combinedNonce}";
-            byte[] clientKey = Xor(Convert.FromBase64String(_clientProof!), _credential.StoredKey.Span.ToArray());
-            return Hmac(clientKey, Encoding.UTF8.GetBytes(authMessage));
+            byte[] serverSignature = Hmac(serverKey, Encoding.UTF8.GetBytes(authMessage));
+            return $"v={Convert.ToBase64String(serverSignature)}";
         }
 
         private byte[] Hmac(byte[] key, byte[] data)
@@ -97,6 +123,13 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             using IncrementalHash hmac = IncrementalHash.CreateHMAC(_hashAlgorithm, key);
             hmac.AppendData(data);
             return hmac.GetHashAndReset();
+        }
+
+        private byte[] Hash(byte[] data)
+        {
+            using IncrementalHash hash = IncrementalHash.CreateHash(_hashAlgorithm);
+            hash.AppendData(data);
+            return hash.GetHashAndReset();
         }
 
         private static byte[] Xor(byte[] a, byte[] b)
@@ -111,10 +144,22 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             return result;
         }
 
-        private static string StripGs2Header(string clientFirst)
+        private static bool TrySplitClientFirst(
+            string clientFirst,
+            [NotNullWhen(true)] out string? gs2Header,
+            [NotNullWhen(true)] out string? clientFirstBare)
         {
-            int comma = clientFirst.IndexOf(',', StringComparison.Ordinal);
-            return comma >= 0 ? clientFirst[(comma + 1)..] : clientFirst;
+            int idx = clientFirst.IndexOf(",,", StringComparison.Ordinal);
+            if (idx < 0)
+            {
+                gs2Header = null;
+                clientFirstBare = null;
+                return false;
+            }
+
+            gs2Header = clientFirst[..(idx + 2)];
+            clientFirstBare = clientFirst[(idx + 2)..];
+            return !string.IsNullOrEmpty(clientFirstBare);
         }
 
         private static bool TryParseAttribute(string message, char key, [NotNullWhen(true)] out string? value)

@@ -12,8 +12,8 @@ using Vector.NNTP.Sockets.Authentication;
 namespace Vector.NNTP.Auth.MySql
 {
     /// <summary>
-    /// MySQL-backed implementation of <see cref="INntpCredentialValidator"/> that validates passwords and policy
-    /// against rows in the <c>nntpusers</c> table.
+    /// MySQL-backed implementation of <see cref="INntpCredentialValidator"/> and <see cref="INntpSaslAccountAuthenticator"/>
+    /// that validates credentials and policy against rows in the <c>nntpusers</c> table.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -22,9 +22,9 @@ namespace Vector.NNTP.Auth.MySql
     /// supplied password with the decrypted value using an ordinal, case-sensitive comparison.
     /// </para>
     /// <para>
-    /// <b>Session admission:</b> On successful password verification a <see cref="NntpSessionPolicy"/> is constructed
-    /// and passed to <see cref="INntpSessionAdmissionTracker"/> to enforce per-account and per-source-IP limits. When
-    /// limits are exceeded the validator returns <see cref="NntpAuthResult.TransientFailure"/>.
+    /// <b>Session admission:</b> On successful verification a <see cref="NntpSessionPolicy"/> is constructed and passed to
+    /// <see cref="INntpSessionAdmissionTracker"/> to enforce per-account and per-source-IP limits. When limits are
+    /// exceeded the validator returns <see cref="NntpAuthResult.TransientFailure"/>.
     /// </para>
     /// </remarks>
     /// <remarks>
@@ -36,7 +36,7 @@ namespace Vector.NNTP.Auth.MySql
     public sealed class MySqlNntpCredentialValidator(
         INntpUserRecordStore recordStore,
         INntpSessionAdmissionTracker admissionTracker,
-        ILogger<MySqlNntpCredentialValidator> logger) : INntpCredentialValidator
+        ILogger<MySqlNntpCredentialValidator> logger) : INntpCredentialValidator, INntpSaslAccountAuthenticator
     {
         /// <summary>
         /// Backing user record store.
@@ -53,16 +53,38 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         private readonly ILogger<MySqlNntpCredentialValidator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        /// <summary>
-        /// Validates a password against a user record.
-        /// </summary>
-        /// <param name="username">Username supplied by the client.</param>
-        /// <param name="password">Password supplied by the client.</param>
-        /// <param name="clientIp">Client IP address for policy and limit enforcement.</param>
-        /// <param name="isTls">Whether the connection is TLS-protected.</param>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>An authentication result describing success, invalid credentials, or transient failures.</returns>
+        /// <inheritdoc />
+        public async ValueTask<NntpAuthResult> CompleteSaslAccountAsync(
+            string mechanism,
+            string username,
+            IPAddress clientIp,
+            bool isTls,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(username))
+            {
+                return NntpAuthResult.InvalidCredentials();
+            }
+
+            bool isScram = string.Equals(mechanism, NntpAuthMechanisms.SaslScramSha256, StringComparison.Ordinal);
+            bool isCram = string.Equals(mechanism, NntpAuthMechanisms.SaslCramMd5, StringComparison.Ordinal);
+            if (!isScram && !isCram)
+            {
+                throw new ArgumentException($"Unsupported SASL completion mechanism '{mechanism}'.", nameof(mechanism));
+            }
+
+            return await FinalizeAuthenticationAsync(
+                mechanism,
+                username,
+                clientIp,
+                isTls,
+                record => isScram ? record.AllowAuthScram256 : record.AllowAuthPlain,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
         public async ValueTask<NntpAuthResult> ValidatePasswordAsync(
+            string mechanism,
             string username,
             string password,
             IPAddress clientIp,
@@ -74,74 +96,48 @@ namespace Vector.NNTP.Auth.MySql
                 return NntpAuthResult.InvalidCredentials();
             }
 
-            MySqlNntpCredentialValidatorLog.ValidationAttemptStarted(
-                _logger,
-                username,
-                clientIp.ToString(),
-                isTls);
+            string clientIpText = clientIp.ToString();
+            MySqlNntpCredentialValidatorLog.AuthenticationFinalizing(this._logger, mechanism, username, clientIpText, isTls);
 
             try
             {
-                MySqlUserRecord? record = await _recordStore
+                MySqlUserRecord? record = await this._recordStore
                     .TryGetUserAsync(username, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (record is null)
                 {
-                    MySqlNntpCredentialValidatorLog.ValidationRejectedUserNotFound(_logger, username, clientIp.ToString());
+                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedUserNotFound(this._logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!record.IsEnabled)
                 {
-                    MySqlNntpCredentialValidatorLog.ValidationRejectedAccountDisabled(_logger, username, clientIp.ToString());
+                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedAccountDisabled(this._logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!record.AllowAuthPlain)
                 {
-                    MySqlNntpCredentialValidatorLog.ValidationRejectedInvalidCredentials(_logger, username, clientIp.ToString());
+                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedInvalidCredentials(this._logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!PasswordEquals(record.AccountPassword, password))
                 {
-                    MySqlNntpCredentialValidatorLog.ValidationRejectedInvalidCredentials(_logger, username, clientIp.ToString());
+                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedInvalidCredentials(this._logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
-                NntpSessionPolicy policy = CreatePolicy(record);
-                if (!_admissionTracker.TryEnter(policy, clientIp))
-                {
-                    MySqlNntpCredentialValidatorLog.AdmissionRejected(
-                        _logger,
-                        policy.Username,
-                        clientIp.ToString(),
-                        policy.SessionLimit,
-                        policy.SrcIpLimit);
-                    return NntpAuthResult.TransientFailure();
-                }
-
-                MySqlNntpCredentialValidatorLog.AuthenticationSucceeded(
-                    _logger,
-                    policy.Username,
-                    clientIp.ToString(),
-                    policy.AllowPosting,
-                    policy.AccountType,
-                    policy.CustomerId);
-
-                return NntpAuthResult.Success(policy);
+                return AdmitAndSucceed(mechanism, record, clientIp);
             }
             catch (OperationCanceledException)
             {
-                // Preserve shutdown/timeout semantics.
                 throw;
             }
             catch (Exception ex)
             {
-                // Prevent backend failures from escaping to the session loop (which would drop the connection).
-                // Treat as transient authentication failure to match NNTP semantics (503).
-                MySqlNntpCredentialValidatorLog.CredentialValidationBackendFailed(_logger, ex, username);
+                MySqlNntpCredentialValidatorLog.AuthenticationBackendFailed(this._logger, ex, mechanism, username);
                 return NntpAuthResult.TransientFailure();
             }
         }
@@ -204,7 +200,7 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <param name="record">User record materialised from the backing store.</param>
         /// <returns>Session policy representing the granted permissions and limits.</returns>
-        private NntpSessionPolicy CreatePolicy(MySqlUserRecord record)
+        private static NntpSessionPolicy CreatePolicy(MySqlUserRecord record)
         {
             return new NntpSessionPolicy(
                 record.AccountName,
@@ -215,6 +211,99 @@ namespace Vector.NNTP.Auth.MySql
                 record.ByteLimit,
                 record.SessionLimit,
                 record.SrcIpLimit);
+        }
+
+        /// <summary>
+        /// Finalizes SASL authentication after cryptographic verification on the wire.
+        /// </summary>
+        /// <param name="mechanism">Authentication mechanism label.</param>
+        /// <param name="username">Authenticated username.</param>
+        /// <param name="clientIp">Client IP address.</param>
+        /// <param name="isTls">Whether the connection is TLS-protected.</param>
+        /// <param name="isMechanismPermitted">Delegate that checks whether the mechanism is allowed for the account.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Authentication outcome and optional session policy.</returns>
+        private async ValueTask<NntpAuthResult> FinalizeAuthenticationAsync(
+            string mechanism,
+            string username,
+            IPAddress clientIp,
+            bool isTls,
+            Func<MySqlUserRecord, bool> isMechanismPermitted,
+            CancellationToken cancellationToken)
+        {
+            string clientIpText = clientIp.ToString();
+            MySqlNntpCredentialValidatorLog.AuthenticationFinalizing(this._logger, mechanism, username, clientIpText, isTls);
+
+            try
+            {
+                MySqlUserRecord? record = await this._recordStore
+                    .TryGetUserAsync(username, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (record is null)
+                {
+                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedUserNotFound(this._logger, mechanism, username, clientIpText);
+                    return NntpAuthResult.InvalidCredentials();
+                }
+
+                if (!record.IsEnabled)
+                {
+                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedAccountDisabled(this._logger, mechanism, username, clientIpText);
+                    return NntpAuthResult.InvalidCredentials();
+                }
+
+                if (!isMechanismPermitted(record))
+                {
+                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedInvalidCredentials(this._logger, mechanism, username, clientIpText);
+                    return NntpAuthResult.InvalidCredentials();
+                }
+
+                return AdmitAndSucceed(mechanism, record, clientIp);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                MySqlNntpCredentialValidatorLog.AuthenticationBackendFailed(this._logger, ex, mechanism, username);
+                return NntpAuthResult.TransientFailure();
+            }
+        }
+
+        /// <summary>
+        /// Applies admission limits and logs a successful authentication.
+        /// </summary>
+        /// <param name="mechanism">Authentication mechanism label.</param>
+        /// <param name="record">Validated user record.</param>
+        /// <param name="clientIp">Client IP address.</param>
+        /// <returns>Authentication outcome and optional session policy.</returns>
+        private NntpAuthResult AdmitAndSucceed(string mechanism, MySqlUserRecord record, IPAddress clientIp)
+        {
+            NntpSessionPolicy policy = CreatePolicy(record);
+            string clientIpText = clientIp.ToString();
+            if (!this._admissionTracker.TryEnter(policy, clientIp))
+            {
+                MySqlNntpCredentialValidatorLog.AdmissionRejected(
+                    this._logger,
+                    mechanism,
+                    policy.Username,
+                    clientIpText,
+                    policy.SessionLimit,
+                    policy.SrcIpLimit);
+                return NntpAuthResult.TransientFailure();
+            }
+
+            MySqlNntpCredentialValidatorLog.AuthenticationSucceeded(
+                this._logger,
+                mechanism,
+                policy.Username,
+                clientIpText,
+                policy.AllowPosting,
+                policy.AccountType,
+                policy.CustomerId);
+
+            return NntpAuthResult.Success(policy);
         }
     }
 }

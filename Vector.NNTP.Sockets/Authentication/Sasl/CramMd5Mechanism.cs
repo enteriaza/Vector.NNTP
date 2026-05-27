@@ -42,7 +42,17 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             }
 
             string hex = response[(space + 1)..];
-            byte[] expected = HmacMd5(secret, Encoding.ASCII.GetBytes(challenge));
+            byte[] challengeBytes;
+            try
+            {
+                challengeBytes = Convert.FromBase64String(challenge);
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+
+            byte[] expected = HmacMd5(secret, challengeBytes);
             string expectedHex = Convert.ToHexString(expected).ToLowerInvariant();
             return string.Equals(hex, expectedHex, StringComparison.OrdinalIgnoreCase);
         }

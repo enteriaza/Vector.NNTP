@@ -25,12 +25,14 @@ namespace Vector.NNTP.Tests.Sockets.Fakes
 
         /// <inheritdoc />
         public ValueTask<NntpAuthResult> ValidatePasswordAsync(
+            string mechanism,
             string username,
             string password,
             IPAddress clientIp,
             bool isTls,
             CancellationToken cancellationToken)
         {
+            _ = mechanism;
             _ = clientIp;
             _ = isTls;
             _ = cancellationToken;

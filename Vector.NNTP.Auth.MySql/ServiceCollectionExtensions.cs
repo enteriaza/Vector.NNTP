@@ -74,13 +74,16 @@ namespace Vector.NNTP.Auth.MySql
             }
 
             _ = services.RemoveAll<INntpCredentialValidator>();
+            _ = services.RemoveAll<INntpSaslAccountAuthenticator>();
             _ = services.RemoveAll<ICramMd5CredentialStore>();
             _ = services.RemoveAll<IScramCredentialStore>();
             _ = services.RemoveAll<INntpSessionAdmissionTracker>();
 
             _ = services.AddSingleton<INntpSessionAdmissionTracker, NntpSessionAdmissionTracker>();
             _ = services.AddSingleton<INntpUserRecordStore>(_ => new MySqlUserRecordStore(connectionString));
-            _ = services.AddSingleton<INntpCredentialValidator, MySqlNntpCredentialValidator>();
+            _ = services.AddSingleton<MySqlNntpCredentialValidator>();
+            _ = services.AddSingleton<INntpCredentialValidator>(static sp => sp.GetRequiredService<MySqlNntpCredentialValidator>());
+            _ = services.AddSingleton<INntpSaslAccountAuthenticator>(static sp => sp.GetRequiredService<MySqlNntpCredentialValidator>());
             _ = services.AddSingleton<ICramMd5CredentialStore, MySqlCramMd5CredentialStore>();
             _ = services.AddSingleton<IScramCredentialStore, MySqlScramCredentialStore>();
 

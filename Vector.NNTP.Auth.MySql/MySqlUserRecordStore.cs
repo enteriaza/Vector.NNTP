@@ -46,7 +46,7 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         private const string UserLookupSql =
             "SELECT " +
-            "CAST(AES_DECRYPT(account_pass, UNHEX(SHA2(@account_name, 256))) AS CHAR) AS account_pass, " +
+            "CAST(AES_DECRYPT(account_pass, UNHEX(SHA2(account_name, 256))) AS CHAR) AS account_pass, " +
             "scram_salt, scram_iterations, scram_stored_key, scram_server_key, " +
             "allow_auth_plain, allow_auth_scram256, " +
             "account_type, account_rate_limit, account_byte_limit, account_session_limit, account_srcip_limit, " +
