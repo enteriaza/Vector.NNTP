@@ -55,7 +55,16 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         private readonly ILogger<MySqlNntpCredentialValidator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Completes SASL authentication for the given account.
+        /// </summary>
+        /// <param name="mechanism">The mechanism to use for authentication.</param>
+        /// <param name="username">The username to authenticate.</param>
+        /// <param name="clientIp">The client IP address.</param>
+        /// <param name="isTls">Whether the connection is TLS-protected.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The authentication result.</returns>
+        /// <exception cref="ArgumentException">Thrown when the mechanism is not supported.</exception>
         public async ValueTask<NntpAuthResult> CompleteSaslAccountAsync(
             string mechanism,
             string username,
@@ -84,7 +93,17 @@ namespace Vector.NNTP.Auth.MySql
                 cancellationToken).ConfigureAwait(false);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Validates the password for the given account.
+        /// </summary>
+        /// <param name="mechanism">The mechanism to use for authentication.</param>
+        /// <param name="username">The username to authenticate.</param>
+        /// <param name="password">The password to authenticate.</param>
+        /// <param name="clientIp">The client IP address.</param>
+        /// <param name="isTls">Whether the connection is TLS-protected.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The authentication result.</returns>
+        /// <exception cref="ArgumentException">Thrown when the mechanism is not supported.</exception>
         public async ValueTask<NntpAuthResult> ValidatePasswordAsync(
             string mechanism,
             string username,
