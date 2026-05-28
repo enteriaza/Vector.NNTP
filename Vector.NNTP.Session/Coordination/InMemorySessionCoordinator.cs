@@ -11,10 +11,25 @@ namespace Vector.NNTP.Session.Coordination
     /// </summary>
     public sealed class InMemorySessionCoordinator : INntpSessionCoordinator
     {
+        /// <summary>
+        /// Sessions dictionary.
+        /// </summary>
         private readonly ConcurrentDictionary<string, byte> _sessions = new(StringComparer.Ordinal);
+        
+        /// <summary>
+        /// Account IPs dictionary.
+        /// </summary>
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _accountIps = new(StringComparer.Ordinal);
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Tries to admit a session.
+        /// </summary>
+        /// <param name="policy">The session policy.</param>
+        /// <param name="sessionId">The session ID.</param>
+        /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="ttlSeconds">The TTL seconds.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The admission result.</returns>
         public ValueTask<NntpSessionAdmissionResult> TryAdmitAsync(
             NntpSessionPolicy policy,
             string sessionId,
@@ -70,7 +85,14 @@ namespace Vector.NNTP.Session.Coordination
             return ValueTask.FromResult(NntpSessionAdmissionResult.Success);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Releases a session.
+        /// </summary>
+        /// <param name="policy">The session policy.</param>
+        /// <param name="sessionId">The session ID.</param>
+        /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the session is released.</returns>
         public ValueTask ReleaseAsync(
             NntpSessionPolicy policy,
             string sessionId,

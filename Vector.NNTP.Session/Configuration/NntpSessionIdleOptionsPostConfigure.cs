@@ -16,9 +16,16 @@ namespace Vector.NNTP.Session.Configuration
     /// <param name="logger">Logger.</param>
     public sealed class NntpSessionIdleOptionsPostConfigure(ILogger<NntpSessionIdleOptionsPostConfigure> logger) : IPostConfigureOptions<NntpSessionIdleOptions>
     {
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<NntpSessionIdleOptionsPostConfigure> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Applies <c>idleTimeoutSeconds</c> precedence for session lease TTL sizing.
+        /// </summary>
+        /// <param name="name">The name.</param>
+        /// <param name="options">The options.</param>
         public void PostConfigure(string? name, NntpSessionIdleOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);

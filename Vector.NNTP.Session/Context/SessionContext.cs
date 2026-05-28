@@ -15,9 +15,24 @@ namespace Vector.NNTP.Session.Context
     /// </remarks>
     public sealed class SessionContext
     {
+        /// <summary>
+        /// Authentication state.
+        /// </summary>
         private int _authenticationState;
+        
+        /// <summary>
+        /// Received bytes.
+        /// </summary>
         private long _rxBytes;
+        
+        /// <summary>
+        /// Sent bytes.
+        /// </summary>
         private long _txBytes;
+        
+        /// <summary>
+        /// Last activity timestamp.
+        /// </summary>
         private long _lastActivityUnixSeconds;
 
         /// <summary>

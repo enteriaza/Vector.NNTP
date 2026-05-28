@@ -10,13 +10,30 @@ namespace Vector.NNTP.Session.Utilities
     /// <typeparam name="T">Cached value type.</typeparam>
     public sealed class BoundedCache<T>
     {
+        /// <summary>
+        /// Maximum TTL in ticks.
+        /// </summary>
         private static readonly long MaxTtlTicks = TimeSpan.FromMilliseconds(100).Ticks;
 
+        /// <summary>
+        /// Factory on cache miss.
+        /// </summary>
         private readonly Func<CancellationToken, Task<T>> _factory;
+        
+        /// <summary>
+        /// TTL in ticks.
+        /// </summary>
         private readonly long _ttlTicks;
+        
+        /// <summary>
+        /// Expires at ticks.
+        /// </summary>
         private long _expiresAtTicks;
+        
+        /// <summary>
+        /// Cached value.
+        /// </summary>
         private T? _cachedValue;
-        private int _hasValue;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="BoundedCache{T}"/> class.

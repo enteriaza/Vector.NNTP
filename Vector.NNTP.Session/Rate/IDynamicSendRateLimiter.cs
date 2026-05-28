@@ -10,14 +10,14 @@ namespace Vector.NNTP.Session.Rate
     public interface IDynamicSendRateLimiter
     {
         /// <summary>
-        /// Gets the current cap.
+        /// Gets the current maximum send bytes per second.
         /// </summary>
         public long MaxSendBytesPerSecond { get; }
 
         /// <summary>
         /// Updates the maximum send bytes per second when materially changed.
         /// </summary>
-        /// <param name="newMaxSendBytesPerSecond">New cap.</param>
+        /// <param name="newMaxSendBytesPerSecond">New maximum send bytes per second.</param>
         public void UpdateMaxSendBytesPerSecond(long newMaxSendBytesPerSecond);
     }
 }

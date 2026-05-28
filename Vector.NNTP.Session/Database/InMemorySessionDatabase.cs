@@ -17,11 +17,22 @@ namespace Vector.NNTP.Session.Database
     /// <param name="logger">Optional logger.</param>
     public sealed partial class InMemorySessionDatabase(ILogger<InMemorySessionDatabase>? logger = null) : ISessionDatabase
     {
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<InMemorySessionDatabase> _logger = logger ?? NullLogger<InMemorySessionDatabase>.Instance;
+
+        /// <summary>
+        /// Sessions dictionary.
+        /// </summary>
         private readonly ConcurrentDictionary<string, SessionContext> _sessions =
             new(StringComparer.Ordinal);
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Tries to add a session to the database.
+        /// </summary>
+        /// <param name="session">The session context.</param>
+        /// <returns><see langword="true"/> when inserted.</returns>
         public bool TryAdd(SessionContext session)
         {
             ArgumentNullException.ThrowIfNull(session);
@@ -35,14 +46,24 @@ namespace Vector.NNTP.Session.Database
             return true;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Tries to get a session from the database.
+        /// </summary>
+        /// <param name="sessionId">The session ID.</param>
+        /// <param name="session">The session context.</param>
+        /// <returns><see langword="true"/> when found.</returns>
         public bool TryGet(string sessionId, out SessionContext session)
         {
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             return _sessions.TryGetValue(sessionId, out session!);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Tries to remove a session from the database.
+        /// </summary>
+        /// <param name="sessionId">The session ID.</param>
+        /// <param name="removed">The removed session context.</param>
+        /// <returns><see langword="true"/> when removed.</returns>
         public bool TryRemove(string sessionId, out SessionContext? removed)
         {
             removed = null;
@@ -57,7 +78,10 @@ namespace Vector.NNTP.Session.Database
             return false;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Takes a snapshot of authenticated sessions.
+        /// </summary>
+        /// <returns>The authenticated sessions.</returns>
         public IReadOnlyCollection<SessionContext> SnapshotAuthenticated()
         {
             List<SessionContext> list = new(_sessions.Count);
@@ -72,7 +96,11 @@ namespace Vector.NNTP.Session.Database
             return list;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Counts authenticated sessions by account key.
+        /// </summary>
+        /// <param name="accountKey">The account key.</param>
+        /// <returns>The count of authenticated sessions.</returns>
         public int CountAuthenticatedByAccountKey(string accountKey)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountKey);
@@ -89,7 +117,11 @@ namespace Vector.NNTP.Session.Database
             return count;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Takes a snapshot of session IDs for an account.
+        /// </summary>
+        /// <param name="accountKey">The account key.</param>
+        /// <returns>The session IDs.</returns>
         public IReadOnlyCollection<string> SnapshotSessionIdsForAccount(string accountKey)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountKey);
@@ -110,7 +142,10 @@ namespace Vector.NNTP.Session.Database
             return ids;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Takes a snapshot of distinct account keys.
+        /// </summary>
+        /// <returns>The distinct account keys.</returns>
         public IReadOnlyCollection<string> SnapshotDistinctAccountKeys()
         {
             HashSet<string> keys = new(StringComparer.Ordinal);

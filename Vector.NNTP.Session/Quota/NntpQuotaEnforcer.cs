@@ -20,11 +20,29 @@ namespace Vector.NNTP.Session.Quota
         INntpRateAllocationCoordinator rateAllocationCoordinator,
         ILogger<NntpQuotaEnforcer> logger)
     {
+        /// <summary>
+        /// Block quota reason code.
+        /// </summary>
         private const string AcctStopReasonBlockQuota = "block_quota";
+        
+        /// <summary>
+        /// Block quota error reason code.
+        /// </summary>
         private const string AcctStopReasonBlockQuotaError = "block_quota_error";
 
+        /// <summary>
+        /// Block quota coordinator.
+        /// </summary>
         private readonly INntpBlockQuotaCoordinator _blockQuotaCoordinator = blockQuotaCoordinator ?? throw new ArgumentNullException(nameof(blockQuotaCoordinator));
+        
+        /// <summary>
+        /// Rate allocation coordinator.
+        /// </summary>
         private readonly INntpRateAllocationCoordinator _rateAllocationCoordinator = rateAllocationCoordinator ?? throw new ArgumentNullException(nameof(rateAllocationCoordinator));
+        
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<NntpQuotaEnforcer> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         /// <summary>

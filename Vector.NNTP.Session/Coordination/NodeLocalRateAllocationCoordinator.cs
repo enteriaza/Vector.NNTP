@@ -21,15 +21,38 @@ namespace Vector.NNTP.Session.Coordination
         IOptionsMonitor<NntpRateAllocationOptions> options,
         ILogger<NodeLocalRateAllocationCoordinator> logger) : INntpRateAllocationCoordinator
     {
+        /// <summary>
+        /// Node-local session rows.
+        /// </summary>
         private readonly ISessionDatabase _sessionDatabase = sessionDatabase ?? throw new ArgumentNullException(nameof(sessionDatabase));
+        
+        /// <summary>
+        /// Refresh cadence options.
+        /// </summary>
         private readonly IOptionsMonitor<NntpRateAllocationOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
+        
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<NodeLocalRateAllocationCoordinator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        
+        /// <summary>
+        /// Refresh state dictionary.
+        /// </summary>
         private readonly Dictionary<string, (long Cap, DateTimeOffset NextRefresh)> _refreshState =
             new(StringComparer.Ordinal);
 
+        /// <summary>
+        /// Refresh lock.
+        /// </summary>
         private readonly object _refreshLock = new();
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Returns the per-session send cap for an account, respecting internal refresh cadence.
+        /// </summary>
+        /// <param name="policy">Authenticated session policy.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Bytes per second for this TCP session's outbound shaper; 0 disables shaping.</returns>
         public Task<long> GetPerSessionSendRateBytesPerSecondAsync(
             NntpSessionPolicy policy,
             CancellationToken cancellationToken)

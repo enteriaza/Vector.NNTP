@@ -12,7 +12,11 @@ namespace Vector.NNTP.Session.Accounts
     /// </remarks>
     public sealed class Blake3AccountKeyNormalizer : IAccountKeyNormalizer
     {
-        /// <inheritdoc />
+        /// <summary>
+        /// Computes the stable account key for coordination (64-char lowercase hex BLAKE3 digest).
+        /// </summary>
+        /// <param name="username">Raw username from authentication.</param>
+        /// <returns>Account key facet for Redis keys.</returns>
         public string ComputeAccountKey(string username)
         {
             return AccountKeyNormalizer.ComputeAccountKey(username);

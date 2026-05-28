@@ -13,9 +13,17 @@ namespace Vector.NNTP.Session.Coordination
     /// <param name="sessionDatabase">Session store.</param>
     public sealed class InMemorySessionCountCoordinator(ISessionDatabase sessionDatabase) : INntpSessionCountCoordinator
     {
+        /// <summary>
+        /// Session database.
+        /// </summary>
         private readonly ISessionDatabase _sessionDatabase = sessionDatabase ?? throw new ArgumentNullException(nameof(sessionDatabase));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the session count for the given username.
+        /// </summary>
+        /// <param name="username">The username to get the session count for.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The session count.</returns>
         public Task<long> GetSessionCountAsync(string username, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);
