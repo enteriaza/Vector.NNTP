@@ -41,6 +41,17 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 return true;
             }
 
+            if (session.Transport.Input.TryRead(out ReadResult pipelined))
+            {
+                // Disallow pipelining across COMPRESS. Buffered bytes would cross the upgrade boundary.
+                session.Transport.Input.AdvanceTo(pipelined.Buffer.Start, pipelined.Buffer.End);
+                if (!pipelined.Buffer.IsEmpty)
+                {
+                    await session.Writer.WriteLineAsync("502 COMPRESS pipelining not permitted", cancellationToken).ConfigureAwait(false);
+                    return false;
+                }
+            }
+
             if (!line.Contains("DEFLATE", StringComparison.OrdinalIgnoreCase))
             {
                 await session.Writer.WriteLineAsync("501 Unknown COMPRESS algorithm", cancellationToken).ConfigureAwait(false);

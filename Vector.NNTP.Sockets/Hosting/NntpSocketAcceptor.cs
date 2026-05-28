@@ -33,6 +33,7 @@ namespace Vector.NNTP.Sockets.Hosting
         private int _activeConnections;
         private readonly ConcurrentDictionary<string, int> _connectionsPerClientIp = new(StringComparer.Ordinal);
         private X509Certificate2? _handshakeCertificate;
+        private readonly ProxyTrustedSource[] _trustedProxySources;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NntpSocketAcceptor"/> class.
@@ -60,6 +61,7 @@ namespace Vector.NNTP.Sockets.Hosting
             _renewalService = renewalService;
             _inFlight = inFlight ?? throw new ArgumentNullException(nameof(inFlight));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _trustedProxySources = ParseTrustedProxySources(_options.Value.ProxyProtocolTrustedSources);
             _handshakeCertificate = _renewalService?.GetCurrentCertificate();
             if (_renewalService is not null)
             {
@@ -94,6 +96,14 @@ namespace Vector.NNTP.Sockets.Hosting
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Runs a listener for the given bind address and port.
+        /// </summary>
+        /// <param name="bindAddress">The bind address.</param>
+        /// <param name="port">The port.</param>
+        /// <param name="implicitTls">Whether implicit TLS is enabled.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the listener stops.</returns>
         private async Task RunListenerAsync(string bindAddress, int port, bool implicitTls, CancellationToken cancellationToken)
         {
             TcpListener listener = new(IPAddress.Parse(NormalizeBind(bindAddress)), port);
@@ -114,6 +124,11 @@ namespace Vector.NNTP.Sockets.Hosting
             }
         }
 
+        /// <summary>
+        /// Tries to acquire a connection slot for the given client endpoint.
+        /// </summary>
+        /// <param name="clientEndPoint">The client endpoint.</param>
+        /// <returns>True if a slot was acquired, false otherwise.</returns>
         private bool TryAcquireConnectionSlot(IPEndPoint clientEndPoint)
         {
             NntpServerOptions opts = _options.Value;
@@ -138,6 +153,10 @@ namespace Vector.NNTP.Sockets.Hosting
             return true;
         }
 
+        /// <summary>
+        /// Releases a connection slot for the given client endpoint.
+        /// </summary>
+        /// <param name="clientEndPoint">The client endpoint.</param>
         private void ReleaseConnectionSlot(IPEndPoint clientEndPoint)
         {
             _ = Interlocked.Decrement(ref _activeConnections);
@@ -147,6 +166,12 @@ namespace Vector.NNTP.Sockets.Hosting
             }
         }
 
+        /// <summary>
+        /// Tries to increment the connection count for the given client endpoint.
+        /// </summary>
+        /// <param name="ipKey">The client endpoint key.</param>
+        /// <param name="limit">The limit.</param>
+        /// <returns>True if the count was incremented, false otherwise.</returns>
         private bool TryIncrementPerIp(string ipKey, int limit)
         {
             while (true)
@@ -170,6 +195,10 @@ namespace Vector.NNTP.Sockets.Hosting
             }
         }
 
+        /// <summary>
+        /// Decrements the connection count for the given client endpoint.
+        /// </summary>
+        /// <param name="ipKey">The client endpoint key.</param>
         private void DecrementPerIp(string ipKey)
         {
             while (_connectionsPerClientIp.TryGetValue(ipKey, out int current))
@@ -189,6 +218,13 @@ namespace Vector.NNTP.Sockets.Hosting
             }
         }
 
+        /// <summary>
+        /// Handles a connection for the given socket.
+        /// </summary>
+        /// <param name="socket">The socket.</param>
+        /// <param name="implicitTls">Whether implicit TLS is enabled.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the connection is handled.</returns>
         private async Task HandleConnectionAsync(Socket socket, bool implicitTls, CancellationToken cancellationToken)
         {
             _inFlight.Enter();
@@ -198,12 +234,25 @@ namespace Vector.NNTP.Sockets.Hosting
             {
                 IPEndPoint tcpPeer = clientEndPoint;
                 string sessionId = Guid.NewGuid().ToString("N");
-                string? proxyLine = null;
+                Stream baseStream = new NetworkStream(socket, ownsSocket: false);
+                ReadOnlyMemory<byte> replayPrefix = ReadOnlyMemory<byte>.Empty;
 
                 if (_options.Value.EnableProxyProtocol)
                 {
-                    proxyLine = await ReadProxyLineAsync(socket, cancellationToken).ConfigureAwait(false);
-                    (clientEndPoint, _) = ProxyPreambleResolver.Resolve(tcpPeer, proxyLine);
+                    (IPEndPoint proxiedClient, ReadOnlyMemory<byte> remainder, bool consumedProxy) =
+                        await ReadProxyPreambleAsync(baseStream, tcpPeer, cancellationToken).ConfigureAwait(false);
+                    if (consumedProxy)
+                    {
+                        if (_options.Value.ProxyProtocolStrictTrustedSourcesOnly && !IsTrustedProxyHop(tcpPeer.Address))
+                        {
+                            socket.Dispose();
+                            return;
+                        }
+
+                        clientEndPoint = proxiedClient;
+                    }
+
+                    replayPrefix = remainder;
                 }
 
                 if (!TryAcquireConnectionSlot(clientEndPoint))
@@ -226,8 +275,10 @@ namespace Vector.NNTP.Sockets.Hosting
                     }
 
                     NntpConnectionContext context = new(sessionId, clientEndPoint, tcpPeer, _profile.Role);
-                    NetworkStream networkStream = new(socket, ownsSocket: false);
-                    SslStream ssl = new(networkStream, leaveInnerStreamOpen: false);
+                    Stream tlsStream = replayPrefix.Length > 0
+                        ? new PrefixedReadStream(baseStream, replayPrefix, leaveInnerOpen: false)
+                        : baseStream;
+                    SslStream ssl = new(tlsStream, leaveInnerStreamOpen: false);
                     await NntpTlsHandshake.AuthenticateServerAsync(ssl, cert, cancellationToken).ConfigureAwait(false);
                     NntpSocketTransport transport = new(socket, ssl);
                     await _runner.RunAsync(transport, context, tlsAlreadyActive: true, cancellationToken).ConfigureAwait(false);
@@ -235,7 +286,10 @@ namespace Vector.NNTP.Sockets.Hosting
                 else
                 {
                     NntpConnectionContext context = new(sessionId, clientEndPoint, tcpPeer, _profile.Role);
-                    NntpSocketTransport transport = new(socket);
+                    Stream sessionStream = replayPrefix.Length > 0
+                        ? new PrefixedReadStream(baseStream, replayPrefix, leaveInnerOpen: false)
+                        : baseStream;
+                    NntpSocketTransport transport = new(socket, sessionStream);
                     await _runner.RunAsync(transport, context, tlsAlreadyActive: false, cancellationToken).ConfigureAwait(false);
                 }
             }
@@ -254,43 +308,110 @@ namespace Vector.NNTP.Sockets.Hosting
             }
         }
 
-        private static async Task<string?> ReadProxyLineAsync(Socket socket, CancellationToken cancellationToken)
+        /// <summary>
+        /// Reads and parses a PROXY protocol preamble (v1/v2) from the stream.
+        /// </summary>
+        /// <param name="stream">Underlying stream.</param>
+        /// <param name="tcpPeer">TCP peer endpoint.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Proxied client, remainder bytes already read, and whether a preamble was consumed.</returns>
+        private static async Task<(IPEndPoint ClientEndPoint, ReadOnlyMemory<byte> Remainder, bool ConsumedProxy)> ReadProxyPreambleAsync(
+            Stream stream,
+            IPEndPoint tcpPeer,
+            CancellationToken cancellationToken)
         {
-            using NetworkStream stream = new(socket, ownsSocket: false);
-            byte[] buffer = new byte[512];
-            int total = 0;
-            while (total < buffer.Length)
+            byte[] rented = ArrayPool<byte>.Shared.Rent(ProxyProtocolPreamble.MaxV2FrameLength + 32);
+            try
             {
-                int read = await stream.ReadAsync(buffer.AsMemory(total, buffer.Length - total), cancellationToken).ConfigureAwait(false);
-                if (read == 0)
+                int total = 0;
+                int max = rented.Length;
+                while (total < max)
                 {
-                    break;
-                }
-
-                total += read;
-                int crlf = Array.IndexOf(buffer, (byte)'\n', 0, total);
-                if (crlf >= 0)
-                {
-                    int end = crlf;
-                    if (end > 0 && buffer[end - 1] == (byte)'\r')
+                    int read = await stream.ReadAsync(rented.AsMemory(total, max - total), cancellationToken).ConfigureAwait(false);
+                    if (read == 0)
                     {
-                        end--;
+                        break;
                     }
 
-                    return Encoding.ASCII.GetString(buffer, 0, end);
+                    total += read;
+
+                    if (ProxyProtocolPreamble.TryParse(rented, total, tcpPeer, out int consumed, out IPEndPoint client))
+                    {
+                        if (consumed <= 0)
+                        {
+                            return (tcpPeer, rented.AsMemory(0, total).ToArray(), false);
+                        }
+
+                        ReadOnlyMemory<byte> remainder = consumed < total
+                            ? rented.AsMemory(consumed, total - consumed).ToArray()
+                            : ReadOnlyMemory<byte>.Empty;
+                        return (client, remainder, consumed > 0);
+                    }
+
+                    if (total >= ProxyProtocolPreamble.MaxV1LineBytes && Array.IndexOf(rented, (byte)'\n', 0, total) < 0)
+                    {
+                        return (tcpPeer, rented.AsMemory(0, total).ToArray(), false);
+                    }
+                }
+
+                return (tcpPeer, rented.AsMemory(0, total).ToArray(), false);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+
+        private static ProxyTrustedSource[] ParseTrustedProxySources(string[] sources)
+        {
+            if (sources is null || sources.Length == 0)
+            {
+                return Array.Empty<ProxyTrustedSource>();
+            }
+
+            List<ProxyTrustedSource> parsed = new();
+            foreach (string entry in sources)
+            {
+                if (ProxyTrustedSource.TryParse(entry, out ProxyTrustedSource source))
+                {
+                    parsed.Add(source);
                 }
             }
 
-            return total > 0 ? Encoding.ASCII.GetString(buffer, 0, total) : null;
+            return parsed.ToArray();
         }
 
+        private bool IsTrustedProxyHop(IPAddress address)
+        {
+            if (_trustedProxySources.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (ProxyTrustedSource src in _trustedProxySources)
+            {
+                if (src.Contains(address))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Handles the certificate changed event.
+        /// </summary>
+        /// <param name="certificate">The certificate.</param>
         private void OnCertificateChanged(X509Certificate2 certificate)
         {
             _ = Interlocked.Exchange(ref _handshakeCertificate, certificate);
             LogTlsCertificateUpdated(certificate.Thumbprint);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Disposes the acceptor.
+        /// </summary>
         public void Dispose()
         {
             if (_renewalService is not null)
@@ -299,6 +420,11 @@ namespace Vector.NNTP.Sockets.Hosting
             }
         }
 
+        /// <summary>
+        /// Normalizes the bind address.
+        /// </summary>
+        /// <param name="address">The address.</param>
+        /// <returns>The normalized address.</returns>
         private static string NormalizeBind(string address)
         {
             return string.IsNullOrWhiteSpace(address) || address == "*" ? "0.0.0.0" : address;

@@ -134,6 +134,13 @@ namespace Vector.NNTP.Sockets.Authentication
             await session.Writer.WriteLineAsync("503 SASL continuation not supported", cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Handles a USER command line.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="line">Full command line.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask HandleUserAsync(NntpSession session, string line, CancellationToken cancellationToken)
         {
             string? user = ExtractLastToken(line.AsSpan());
@@ -149,6 +156,13 @@ namespace Vector.NNTP.Sockets.Authentication
             await session.Writer.WriteLineAsync("381 Password required", cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Handles a PASS command line.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="line">Full command line.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask HandlePassAsync(NntpSession session, string line, CancellationToken cancellationToken)
         {
             if (session.State.AuthenticationState != Session.AuthenticationState.AuthInfoUserPending)
@@ -174,6 +188,13 @@ namespace Vector.NNTP.Sockets.Authentication
             }
         }
 
+        /// <summary>
+        /// Handles a SASL command line.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="line">Full command line.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask HandleSaslAsync(NntpSession session, string line, CancellationToken cancellationToken)
         {
             string? mech = ExtractMechanism(line.AsSpan());
@@ -218,6 +239,13 @@ namespace Vector.NNTP.Sockets.Authentication
             await session.Writer.WriteLineAsync("503 Mechanism not supported", cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Handles a PLAIN SASL mechanism.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="initial">Initial response.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask HandlePlainAsync(NntpSession session, string? initial, CancellationToken cancellationToken)
         {
             if (string.IsNullOrEmpty(initial))
@@ -245,6 +273,13 @@ namespace Vector.NNTP.Sockets.Authentication
             await WriteAuthResultAsync(session, result, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Handles a LOGIN SASL mechanism continuation.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="payload">Base64 or plain continuation.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask HandleLoginContinuationAsync(NntpSession session, string payload, CancellationToken cancellationToken)
         {
             string value = DecodeMaybeBase64(payload);
@@ -270,6 +305,14 @@ namespace Vector.NNTP.Sockets.Authentication
             await WriteAuthResultAsync(session, result, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Handles a SCRAM SASL mechanism continuation.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="scramState">SCRAM state.</param>
+        /// <param name="payload">Base64 or plain continuation.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask HandleScramFinishAsync(
             NntpSession session,
             ScramSaslState scramState,
@@ -318,6 +361,14 @@ namespace Vector.NNTP.Sockets.Authentication
             await ApplyPostAuthenticationEnforcementAsync(session, policy, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Handles a SCRAM SASL mechanism start.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="mech">SCRAM mechanism.</param>
+        /// <param name="initial">Initial response.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask HandleScramStartAsync(NntpSession session, string mech, string? initial, CancellationToken cancellationToken)
         {
             if (_scramStore is null || string.IsNullOrEmpty(initial))
@@ -341,6 +392,14 @@ namespace Vector.NNTP.Sockets.Authentication
             await session.Writer.WriteLineAsync($"383 {serverFirst}", cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Handles a CRAM-MD5 SASL mechanism response.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="payload">Base64 or plain response.</param>
+        /// <param name="challenge">Server challenge.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask HandleCramResponseAsync(NntpSession session, string payload, string challenge, CancellationToken cancellationToken)
         {
             if (_cramStore is null)
@@ -409,6 +468,13 @@ namespace Vector.NNTP.Sockets.Authentication
             }
         }
 
+        /// <summary>
+        /// Writes the authentication result to the session.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="result">Authentication result.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask WriteAuthResultAsync(NntpSession session, NntpAuthResult result, CancellationToken cancellationToken)
         {
             switch (result.Status)
@@ -443,6 +509,13 @@ namespace Vector.NNTP.Sockets.Authentication
             }
         }
 
+        /// <summary>
+        /// Completes admission and authentication.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="policy">Session policy.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the admission is completed.</returns>
         private async ValueTask<bool> CompleteAdmissionAndAuthenticateAsync(
             NntpSession session,
             NntpSessionPolicy policy,
@@ -480,6 +553,13 @@ namespace Vector.NNTP.Sockets.Authentication
             return true;
         }
 
+        /// <summary>
+        /// Applies post-authentication enforcement.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="policy">Session policy.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the enforcement is applied.</returns>
         private async ValueTask ApplyPostAuthenticationEnforcementAsync(NntpSession session, NntpSessionPolicy policy, CancellationToken cancellationToken)
         {
             if (policy.AccountType == NntpAccountType.ByteLimited && policy.ByteLimit > 0)
@@ -496,6 +576,13 @@ namespace Vector.NNTP.Sockets.Authentication
             }
         }
 
+        /// <summary>
+        /// Writes the admission rejected response to the session.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="result">Admission result.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the response is sent.</returns>
         private async ValueTask WriteAdmissionRejectedAsync(NntpSession session, NntpSessionAdmissionResult result, CancellationToken cancellationToken)
         {
             string line = result switch
@@ -511,6 +598,11 @@ namespace Vector.NNTP.Sockets.Authentication
             await session.Writer.WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Tries to begin session authentication.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="phase">Authentication phase.</param>
         private void TryBeginSessionAuthenticating(NntpSession session, AuthenticatingPhase phase)
         {
             if (_sessionDatabase.TryGet(session.Connection.SessionId, out SessionContext? ctx))
@@ -519,6 +611,10 @@ namespace Vector.NNTP.Sockets.Authentication
             }
         }
 
+        /// <summary>
+        /// Rolls back session authentication.
+        /// </summary>
+        /// <param name="session">Active session.</param>
         private void RollbackSessionAuthenticating(NntpSession session)
         {
             if (_sessionDatabase.TryGet(session.Connection.SessionId, out SessionContext? ctx))
@@ -527,6 +623,10 @@ namespace Vector.NNTP.Sockets.Authentication
             }
         }
 
+        /// <summary>
+        /// Resets session authentication state.
+        /// </summary>
+        /// <param name="session">Active session.</param>
         private void ResetAuth(NntpSession session)
         {
             session.State.AuthenticationState = Session.AuthenticationState.None;
@@ -535,15 +635,35 @@ namespace Vector.NNTP.Sockets.Authentication
             session.State.SaslServerState = null;
         }
 
+        /// <summary>
+        /// Login SASL state.
+        /// </summary>
+        /// <param name="Username">Username.</param>
         private sealed record LoginSaslState(string? Username);
 
+        /// <summary>
+        /// SCRAM SASL state.
+        /// </summary>
+        /// <param name="Username">Username.</param>
+        /// <param name="Mechanism">Mechanism.</param>
         private sealed record ScramSaslState(string Username, ScramMechanism Mechanism);
 
+        /// <summary>
+        /// Checks if a line contains a token.
+        /// </summary>
+        /// <param name="line">Line to check.</param>
+        /// <param name="token">Token to check for.</param>
+        /// <returns>True if the line contains the token, false otherwise.</returns>
         private static bool ContainsToken(string line, string token)
         {
             return line.Contains(token, StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Extracts the last token from a line.
+        /// </summary>
+        /// <param name="line">Line to extract the last token from.</param>
+        /// <returns>The last token, or null if no token is found.</returns>
         private static string? ExtractLastToken(ReadOnlySpan<char> line)
         {
             int i = line.Length - 1;
@@ -561,6 +681,11 @@ namespace Vector.NNTP.Sockets.Authentication
             return i < end ? line[(i + 1)..(end + 1)].ToString() : null;
         }
 
+        /// <summary>
+        /// Extracts the mechanism from a line.
+        /// </summary>
+        /// <param name="line">Line to extract the mechanism from.</param>
+        /// <returns>The mechanism, or null if no mechanism is found.</returns>
         private static string? ExtractMechanism(ReadOnlySpan<char> line)
         {
             int sasl = line.IndexOf("SASL".AsSpan(), StringComparison.OrdinalIgnoreCase);
@@ -574,6 +699,11 @@ namespace Vector.NNTP.Sockets.Authentication
             return space < 0 ? rest.ToString() : rest[..space].ToString();
         }
 
+        /// <summary>
+        /// Extracts the initial response from a line.
+        /// </summary>
+        /// <param name="line">Line to extract the initial response from.</param>
+        /// <returns>The initial response, or null if no initial response is found.</returns>
         private static string? ExtractInitialResponse(ReadOnlySpan<char> line)
         {
             int sasl = line.IndexOf("SASL".AsSpan(), StringComparison.OrdinalIgnoreCase);
@@ -587,6 +717,11 @@ namespace Vector.NNTP.Sockets.Authentication
             return space < 0 ? null : rest[(space + 1)..].Trim().ToString();
         }
 
+        /// <summary>
+        /// Decodes a base64-encoded string.
+        /// </summary>
+        /// <param name="value">String to decode.</param>
+        /// <returns>The decoded string.</returns>
         private static string DecodeMaybeBase64(string value)
         {
             try

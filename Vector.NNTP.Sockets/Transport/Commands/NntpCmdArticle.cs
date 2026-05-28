@@ -104,6 +104,12 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             return true;
         }
 
+        /// <summary>
+        /// Checks if an article number is out of range.
+        /// </summary>
+        /// <param name="session">The session.</param>
+        /// <param name="articleNumber">The article number.</param>
+        /// <returns>True if the article number is out of range, false otherwise.</returns>
         private static bool IsOutOfRange(NntpSession session, long articleNumber)
         {
             return (session.State.SelectedGroupLowWater is long low && articleNumber < low) || (session.State.SelectedGroupHighWater is long high && articleNumber > high);

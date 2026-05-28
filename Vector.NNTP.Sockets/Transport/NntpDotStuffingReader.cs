@@ -11,7 +11,7 @@ namespace Vector.NNTP.Sockets.Transport
     internal static class NntpDotStuffingReader
     {
         /// <summary>
-        /// Reads a dot-stuffed body into a pooled buffer.
+        /// Reads a dot-stuffed body into a byte array.
         /// </summary>
         /// <param name="lineReader">Line reader for the session.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
@@ -21,24 +21,25 @@ namespace Vector.NNTP.Sockets.Transport
             using MemoryStream ms = new();
             while (true)
             {
-                string? line = await lineReader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                if (line is null)
+                NntpByteLineReadResult line = await lineReader.ReadLineBytesAsync(cancellationToken).ConfigureAwait(false);
+                if (line.IsCompleted)
                 {
                     break;
                 }
 
-                if (line == ".")
+                if (line.IsDotTerminator)
                 {
                     break;
                 }
 
-                if (line.StartsWith("..", StringComparison.Ordinal))
+                ReadOnlyMemory<byte> payload = line.Line;
+                if (line.IsDotStuffed)
                 {
-                    line = line[1..];
+                    payload = payload.Slice(1);
                 }
 
-                byte[] bytes = Encoding.ASCII.GetBytes(line);
-                ms.Write(bytes, 0, bytes.Length);
+                ms.Write(payload.Span);
+
                 ms.WriteByte((byte)'\r');
                 ms.WriteByte((byte)'\n');
             }

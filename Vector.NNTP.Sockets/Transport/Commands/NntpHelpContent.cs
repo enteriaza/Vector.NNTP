@@ -26,6 +26,10 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 : ReaderHelpLines;
         }
 
+        /// <summary>
+        /// Gets the help text lines for a transit host.
+        /// </summary>
+        /// <returns>The help text lines.</returns>
         private static readonly string[] TransitHelpLines =
         [
             "  QUIT",
@@ -42,6 +46,10 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             "  TAKETHIS <message-id>",
         ];
 
+        /// <summary>
+        /// Gets the help text lines for a reader host.
+        /// </summary>
+        /// <returns>The help text lines.</returns>
         private static readonly string[] ReaderHelpLines =
         [
             "  QUIT",

@@ -43,6 +43,11 @@ namespace Vector.NNTP.Sockets.Hosting
                 .AddNntpSocketsDevelopmentStubs();
         }
 
+        /// <summary>
+        /// Adds the core NNTP socket services.
+        /// </summary>
+        /// <param name="services">The service collection.</param>
+        /// <returns>The service collection.</returns>
         private static IServiceCollection AddNntpSocketsCore(this IServiceCollection services)
         {
             _ = services.AddOptions<NntpServerOptions>()

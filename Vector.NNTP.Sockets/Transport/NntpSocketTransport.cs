@@ -16,7 +16,8 @@ namespace Vector.NNTP.Sockets.Transport
     public sealed class NntpSocketTransport : INntpSessionTransport
     {
         private Stream _stream;
-        private NntpStreamPipeBridge? _bridge;
+        private PipeReader? _input;
+        private PipeWriter? _output;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NntpSocketTransport"/> class over a cleartext connection.
@@ -26,19 +27,22 @@ namespace Vector.NNTP.Sockets.Transport
         {
             Socket = socket ?? throw new ArgumentNullException(nameof(socket));
             _stream = CreateOutboundRateLimitStream(new NetworkStream(socket, ownsSocket: false));
-            _bridge = new NntpStreamPipeBridge(_stream);
+            RebindPipes(_stream);
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="NntpSocketTransport"/> class over an existing encrypted stream.
+        /// Initializes a new instance of the <see cref="NntpSocketTransport"/> class over an already established stream.
         /// </summary>
         /// <param name="socket">Accepted TCP socket.</param>
-        /// <param name="encryptedStream">TLS-authenticated stream (for example <see cref="SslStream"/>).</param>
-        public NntpSocketTransport(Socket socket, Stream encryptedStream)
+        /// <param name="preboundStream">
+        /// Stream already bound to the desired transport mode (for example cleartext with a consumed preamble, or an
+        /// authenticated <see cref="SslStream"/>).
+        /// </param>
+        public NntpSocketTransport(Socket socket, Stream preboundStream)
         {
             Socket = socket ?? throw new ArgumentNullException(nameof(socket));
-            _stream = CreateOutboundRateLimitStream(encryptedStream ?? throw new ArgumentNullException(nameof(encryptedStream)));
-            _bridge = new NntpStreamPipeBridge(_stream);
+            _stream = CreateOutboundRateLimitStream(preboundStream ?? throw new ArgumentNullException(nameof(preboundStream)));
+            RebindPipes(_stream);
         }
 
         /// <summary>
@@ -49,12 +53,12 @@ namespace Vector.NNTP.Sockets.Transport
         /// <summary>
         /// Gets the input pipe reader for the session command loop.
         /// </summary>
-        public PipeReader Input => _bridge!.Input;
+        public PipeReader Input => _input!;
 
         /// <summary>
         /// Gets the output pipe writer for the session command loop.
         /// </summary>
-        public PipeWriter Output => _bridge!.Output;
+        public PipeWriter Output => _output!;
 
         /// <summary>
         /// Upgrades a cleartext session to TLS after STARTTLS (RFC 4642).
@@ -71,16 +75,20 @@ namespace Vector.NNTP.Sockets.Transport
                 throw new InvalidOperationException("Transport is already TLS-protected.");
             }
 
-            await _bridge!.DisposeAsync().ConfigureAwait(false);
-            _bridge = null;
+            await CompletePipesAsync().ConfigureAwait(false);
 
             SslStream ssl = new(_stream, leaveInnerStreamOpen: false);
             await NntpTlsHandshake.AuthenticateServerAsync(ssl, serverCertificate, cancellationToken).ConfigureAwait(false);
             _stream = ssl;
-            _bridge = new NntpStreamPipeBridge(_stream);
+            RebindPipes(_stream);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Activates RFC 8054 COMPRESS DEFLATE on the transport after the 206 response is sent.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when compression is active.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when compression is already active.</exception>
         public async ValueTask ActivateDeflateCompressionAsync(CancellationToken cancellationToken)
         {
             _ = cancellationToken;
@@ -89,10 +97,9 @@ namespace Vector.NNTP.Sockets.Transport
                 throw new InvalidOperationException("Transport compression is already active.");
             }
 
-            await _bridge!.DisposeAsync().ConfigureAwait(false);
-            _bridge = null;
+            await CompletePipesAsync().ConfigureAwait(false);
             _stream = new NntpZLibSessionStream(_stream);
-            _bridge = new NntpStreamPipeBridge(_stream);
+            RebindPipes(_stream);
         }
 
         /// <summary>
@@ -118,7 +125,68 @@ namespace Vector.NNTP.Sockets.Transport
             return new DynamicSendRateLimitedStream(inner, initialMaxSendBytesPerSecond: 0, leaveInnerOpen: false);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Rebinds the transport pipes to the current underlying stream.
+        /// </summary>
+        /// <param name="stream">Underlying stream.</param>
+        private void RebindPipes(Stream stream)
+        {
+            StreamPipeReaderOptions readerOptions = new(leaveOpen: true);
+            StreamPipeWriterOptions writerOptions = new(leaveOpen: true);
+            _input = PipeReader.Create(stream, readerOptions);
+            _output = PipeWriter.Create(stream, writerOptions);
+        }
+
+        /// <summary>
+        /// Completes the current pipe reader and writer, if any.
+        /// </summary>
+        /// <returns>A task that completes when the pipes are completed.</returns>
+        private async Task CompletePipesAsync()
+        {
+            if (_input is not null)
+            {
+                _input.CancelPendingRead();
+            }
+
+            if (_output is not null)
+            {
+                _output.CancelPendingFlush();
+            }
+
+            if (_output is not null)
+            {
+                try
+                {
+                    await _output.CompleteAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Best-effort completion; the underlying stream may already be faulted/closed.
+                }
+
+                _output = null;
+            }
+
+            if (_input is not null)
+            {
+                try
+                {
+                    await _input.CompleteAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Best-effort completion; the underlying stream may already be faulted/closed.
+                }
+
+                _input = null;
+            }
+        }
+
+        /// <summary>
+        /// Disposes the transport.
+        /// </summary>
+        /// <returns>A task that completes when the transport is disposed.</returns>
+        /// <exception cref="Exception">Thrown when an error occurs while disposing the transport.</exception>
         public async ValueTask DisposeAsync()
         {
             if (Socket.Connected)
@@ -133,11 +201,7 @@ namespace Vector.NNTP.Sockets.Transport
                 }
             }
 
-            if (_bridge is not null)
-            {
-                await _bridge.DisposeAsync().ConfigureAwait(false);
-                _bridge = null;
-            }
+            await CompletePipesAsync().ConfigureAwait(false);
 
             await _stream.DisposeAsync().ConfigureAwait(false);
             Socket.Dispose();

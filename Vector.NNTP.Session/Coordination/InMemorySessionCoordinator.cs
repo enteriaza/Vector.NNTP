@@ -15,7 +15,7 @@ namespace Vector.NNTP.Session.Coordination
         /// Sessions dictionary.
         /// </summary>
         private readonly ConcurrentDictionary<string, byte> _sessions = new(StringComparer.Ordinal);
-        
+
         /// <summary>
         /// Account IPs dictionary.
         /// </summary>

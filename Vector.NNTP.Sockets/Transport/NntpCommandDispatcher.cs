@@ -52,6 +52,22 @@ namespace Vector.NNTP.Sockets.Transport
             string line,
             CancellationToken cancellationToken)
         {
+            return await DispatchBytesAsync(session, Encoding.ASCII.GetBytes(line), cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Dispatches a command line to the appropriate handler.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="lineBytes">Command line bytes without CRLF.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns><see langword="true"/> when the session should continue; false when quitting.</returns>
+        internal async ValueTask<bool> DispatchBytesAsync(
+            NntpSession session,
+            ReadOnlyMemory<byte> lineBytes,
+            CancellationToken cancellationToken)
+        {
+            string line = Encoding.ASCII.GetString(lineBytes.Span);
             if (session.State.AuthenticationState == Session.AuthenticationState.SaslInProgress &&
                 !line.StartsWith("AUTHINFO", StringComparison.OrdinalIgnoreCase))
             {
@@ -64,7 +80,7 @@ namespace Vector.NNTP.Sockets.Transport
                 return !session.State.QuitRequested;
             }
 
-            NntpKnownVerb verb = NntpCommandVerb.Classify(line.AsSpan());
+            NntpKnownVerb verb = NntpCommandVerbBytes.Classify(lineBytes.Span);
             if (verb == NntpKnownVerb.Unknown)
             {
                 LogUnknownCommand(RedactLine(line));
@@ -143,12 +159,11 @@ namespace Vector.NNTP.Sockets.Transport
                         ct => ActivateCompressionAsync(session, ct),
                         cancellationToken).ConfigureAwait(false);
                     break;
-                case NntpKnownVerb.Newnews:
-                    return await NntpCmdNewnews.DispatchAsync(session, cancellationToken).ConfigureAwait(false);
                 case NntpKnownVerb.Newgroups:
-                    return await NntpCmdNewgroups.DispatchAsync(session, cancellationToken).ConfigureAwait(false);
+                case NntpKnownVerb.Newnews:
                 case NntpKnownVerb.Slave:
-                    return await NntpCmdSlave.DispatchAsync(session, cancellationToken).ConfigureAwait(false);
+                    await NntpReaderErrors.WriteServiceUnavailable503(session, cancellationToken).ConfigureAwait(false);
+                    break;
                 case NntpKnownVerb.Unknown:
                     break;
                 default:
@@ -160,12 +175,23 @@ namespace Vector.NNTP.Sockets.Transport
             return !session.State.QuitRequested;
         }
 
+        /// <summary>
+        /// Activates compression on the session transport.
+        /// </summary>
+        /// <param name="session">The session.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the compression is activated.</returns>
         private static async ValueTask ActivateCompressionAsync(NntpSession session, CancellationToken cancellationToken)
         {
             await session.Transport.ActivateDeflateCompressionAsync(cancellationToken).ConfigureAwait(false);
             session.RebindTransportIo();
         }
 
+        /// <summary>
+        /// Redacts sensitive information from a command line.
+        /// </summary>
+        /// <param name="line">The command line to redact.</param>
+        /// <returns>The redacted command line.</returns>
         private static string RedactLine(string line)
         {
             return line.Contains("PASS", StringComparison.OrdinalIgnoreCase) ||

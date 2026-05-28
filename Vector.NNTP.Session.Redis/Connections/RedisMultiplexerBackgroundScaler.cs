@@ -12,10 +12,12 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// Pool to scale.
         /// </summary>
         private readonly RedisMultiplexerPool _pool;
+
         /// <summary>
         /// Coordination options.
         /// </summary>
         private readonly IOptions<NntpSessionCoordinationOptions> _options;
+
         /// <summary>
         /// Logger.
         /// </summary>

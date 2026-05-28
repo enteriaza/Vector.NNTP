@@ -24,7 +24,7 @@ namespace Vector.NNTP.Session.Quota
         /// Block quota reason code.
         /// </summary>
         private const string AcctStopReasonBlockQuota = "block_quota";
-        
+
         /// <summary>
         /// Block quota error reason code.
         /// </summary>
@@ -34,12 +34,12 @@ namespace Vector.NNTP.Session.Quota
         /// Block quota coordinator.
         /// </summary>
         private readonly INntpBlockQuotaCoordinator _blockQuotaCoordinator = blockQuotaCoordinator ?? throw new ArgumentNullException(nameof(blockQuotaCoordinator));
-        
+
         /// <summary>
         /// Rate allocation coordinator.
         /// </summary>
         private readonly INntpRateAllocationCoordinator _rateAllocationCoordinator = rateAllocationCoordinator ?? throw new ArgumentNullException(nameof(rateAllocationCoordinator));
-        
+
         /// <summary>
         /// Logger.
         /// </summary>

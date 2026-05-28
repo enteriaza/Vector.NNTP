@@ -12,28 +12,53 @@ namespace Vector.NNTP.Sockets.HostProfile
     /// </summary>
     public sealed class NntpTransitHostProfile : INntpHostProfile
     {
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the host role.
+        /// </summary>
+        /// <returns>The host role.</returns>
         public NntpHostRole Role => NntpHostRole.Transit;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether reader commands are allowed.
+        /// </summary>
+        /// <returns>A value indicating whether reader commands are allowed.</returns>
         public bool AllowsReaderCommands => false;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether authentication is allowed.
+        /// </summary>
+        /// <returns>A value indicating whether authentication is allowed.</returns>
         public bool AllowsAuthentication => true;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether streaming commands are allowed.
+        /// </summary>
+        /// <returns>A value indicating whether streaming commands are allowed.</returns>
         public bool AllowsStreamingCommands => true;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether posting is allowed.
+        /// </summary>
+        /// <returns>A value indicating whether posting is allowed.</returns>
         public bool AdvertisePost => false;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether mode reader is allowed.
+        /// </summary>
+        /// <returns>A value indicating whether mode reader is allowed.</returns>
         public bool AdvertiseModeReader => false;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether mode stream is allowed.
+        /// </summary>
+        /// <returns>A value indicating whether mode stream is allowed.</returns>
         public bool AdvertiseModeStream => true;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Appends the capabilities to the writer.
+        /// </summary>
+        /// <param name="writer">The writer.</param>
+        /// <param name="session">The session.</param>
         public void AppendCapabilities(NntpCapabilitiesWriter writer, Session.NntpSession session)
         {
             ArgumentNullException.ThrowIfNull(writer);

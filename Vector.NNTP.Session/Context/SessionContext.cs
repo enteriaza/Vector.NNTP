@@ -19,17 +19,17 @@ namespace Vector.NNTP.Session.Context
         /// Authentication state.
         /// </summary>
         private int _authenticationState;
-        
+
         /// <summary>
         /// Received bytes.
         /// </summary>
         private long _rxBytes;
-        
+
         /// <summary>
         /// Sent bytes.
         /// </summary>
         private long _txBytes;
-        
+
         /// <summary>
         /// Last activity timestamp.
         /// </summary>

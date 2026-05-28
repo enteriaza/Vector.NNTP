@@ -14,7 +14,6 @@ namespace Vector.NNTP.Session.Coordination
         /// <summary>
         /// Log an information message when the account rate is rebalanced.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
         /// <param name="accountKey">The account key.</param>
         /// <param name="observedSessionCount">The observed session count.</param>
         /// <param name="perSessionBytesPerSecond">The per session bytes per second.</param>
@@ -32,7 +31,6 @@ namespace Vector.NNTP.Session.Coordination
         /// <summary>
         /// Log a debug message when the account rate rebalance is skipped.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
         /// <param name="accountKey">The account key.</param>
         /// <param name="nextRefreshInMs">The next refresh in milliseconds.</param>
         [LoggerMessage(

@@ -19,17 +19,22 @@ namespace Vector.NNTP.Session.Utilities
         /// Factory on cache miss.
         /// </summary>
         private readonly Func<CancellationToken, Task<T>> _factory;
-        
+
         /// <summary>
         /// TTL in ticks.
         /// </summary>
         private readonly long _ttlTicks;
-        
+
         /// <summary>
         /// Expires at ticks.
         /// </summary>
         private long _expiresAtTicks;
-        
+
+        /// <summary>
+        /// Indicates whether a cached value is present.
+        /// </summary>
+        private int _hasValue;
+
         /// <summary>
         /// Cached value.
         /// </summary>

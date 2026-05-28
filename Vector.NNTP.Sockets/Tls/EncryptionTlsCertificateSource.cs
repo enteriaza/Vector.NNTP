@@ -18,7 +18,11 @@ namespace Vector.NNTP.Sockets.Tls
     {
         private readonly CertificateRenewalService _renewalService = renewalService ?? throw new ArgumentNullException(nameof(renewalService));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the server certificate for SslStream authentication.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Certificate instance or null when TLS is not configured.</returns>
         public ValueTask<System.Security.Cryptography.X509Certificates.X509Certificate2?> GetServerCertificateAsync(
             CancellationToken cancellationToken)
         {

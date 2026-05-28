@@ -30,19 +30,34 @@ namespace Vector.NNTP.Sockets.Transport
             this.leaveInnerOpen = leaveInnerOpen;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether the stream can read.
+        /// </summary>
+        /// <returns>True if the stream can read, false otherwise.</returns>
         public override bool CanRead => inner.CanRead;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether the stream can seek.
+        /// </summary>
+        /// <returns>True if the stream can seek, false otherwise.</returns>
         public override bool CanSeek => false;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether the stream can write.
+        /// </summary>
+        /// <returns>True if the stream can write, false otherwise.</returns>
         public override bool CanWrite => inner.CanWrite;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the length of the stream.
+        /// </summary>
+        /// <returns>The length of the stream.</returns>
         public override long Length => throw new NotSupportedException();
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the position of the stream.
+        /// </summary>
+        /// <returns>The position of the stream.</returns>
         public override long Position
         {
             get => throw new NotSupportedException();
@@ -63,37 +78,65 @@ namespace Vector.NNTP.Sockets.Transport
             _ = Interlocked.Exchange(ref maxSendBytesPerSecond, newMaxSendBytesPerSecond);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Flushes the stream.
+        /// </summary>
+        /// <returns>A task that completes when the stream is flushed.</returns>
         public override void Flush()
         {
             inner.Flush();
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Flushes the stream asynchronously.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the stream is flushed.</returns>
         public override Task FlushAsync(CancellationToken cancellationToken)
         {
             return inner.FlushAsync(cancellationToken);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Reads a sequence of bytes from the stream into the buffer.
+        /// </summary>
+        /// <param name="buffer">The buffer to read the bytes into.</param>
+        /// <param name="offset">The offset in the buffer to start reading the bytes into.</param>
+        /// <param name="count">The number of bytes to read from the stream.</param>
+        /// <returns>The number of bytes read from the stream.</returns>
         public override int Read(byte[] buffer, int offset, int count)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Reads a sequence of bytes from the stream into the buffer asynchronously.
+        /// </summary>
+        /// <param name="buffer">The buffer to read the bytes into.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the bytes are read from the stream.</returns>
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
             return inner.ReadAsync(buffer, cancellationToken);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Writes a sequence of bytes to the stream.
+        /// </summary>
+        /// <param name="buffer">The buffer to write the bytes from.</param>
+        /// <param name="offset">The offset in the buffer to start writing the bytes from.</param>
+        /// <param name="count">The number of bytes to write to the stream.</param>
         public override void Write(byte[] buffer, int offset, int count)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Writes a sequence of bytes to the stream asynchronously.
+        /// </summary>
+        /// <param name="buffer">The buffer to write the bytes from.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the bytes are written to the stream.</returns>
         public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
@@ -127,19 +170,30 @@ namespace Vector.NNTP.Sockets.Transport
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Seeks to a new position in the stream.
+        /// </summary>
+        /// <param name="offset">The offset to seek to.</param>
+        /// <param name="origin">The origin of the seek.</param>
+        /// <returns>The new position in the stream.</returns>
         public override long Seek(long offset, SeekOrigin origin)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Sets the length of the stream.
+        /// </summary>
+        /// <param name="value">The new length of the stream.</param>
         public override void SetLength(long value)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Disposes the stream.
+        /// </summary>
+        /// <param name="disposing">Whether the stream is being disposed.</param>
         protected override void Dispose(bool disposing)
         {
             if (disposing && !disposed)
@@ -154,7 +208,10 @@ namespace Vector.NNTP.Sockets.Transport
             base.Dispose(disposing);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Disposes the stream asynchronously.
+        /// </summary>
+        /// <returns>A task that completes when the stream is disposed.</returns>
         public override async ValueTask DisposeAsync()
         {
             if (!disposed)
@@ -169,6 +226,13 @@ namespace Vector.NNTP.Sockets.Transport
             await base.DisposeAsync().ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Throttles the write to the stream.
+        /// </summary>
+        /// <param name="nextBytes">The number of bytes to write to the stream.</param>
+        /// <param name="cap">The cap in bytes per second.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the write is throttled.</returns>
         private async Task ThrottleWriteAsync(int nextBytes, long cap, CancellationToken cancellationToken)
         {
             while (true)

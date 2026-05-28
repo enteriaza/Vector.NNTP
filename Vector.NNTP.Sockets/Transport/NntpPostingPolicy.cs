@@ -41,6 +41,13 @@ namespace Vector.NNTP.Sockets.Transport
                 : host.Role == NntpHostRole.Transit;
         }
 
+        /// <summary>
+        /// Formats the service-ready line for the session role and authentication state.
+        /// </summary>
+        /// <param name="serverIdentification">Server identification.</param>
+        /// <param name="postingPermitted">Whether posting is permitted.</param>
+        /// <param name="role">Session role.</param>
+        /// <returns>The service-ready line.</returns>
         private static string FormatServiceReadyLine(string serverIdentification, bool postingPermitted, NntpHostRole role)
         {
             return role == NntpHostRole.Transit

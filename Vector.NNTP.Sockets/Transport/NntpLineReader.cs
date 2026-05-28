@@ -21,6 +21,49 @@ namespace Vector.NNTP.Sockets.Transport
         private readonly NntpConnectionContext _context = context ?? throw new ArgumentNullException(nameof(context));
 
         /// <summary>
+        /// Reads one line without CRLF as raw bytes or reports completion when the connection closes.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A read result indicating whether a line was read.</returns>
+        internal async ValueTask<NntpByteLineReadResult> ReadLineBytesAsync(CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                ReadResult result = await _reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                ReadOnlySequence<byte> buffer = result.Buffer;
+
+                if (TryParseLine(buffer, out ReadOnlySequence<byte> line, out SequencePosition consumed))
+                {
+                    int byteCount = (int)buffer.Slice(0, consumed).Length;
+                    _context.AddRxBytes(byteCount);
+                    byte[] bytes = CopySequence(line);
+                    _reader.AdvanceTo(consumed);
+                    return NntpByteLineReadResult.LineRead(bytes);
+                }
+
+                if (result.IsCompleted)
+                {
+                    _reader.AdvanceTo(buffer.End);
+                    return NntpByteLineReadResult.Completed;
+                }
+
+                _reader.AdvanceTo(buffer.Start, buffer.End);
+            }
+        }
+
+        private static byte[] CopySequence(ReadOnlySequence<byte> sequence)
+        {
+            if (sequence.IsSingleSegment)
+            {
+                return sequence.First.Span.ToArray();
+            }
+
+            byte[] buffer = new byte[(int)sequence.Length];
+            sequence.CopyTo(buffer);
+            return buffer;
+        }
+
+        /// <summary>
         /// Reads one line without CRLF into a string or returns false when the connection closes.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
@@ -51,6 +94,13 @@ namespace Vector.NNTP.Sockets.Transport
             }
         }
 
+        /// <summary>
+        /// Tries to parse a line from the buffer.
+        /// </summary>
+        /// <param name="buffer">The buffer to parse.</param>
+        /// <param name="line">The parsed line.</param>
+        /// <param name="consumed">The position of the consumed bytes.</param>
+        /// <returns>True if the line was parsed successfully, false otherwise.</returns>
         private static bool TryParseLine(
             ReadOnlySequence<byte> buffer,
             out ReadOnlySequence<byte> line,
@@ -76,6 +126,11 @@ namespace Vector.NNTP.Sockets.Transport
             return true;
         }
 
+        /// <summary>
+        /// Decodes a line from the buffer.
+        /// </summary>
+        /// <param name="line">The line to decode.</param>
+        /// <returns>The decoded line.</returns>
         private static string DecodeLine(ReadOnlySequence<byte> line)
         {
             if (line.IsSingleSegment)
@@ -94,5 +149,51 @@ namespace Vector.NNTP.Sockets.Transport
                 ArrayPool<byte>.Shared.Return(rented);
             }
         }
+    }
+
+    /// <summary>
+    /// Represents one read attempt from <see cref="NntpLineReader"/> in raw bytes.
+    /// </summary>
+    internal readonly struct NntpByteLineReadResult
+    {
+        private readonly ReadOnlyMemory<byte> _line;
+
+        private NntpByteLineReadResult(bool isCompleted, ReadOnlyMemory<byte> line)
+        {
+            IsCompleted = isCompleted;
+            _line = line;
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the reader completed.
+        /// </summary>
+        internal bool IsCompleted { get; }
+
+        /// <summary>
+        /// Gets the line without CRLF.
+        /// </summary>
+        internal ReadOnlyMemory<byte> Line => _line;
+
+        /// <summary>
+        /// Gets a value indicating whether the line is the dot terminator.
+        /// </summary>
+        internal bool IsDotTerminator => _line.Length == 1 && _line.Span[0] == (byte)'.';
+
+        /// <summary>
+        /// Gets a value indicating whether the line is dot-stuffed.
+        /// </summary>
+        internal bool IsDotStuffed => _line.Length >= 2 && _line.Span[0] == (byte)'.' && _line.Span[1] == (byte)'.';
+
+        /// <summary>
+        /// Gets a completion result.
+        /// </summary>
+        internal static NntpByteLineReadResult Completed => new(true, ReadOnlyMemory<byte>.Empty);
+
+        /// <summary>
+        /// Creates a line result.
+        /// </summary>
+        /// <param name="line">Line without CRLF.</param>
+        /// <returns>Result.</returns>
+        internal static NntpByteLineReadResult LineRead(byte[] line) => new(false, line);
     }
 }

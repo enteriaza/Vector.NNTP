@@ -48,6 +48,17 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 return false;
             }
 
+            if (session.Transport.Input.TryRead(out ReadResult pipelined))
+            {
+                // Disallow pipelining across STARTTLS. Any extra buffered plaintext would desync TLS negotiation.
+                session.Transport.Input.AdvanceTo(pipelined.Buffer.Start, pipelined.Buffer.End);
+                if (!pipelined.Buffer.IsEmpty)
+                {
+                    await session.Writer.WriteLineAsync("502 STARTTLS pipelining not permitted", cancellationToken).ConfigureAwait(false);
+                    return false;
+                }
+            }
+
             System.Security.Cryptography.X509Certificates.X509Certificate2? cert =
                 await certificates.GetServerCertificateAsync(cancellationToken).ConfigureAwait(false);
             if (cert is null)

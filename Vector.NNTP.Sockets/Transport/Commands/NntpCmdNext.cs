@@ -61,6 +61,14 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             return await WriteArticlePointerAsync(session, storage, next.Value, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Writes the article pointer to the session writer.
+        /// </summary>
+        /// <param name="session">The session.</param>
+        /// <param name="storage">The article storage.</param>
+        /// <param name="articleNumber">The article number.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the article pointer is written.</returns>
         private static async ValueTask<bool> WriteArticlePointerAsync(
             NntpSession session,
             INntpArticleStorage storage,

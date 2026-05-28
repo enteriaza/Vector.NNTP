@@ -70,6 +70,13 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             return true;
         }
 
+        /// <summary>
+        /// Parses a range of articles from a command line argument.
+        /// </summary>
+        /// <param name="argument">The command line argument.</param>
+        /// <param name="rangeLow">The low end of the range.</param>
+        /// <param name="rangeHigh">The high end of the range.</param>
+        /// <returns>The parsed range.</returns>
         private static void ParseRange(string? argument, out long? rangeLow, out long? rangeHigh)
         {
             rangeLow = null;

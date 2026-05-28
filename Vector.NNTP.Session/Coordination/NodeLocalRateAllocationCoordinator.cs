@@ -25,17 +25,17 @@ namespace Vector.NNTP.Session.Coordination
         /// Node-local session rows.
         /// </summary>
         private readonly ISessionDatabase _sessionDatabase = sessionDatabase ?? throw new ArgumentNullException(nameof(sessionDatabase));
-        
+
         /// <summary>
         /// Refresh cadence options.
         /// </summary>
         private readonly IOptionsMonitor<NntpRateAllocationOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
-        
+
         /// <summary>
         /// Logger.
         /// </summary>
         private readonly ILogger<NodeLocalRateAllocationCoordinator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        
+
         /// <summary>
         /// Refresh state dictionary.
         /// </summary>

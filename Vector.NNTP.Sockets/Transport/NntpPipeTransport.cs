@@ -20,13 +20,23 @@ namespace Vector.NNTP.Sockets.Transport
         private readonly PipeWriter _output = output ?? throw new ArgumentNullException(nameof(output));
         private readonly PipeReader _input = input;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the input pipe reader for the command loop.
+        /// </summary>
         public PipeReader Input { get; } = input ?? throw new ArgumentNullException(nameof(input));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the output pipe writer for responses.
+        /// </summary>
         public PipeWriter Output { get; } = output;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Upgrades a cleartext session to TLS (STARTTLS).
+        /// </summary>
+        /// <param name="serverCertificate">Server certificate with private key.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when TLS is active.</returns>
+        /// <exception cref="NotSupportedException">Thrown when STARTTLS is not supported on in-memory pipe transports.</exception>
         Task INntpSessionTransport.UpgradeToTlsAsync(X509Certificate2 serverCertificate, CancellationToken cancellationToken)
         {
             _ = serverCertificate;
@@ -34,14 +44,23 @@ namespace Vector.NNTP.Sockets.Transport
             throw new NotSupportedException("STARTTLS is not supported on in-memory pipe transports.");
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Activates RFC 8054 COMPRESS DEFLATE on the transport after the 206 response is sent.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when compression is active.</returns>
+        /// <exception cref="NotSupportedException">Thrown when COMPRESS is not supported on in-memory pipe transports.</exception>
         ValueTask INntpSessionTransport.ActivateDeflateCompressionAsync(CancellationToken cancellationToken)
         {
             _ = cancellationToken;
             throw new NotSupportedException("COMPRESS is not supported on in-memory pipe transports.");
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Disposes the transport.
+        /// </summary>
+        /// <returns>A task that completes when the transport is disposed.</returns>
+        /// <exception cref="Exception">Thrown when an error occurs while disposing the transport.</exception>
         public async ValueTask DisposeAsync()
         {
             await _output.CompleteAsync().ConfigureAwait(false);

@@ -14,6 +14,10 @@ namespace Vector.NNTP.Sockets.Transport.Commands
     /// </summary>
     internal static class NntpCmdList
     {
+        /// <summary>
+        /// Gets the overview format lines.
+        /// </summary>
+        /// <returns>The overview format lines.</returns>
         private static readonly string[] OverviewFmtLines =
         [
             "Subject:",
@@ -63,6 +67,13 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             return true;
         }
 
+        /// <summary>
+        /// Lists the active newsgroups.
+        /// </summary>
+        /// <param name="session">The session.</param>
+        /// <param name="storage">The article storage.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the active newsgroups are listed.</returns>
         private static async ValueTask<bool> ListActiveAsync(
             NntpSession session,
             INntpArticleStorage? storage,

@@ -37,6 +37,11 @@ namespace Vector.NNTP.Sockets.Transport
             return ClassifyVerb(line[start..end]);
         }
 
+        /// <summary>
+        /// Classifies the verb on a command line (leading whitespace trimmed).
+        /// </summary>
+        /// <param name="verb">The verb to classify.</param>
+        /// <returns>Known verb classification.</returns>
         private static NntpKnownVerb ClassifyVerb(ReadOnlySpan<char> verb)
         {
             switch (verb.Length)
@@ -92,6 +97,12 @@ namespace Vector.NNTP.Sockets.Transport
             return NntpKnownVerb.Unknown;
         }
 
+        /// <summary>
+        /// Checks if a verb matches an expected value.
+        /// </summary>
+        /// <param name="verb">The verb to check.</param>
+        /// <param name="expected">The expected value.</param>
+        /// <returns>True if the verb matches the expected value, false otherwise.</returns>
         private static bool IsVerb(ReadOnlySpan<char> verb, string expected)
         {
             if (verb.Length != expected.Length)

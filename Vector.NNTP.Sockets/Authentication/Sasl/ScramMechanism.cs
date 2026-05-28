@@ -114,6 +114,12 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             return $"v={Convert.ToBase64String(serverSignature)}";
         }
 
+        /// <summary>
+        /// Computes HMAC using the specified hash algorithm.
+        /// </summary>
+        /// <param name="key">The key.</param>
+        /// <param name="data">The data.</param>
+        /// <returns>The HMAC.</returns>
         private byte[] Hmac(byte[] key, byte[] data)
         {
             using IncrementalHash hmac = IncrementalHash.CreateHMAC(_hashAlgorithm, key);
@@ -121,6 +127,11 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             return hmac.GetHashAndReset();
         }
 
+        /// <summary>
+        /// Computes the hash of the specified data.
+        /// </summary>
+        /// <param name="data">The data.</param>
+        /// <returns>The hash.</returns>
         private byte[] Hash(byte[] data)
         {
             using IncrementalHash hash = IncrementalHash.CreateHash(_hashAlgorithm);
@@ -128,6 +139,12 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             return hash.GetHashAndReset();
         }
 
+        /// <summary>
+        /// XORs two byte arrays up to the shorter length.
+        /// </summary>
+        /// <param name="a">The first byte array.</param>
+        /// <param name="b">The second byte array.</param>
+        /// <returns>The XOR result.</returns>
         private static byte[] Xor(byte[] a, byte[] b)
         {
             int len = Math.Min(a.Length, b.Length);
@@ -140,6 +157,13 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             return result;
         }
 
+        /// <summary>
+        /// Tries to split the client-first message into GS2 header and client-first-bare.
+        /// </summary>
+        /// <param name="clientFirst">The client-first message.</param>
+        /// <param name="gs2Header">The GS2 header.</param>
+        /// <param name="clientFirstBare">The client-first-bare.</param>
+        /// <returns>True if the client-first message was split successfully, false otherwise.</returns>
         private static bool TrySplitClientFirst(
             string clientFirst,
             [NotNullWhen(true)] out string? gs2Header,
@@ -158,6 +182,13 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             return !string.IsNullOrEmpty(clientFirstBare);
         }
 
+        /// <summary>
+        /// Tries to parse an attribute from a message.
+        /// </summary>
+        /// <param name="message">The message.</param>
+        /// <param name="key">The key.</param>
+        /// <param name="value">The value.</param>
+        /// <returns>True if the attribute was parsed successfully, false otherwise.</returns>
         private static bool TryParseAttribute(string message, char key, [NotNullWhen(true)] out string? value)
         {
             foreach (string part in message.Split(',', StringSplitOptions.RemoveEmptyEntries))

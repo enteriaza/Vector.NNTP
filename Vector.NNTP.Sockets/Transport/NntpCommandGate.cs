@@ -112,8 +112,8 @@ namespace Vector.NNTP.Sockets.Transport
                 or NntpKnownVerb.Post
                 or NntpKnownVerb.Over
                 or NntpKnownVerb.Hdr
-                or NntpKnownVerb.Newnews
                 or NntpKnownVerb.Newgroups
+                or NntpKnownVerb.Newnews
                 or NntpKnownVerb.Slave;
         }
 

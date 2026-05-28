@@ -90,20 +90,20 @@ namespace Vector.NNTP.Sockets.Transport
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     readIdleCts.CancelAfter(_options.Value.IdleTimeout);
-                    string? line = await session.LineReader.ReadLineAsync(readIdleCts.Token).ConfigureAwait(false);
-                    if (line is null)
+                    NntpByteLineReadResult read = await session.LineReader.ReadLineBytesAsync(readIdleCts.Token).ConfigureAwait(false);
+                    if (read.IsCompleted)
                     {
                         teardownReason = "disconnect";
                         break;
                     }
 
-                    if (string.IsNullOrEmpty(line))
+                    if (read.Line.IsEmpty)
                     {
                         continue;
                     }
 
                     long rxBeforeCommand = context.RxBytes;
-                    bool cont = await _dispatcher.DispatchAsync(session, line, cancellationToken).ConfigureAwait(false);
+                    bool cont = await _dispatcher.DispatchBytesAsync(session, read.Line, cancellationToken).ConfigureAwait(false);
                     long commandBytes = Math.Max(0, context.RxBytes - rxBeforeCommand) + Math.Max(0, context.TxBytes - txBefore);
                     txBefore = context.TxBytes;
 
@@ -170,6 +170,14 @@ namespace Vector.NNTP.Sockets.Transport
             }
         }
 
+        /// <summary>
+        /// Teardown the connection.
+        /// </summary>
+        /// <param name="context">Connection context.</param>
+        /// <param name="transport">Transport.</param>
+        /// <param name="reason">Reason for teardown.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when the connection is teared down.</returns>
         private async Task TeardownConnectionAsync(
             NntpConnectionContext context,
             INntpSessionTransport transport,
@@ -192,6 +200,18 @@ namespace Vector.NNTP.Sockets.Transport
             NntpSessionRunnerLog.SessionTeardown(_logger, context.SessionId, reason);
         }
 
+        /// <summary>
+        /// Teardown the admission.
+        /// </summary>
+        /// <param name="policy">Session policy.</param>
+        /// <param name="sessionId">Session identifier.</param>
+        /// <param name="clientIpText">Client IP text.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when the admission is teared down.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when the policy is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when the session identifier or client IP text is null or empty.</exception>
+        /// <exception cref="Exception">Thrown when an error occurs while releasing the admission.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when the cancellation token is cancelled.</exception>
         private async Task TeardownAdmissionAsync(
             NntpSessionPolicy policy,
             string sessionId,

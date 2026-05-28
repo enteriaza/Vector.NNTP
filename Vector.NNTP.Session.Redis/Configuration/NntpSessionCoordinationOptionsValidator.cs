@@ -19,6 +19,7 @@ namespace Vector.NNTP.Session.Redis.Configuration
         /// Success logged flag.
         /// </summary>
         private int _successLogged;
+
         /// <summary>
         /// Warnings logged flag.
         /// </summary>

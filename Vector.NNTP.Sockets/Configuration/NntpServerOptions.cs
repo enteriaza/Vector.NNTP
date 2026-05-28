@@ -82,6 +82,28 @@ namespace Vector.NNTP.Sockets.Configuration
         /// Gets or sets a value indicating whether HAProxy PROXY protocol preambles are accepted on accept.
         /// </summary>
         public bool EnableProxyProtocol { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether PROXY preambles are only accepted from trusted first-hop sources.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// When enabled, receiving a PROXY preamble from an untrusted peer is treated as a protocol error and the
+        /// connection is closed without applying any of the claimed client endpoint data.
+        /// </para>
+        /// </remarks>
+        public bool ProxyProtocolStrictTrustedSourcesOnly { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets the trusted first-hop sources allowed to send PROXY preambles.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Entries may be literal IP addresses (for example <c>192.0.2.10</c>) or CIDR ranges (for example
+        /// <c>192.0.2.0/24</c> or <c>2001:db8::/32</c>).
+        /// </para>
+        /// </remarks>
+        public string[] ProxyProtocolTrustedSources { get; set; } = Array.Empty<string>();
     }
 
     /// <summary>

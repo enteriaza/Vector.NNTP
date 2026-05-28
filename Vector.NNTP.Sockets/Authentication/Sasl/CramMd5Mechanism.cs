@@ -57,6 +57,12 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             return string.Equals(hex, expectedHex, StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Computes HMAC-MD5 using the specified key and data.
+        /// </summary>
+        /// <param name="key">The key.</param>
+        /// <param name="data">The data.</param>
+        /// <returns>The HMAC-MD5.</returns>
         private static byte[] HmacMd5(ReadOnlySpan<byte> key, ReadOnlySpan<byte> data)
         {
 #pragma warning disable CA5351 // CRAM-MD5 requires HMAC-MD5 per RFC 2195

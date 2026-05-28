@@ -31,11 +31,7 @@ namespace Vector.NNTP.Sockets.Responses
             _context.AddTxBytes(payload.Length);
             payload.CopyTo(_writer.GetMemory(payload.Length));
             _writer.Advance(payload.Length);
-            FlushResult flush = await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
-            if (flush.IsCanceled)
-            {
-                throw new OperationCanceledException(cancellationToken);
-            }
+            await FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -57,11 +53,7 @@ namespace Vector.NNTP.Sockets.Responses
                 buffer[written++] = (byte)'\n';
                 buffer.AsSpan(0, written).CopyTo(_writer.GetSpan(written));
                 _writer.Advance(written);
-                FlushResult flush = await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
-                if (flush.IsCanceled)
-                {
-                    throw new OperationCanceledException(cancellationToken);
-                }
+                await FlushAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -78,13 +70,14 @@ namespace Vector.NNTP.Sockets.Responses
         /// <returns>A <see cref="ValueTask"/> that completes when flushed.</returns>
         public async ValueTask WriteMultiLineAsync(string initialLine, IReadOnlyList<string> bodyLines, CancellationToken cancellationToken)
         {
-            await WriteLineAsync(initialLine, cancellationToken).ConfigureAwait(false);
+            WriteLineNoFlush(initialLine);
             foreach (string line in bodyLines)
             {
-                await WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
+                WriteLineNoFlush(line);
             }
 
-            await WriteLineAsync(".", cancellationToken).ConfigureAwait(false);
+            WriteLineNoFlush(".");
+            await FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -131,11 +124,6 @@ namespace Vector.NNTP.Sockets.Responses
                         _context.AddTxBytes(offset);
                         buffer.AsMemory(0, offset).CopyTo(_writer.GetMemory(offset));
                         _writer.Advance(offset);
-                        FlushResult flush = await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
-                        if (flush.IsCanceled)
-                        {
-                            throw new OperationCanceledException(cancellationToken);
-                        }
                     }
                     finally
                     {
@@ -146,7 +134,37 @@ namespace Vector.NNTP.Sockets.Responses
                 lineStart = i + 1;
             }
 
-            await WriteLineAsync(".", cancellationToken).ConfigureAwait(false);
+            WriteLineNoFlush(".");
+            await FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        private void WriteLineNoFlush(string line)
+        {
+            ArgumentNullException.ThrowIfNull(line);
+            int byteCount = Encoding.ASCII.GetByteCount(line) + 2;
+            _context.AddTxBytes(byteCount);
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                int written = Encoding.ASCII.GetBytes(line, buffer);
+                buffer[written++] = (byte)'\r';
+                buffer[written++] = (byte)'\n';
+                buffer.AsSpan(0, written).CopyTo(_writer.GetSpan(written));
+                _writer.Advance(written);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+
+        private async ValueTask FlushAsync(CancellationToken cancellationToken)
+        {
+            FlushResult flush = await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+            if (flush.IsCanceled)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
         }
     }
 }

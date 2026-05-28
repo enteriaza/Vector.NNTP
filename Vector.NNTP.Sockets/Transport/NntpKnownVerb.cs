@@ -67,16 +67,16 @@ namespace Vector.NNTP.Sockets.Transport
         /// <summary>TAKETHIS.</summary>
         Takethis,
 
-        /// <summary>SLAVE.</summary>
-        Slave,
-
-        /// <summary>NEWNEWS.</summary>
-        Newnews,
-
-        /// <summary>NEWGROUPS.</summary>
-        Newgroups,
-
         /// <summary>AUTHINFO.</summary>
         Authinfo,
+
+        /// <summary>NEWGROUPS (not implemented; returns 503).</summary>
+        Newgroups,
+
+        /// <summary>NEWNEWS (not implemented; returns 503).</summary>
+        Newnews,
+
+        /// <summary>SLAVE (not implemented; returns 503).</summary>
+        Slave,
     }
 }

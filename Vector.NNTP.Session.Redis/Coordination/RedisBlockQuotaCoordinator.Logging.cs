@@ -9,7 +9,6 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <summary>
         /// Log a debug message when the block quota is decremented.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
         /// <param name="accountKey">The account key of the session.</param>
         /// <param name="commandBytes">The number of command bytes.</param>
         /// <param name="remainingQuotaBytes">The remaining quota bytes.</param>

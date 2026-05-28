@@ -71,6 +71,14 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             return true;
         }
 
+        /// <summary>
+        /// Tries to parse the arguments for the HDR command.
+        /// </summary>
+        /// <param name="argument">The command line argument.</param>
+        /// <param name="headerField">The header field name.</param>
+        /// <param name="rangeLow">The low end of the range.</param>
+        /// <param name="rangeHigh">The high end of the range.</param>
+        /// <returns>True if the arguments are parsed successfully, false otherwise.</returns>
         private static bool TryParseHdrArguments(
             string? argument,
             out string headerField,

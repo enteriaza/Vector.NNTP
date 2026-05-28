@@ -25,10 +25,16 @@ namespace Vector.NNTP.Sockets.Compression
             Output = inner.Output;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the input pipe reader.
+        /// </summary>
+        /// <returns>The input pipe reader.</returns>
         public PipeReader Input { get; }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the output pipe writer.
+        /// </summary>
+        /// <returns>The output pipe writer.</returns>
         public PipeWriter Output { get; }
     }
 }
