@@ -25,7 +25,7 @@ namespace Vector.NNTP.Sockets.Transport
         public NntpSocketTransport(Socket socket)
         {
             Socket = socket ?? throw new ArgumentNullException(nameof(socket));
-            _stream = new NetworkStream(socket, ownsSocket: false);
+            _stream = CreateOutboundRateLimitStream(new NetworkStream(socket, ownsSocket: false));
             _bridge = new NntpStreamPipeBridge(_stream);
         }
 
@@ -37,7 +37,7 @@ namespace Vector.NNTP.Sockets.Transport
         public NntpSocketTransport(Socket socket, Stream encryptedStream)
         {
             Socket = socket ?? throw new ArgumentNullException(nameof(socket));
-            _stream = encryptedStream ?? throw new ArgumentNullException(nameof(encryptedStream));
+            _stream = CreateOutboundRateLimitStream(encryptedStream ?? throw new ArgumentNullException(nameof(encryptedStream)));
             _bridge = new NntpStreamPipeBridge(_stream);
         }
 
@@ -93,6 +93,29 @@ namespace Vector.NNTP.Sockets.Transport
             _bridge = null;
             _stream = new NntpZLibSessionStream(_stream);
             _bridge = new NntpStreamPipeBridge(_stream);
+        }
+
+        /// <summary>
+        /// Wraps the outbound stream with a dynamic send rate limiter and rebuilds the pipe bridge.
+        /// </summary>
+        /// <param name="bytesPerSecond">Initial per-session send cap.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The rate limiter instance when applied.</returns>
+        public ValueTask<DynamicSendRateLimitedStream?> ApplyOutboundRateLimitAsync(long bytesPerSecond, CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            if (_stream is DynamicSendRateLimitedStream existing)
+            {
+                existing.UpdateMaxSendBytesPerSecond(bytesPerSecond);
+                return new ValueTask<DynamicSendRateLimitedStream?>(existing);
+            }
+
+            throw new InvalidOperationException("Outbound rate limiter was not installed at transport creation.");
+        }
+
+        private static DynamicSendRateLimitedStream CreateOutboundRateLimitStream(Stream inner)
+        {
+            return new DynamicSendRateLimitedStream(inner, initialMaxSendBytesPerSecond: 0, leaveInnerOpen: false);
         }
 
         /// <inheritdoc />

@@ -3,12 +3,12 @@
 // </copyright>
 // COLD PATH: pairs connection context with protocol state for dispatch.
 
+using Microsoft.Extensions.Options;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
-using Microsoft.Extensions.Options;
 using Vector.NNTP.Sockets.Responses;
-using Vector.NNTP.Sockets.Transport;
 using Vector.NNTP.Sockets.Tls;
+using Vector.NNTP.Sockets.Transport;
 
 namespace Vector.NNTP.Sockets.Session
 {

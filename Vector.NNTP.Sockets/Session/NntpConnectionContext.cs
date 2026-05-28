@@ -3,7 +3,6 @@
 // </copyright>
 // COLD PATH: per-connection identity, byte accounting, and authentication flags.
 
-using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.HostProfile;
 
 namespace Vector.NNTP.Sockets.Session
@@ -80,6 +79,11 @@ namespace Vector.NNTP.Sockets.Session
         public NntpSessionPolicy? Policy { get; private set; }
 
         /// <summary>
+        /// Gets a value indicating whether a distributed Redis admission slot was acquired.
+        /// </summary>
+        public bool AdmissionAcquired { get; private set; }
+
+        /// <summary>
         /// Gets total bytes received on the wire including CRLF.
         /// </summary>
         public long RxBytes => Interlocked.Read(ref _rxBytes);
@@ -111,22 +115,25 @@ namespace Vector.NNTP.Sockets.Session
         /// Marks the connection authenticated with the given policy.
         /// </summary>
         /// <param name="policy">Granted session policy.</param>
-        public void SetAuthenticated(NntpSessionPolicy policy)
+        /// <param name="admissionAcquired">Whether a distributed admission slot was acquired.</param>
+        public void SetAuthenticated(NntpSessionPolicy policy, bool admissionAcquired = false)
         {
             ArgumentNullException.ThrowIfNull(policy);
             IsAuthenticated = true;
             AuthenticatedUsername = policy.Username;
             Policy = policy;
+            AdmissionAcquired = admissionAcquired;
         }
 
         /// <summary>
-        /// Clears authentication state (for example after explicit de-auth policies in future hosts).
+        /// Clears authentication state (for example after quota exhaustion).
         /// </summary>
         public void ClearAuthentication()
         {
             IsAuthenticated = false;
             AuthenticatedUsername = null;
             Policy = null;
+            AdmissionAcquired = false;
         }
     }
 }

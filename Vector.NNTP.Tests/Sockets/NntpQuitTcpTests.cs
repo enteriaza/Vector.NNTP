@@ -11,6 +11,7 @@ using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Transport;
+using Vector.NNTP.Tests.Session;
 using Vector.NNTP.Tests.Sockets.Fakes;
 
 namespace Vector.NNTP.Tests.Sockets
@@ -82,7 +83,14 @@ namespace Vector.NNTP.Tests.Sockets
                 ServerIdentification = "VectorNNTPD-TcpTest",
                 IdleTimeout = TimeSpan.FromSeconds(5),
             });
-            var auth = new NntpAuthenticationService(new FakeNntpCredentialValidator(new Dictionary<string, string> { ["alice"] = "secret" }));
+            NntpSessionTestServices.NntpSessionTestBundle session = NntpSessionTestServices.CreateDefault();
+            var auth = new NntpAuthenticationService(
+                new FakeNntpCredentialValidator(new Dictionary<string, string> { ["alice"] = "secret" }),
+                session.Coordinator,
+                session.Database,
+                session.BlockQuota,
+                session.RateAllocation,
+                session.IdleOptions);
             var dispatcher = new NntpCommandDispatcher(
                 auth,
                 new FakeNntpArticleStorage(),
@@ -94,8 +102,10 @@ namespace Vector.NNTP.Tests.Sockets
                 dispatcher,
                 new NntpReaderHostProfile(),
                 options,
+                session.Database,
+                session.Coordinator,
+                session.QuotaEnforcer,
                 tlsCertificateSource: null,
-                admissionTracker: null,
                 NullLogger<NntpSessionRunner>.Instance);
             var remote = (IPEndPoint)socket.RemoteEndPoint!;
             var context = new NntpConnectionContext(Guid.NewGuid().ToString("N"), remote, remote, NntpHostRole.Reader);

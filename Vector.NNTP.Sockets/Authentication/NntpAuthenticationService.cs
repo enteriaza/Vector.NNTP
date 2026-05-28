@@ -3,8 +3,11 @@
 // </copyright>
 // COLD PATH: AUTHINFO USER/PASS and SASL mechanism orchestration.
 
+using Microsoft.Extensions.Options;
 using Vector.NNTP.Sockets.Authentication.Sasl;
+using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.Sockets.Transport;
 
 namespace Vector.NNTP.Sockets.Authentication
 {
@@ -15,16 +18,31 @@ namespace Vector.NNTP.Sockets.Authentication
     /// Initializes a new instance of the <see cref="NntpAuthenticationService"/> class.
     /// </remarks>
     /// <param name="validator">Password validator for USER/PASS, PLAIN, and LOGIN.</param>
+    /// <param name="sessionCoordinator">Distributed session admission coordinator.</param>
+    /// <param name="sessionDatabase">Node-local session registry.</param>
+    /// <param name="blockQuotaCoordinator">Block quota initializer for byte-limited accounts.</param>
+    /// <param name="rateAllocationCoordinator">Fair-share rate allocation coordinator.</param>
+    /// <param name="idleOptions">Idle timeout options for Redis lease TTL sizing.</param>
     /// <param name="scramStore">Optional SCRAM credential store.</param>
     /// <param name="cramStore">Optional CRAM-MD5 secret store.</param>
-    /// <param name="saslAccountAuthenticator">Optional SASL completion handler for policy, admission, and audit logging.</param>
+    /// <param name="saslAccountAuthenticator">Optional SASL completion handler for policy lookup.</param>
     public sealed class NntpAuthenticationService(
         INntpCredentialValidator validator,
+        INntpSessionCoordinator sessionCoordinator,
+        ISessionDatabase sessionDatabase,
+        INntpBlockQuotaCoordinator blockQuotaCoordinator,
+        INntpRateAllocationCoordinator rateAllocationCoordinator,
+        IOptionsMonitor<NntpSessionIdleOptions> idleOptions,
         IScramCredentialStore? scramStore = null,
         ICramMd5CredentialStore? cramStore = null,
         INntpSaslAccountAuthenticator? saslAccountAuthenticator = null)
     {
         private readonly INntpCredentialValidator _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+        private readonly INntpSessionCoordinator _sessionCoordinator = sessionCoordinator ?? throw new ArgumentNullException(nameof(sessionCoordinator));
+        private readonly ISessionDatabase _sessionDatabase = sessionDatabase ?? throw new ArgumentNullException(nameof(sessionDatabase));
+        private readonly INntpBlockQuotaCoordinator _blockQuotaCoordinator = blockQuotaCoordinator ?? throw new ArgumentNullException(nameof(blockQuotaCoordinator));
+        private readonly INntpRateAllocationCoordinator _rateAllocationCoordinator = rateAllocationCoordinator ?? throw new ArgumentNullException(nameof(rateAllocationCoordinator));
+        private readonly IOptionsMonitor<NntpSessionIdleOptions> _idleOptions = idleOptions ?? throw new ArgumentNullException(nameof(idleOptions));
         private readonly IScramCredentialStore? _scramStore = scramStore;
         private readonly ICramMd5CredentialStore? _cramStore = cramStore;
         private readonly INntpSaslAccountAuthenticator? _saslAccountAuthenticator = saslAccountAuthenticator;
@@ -80,7 +98,7 @@ namespace Vector.NNTP.Sockets.Authentication
         /// <returns>A <see cref="ValueTask"/> that completes when handled.</returns>
         public async ValueTask HandleSaslContinuationAsync(NntpSession session, string payload, CancellationToken cancellationToken)
         {
-            if (session.State.AuthenticationState != AuthenticationState.SaslInProgress)
+            if (session.State.AuthenticationState != Session.AuthenticationState.SaslInProgress)
             {
                 await session.Writer.WriteLineAsync("503 No SASL exchange in progress", cancellationToken).ConfigureAwait(false);
                 return;
@@ -126,13 +144,14 @@ namespace Vector.NNTP.Sockets.Authentication
             }
 
             session.State.PendingAuthInfoUser = user;
-            session.State.AuthenticationState = AuthenticationState.AuthInfoUserPending;
+            session.State.AuthenticationState = Session.AuthenticationState.AuthInfoUserPending;
+            TryBeginSessionAuthenticating(session, AuthenticatingPhase.SaslContinuation);
             await session.Writer.WriteLineAsync("381 Password required", cancellationToken).ConfigureAwait(false);
         }
 
         private async ValueTask HandlePassAsync(NntpSession session, string line, CancellationToken cancellationToken)
         {
-            if (session.State.AuthenticationState != AuthenticationState.AuthInfoUserPending)
+            if (session.State.AuthenticationState != Session.AuthenticationState.AuthInfoUserPending)
             {
                 await session.Writer.WriteLineAsync("503 AUTHINFO USER required first", cancellationToken).ConfigureAwait(false);
                 return;
@@ -151,7 +170,7 @@ namespace Vector.NNTP.Sockets.Authentication
             if (result.Status != NntpAuthStatus.Success)
             {
                 session.State.PendingAuthInfoUser = null;
-                session.State.AuthenticationState = AuthenticationState.None;
+                session.State.AuthenticationState = Session.AuthenticationState.None;
             }
         }
 
@@ -166,7 +185,8 @@ namespace Vector.NNTP.Sockets.Authentication
 
             string? initial = ExtractInitialResponse(line.AsSpan());
             session.State.PendingSaslMechanism = mech;
-            session.State.AuthenticationState = AuthenticationState.SaslInProgress;
+            session.State.AuthenticationState = Session.AuthenticationState.SaslInProgress;
+            TryBeginSessionAuthenticating(session, AuthenticatingPhase.SaslContinuation);
 
             if (mech.Equals("PLAIN", StringComparison.OrdinalIgnoreCase))
             {
@@ -265,9 +285,9 @@ namespace Vector.NNTP.Sockets.Authentication
             }
 
             NntpSessionPolicy policy;
-            if (this._saslAccountAuthenticator is not null)
+            if (_saslAccountAuthenticator is not null)
             {
-                NntpAuthResult result = await this._saslAccountAuthenticator.CompleteSaslAccountAsync(
+                NntpAuthResult result = await _saslAccountAuthenticator.CompleteSaslAccountAsync(
                     NntpAuthMechanisms.SaslScramSha256,
                     scramState.Username,
                     session.Connection.ClientRemoteEndPoint.Address,
@@ -284,12 +304,18 @@ namespace Vector.NNTP.Sockets.Authentication
             }
             else
             {
-                policy = new NntpSessionPolicy(scramState.Username, allowPosting: true, 'R', string.Empty, 0, 0, 0, 0);
+                policy = new NntpSessionPolicy(scramState.Username, allowPosting: true, NntpAccountType.RateLimited, string.Empty, 0, 0, 0, 0, string.Empty);
+            }
+
+            bool admitted = await CompleteAdmissionAndAuthenticateAsync(session, policy, cancellationToken).ConfigureAwait(false);
+            ResetAuth(session);
+            if (!admitted)
+            {
+                return;
             }
 
             await session.Writer.WriteLineAsync($"235 {serverFinal}", cancellationToken).ConfigureAwait(false);
-            session.Connection.SetAuthenticated(policy);
-            ResetAuth(session);
+            await ApplyPostAuthenticationEnforcementAsync(session, policy, cancellationToken).ConfigureAwait(false);
         }
 
         private async ValueTask HandleScramStartAsync(NntpSession session, string mech, string? initial, CancellationToken cancellationToken)
@@ -303,7 +329,7 @@ namespace Vector.NNTP.Sockets.Authentication
 
             string clientFirst = DecodeMaybeBase64(initial);
             if (!ScramMechanismBegin.TryGetUsername(clientFirst, out string? username) ||
-                !_scramStore.TryGetScramCredential(username!, out ScramStoredCredential? cred))
+                !_scramStore.TryGetScramCredential(username, out ScramStoredCredential? cred))
             {
                 ResetAuth(session);
                 await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
@@ -311,7 +337,7 @@ namespace Vector.NNTP.Sockets.Authentication
             }
 
             (ScramMechanism state, string serverFirst) = ScramMechanism.Begin(mech, clientFirst, cred);
-            session.State.SaslServerState = new ScramSaslState(username!, state);
+            session.State.SaslServerState = new ScramSaslState(username, state);
             await session.Writer.WriteLineAsync($"383 {serverFirst}", cancellationToken).ConfigureAwait(false);
         }
 
@@ -342,9 +368,9 @@ namespace Vector.NNTP.Sockets.Authentication
                 return;
             }
 
-            if (this._saslAccountAuthenticator is not null)
+            if (_saslAccountAuthenticator is not null)
             {
-                NntpAuthResult result = await this._saslAccountAuthenticator.CompleteSaslAccountAsync(
+                NntpAuthResult result = await _saslAccountAuthenticator.CompleteSaslAccountAsync(
                     NntpAuthMechanisms.SaslCramMd5,
                     user,
                     session.Connection.ClientRemoteEndPoint.Address,
@@ -357,15 +383,30 @@ namespace Vector.NNTP.Sockets.Authentication
                     return;
                 }
 
-                session.Connection.SetAuthenticated(result.Policy!);
+                NntpSessionPolicy policy = result.Policy!;
+                bool admitted = await CompleteAdmissionAndAuthenticateAsync(session, policy, cancellationToken).ConfigureAwait(false);
+                ResetAuth(session);
+                if (!admitted)
+                {
+                    return;
+                }
+
+                await session.Writer.WriteLineAsync("235 Authentication succeeded", cancellationToken).ConfigureAwait(false);
+                await ApplyPostAuthenticationEnforcementAsync(session, policy, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                session.Connection.SetAuthenticated(new NntpSessionPolicy(user, allowPosting: true, 'R', string.Empty, 0, 0, 0, 0));
-            }
+                NntpSessionPolicy devPolicy = new(user, allowPosting: true, NntpAccountType.RateLimited, string.Empty, 0, 0, 0, 0, string.Empty);
+                bool admitted = await CompleteAdmissionAndAuthenticateAsync(session, devPolicy, cancellationToken).ConfigureAwait(false);
+                ResetAuth(session);
+                if (!admitted)
+                {
+                    return;
+                }
 
-            ResetAuth(session);
-            await session.Writer.WriteLineAsync("235 Authentication succeeded", cancellationToken).ConfigureAwait(false);
+                await session.Writer.WriteLineAsync("235 Authentication succeeded", cancellationToken).ConfigureAwait(false);
+                await ApplyPostAuthenticationEnforcementAsync(session, devPolicy, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         private async ValueTask WriteAuthResultAsync(NntpSession session, NntpAuthResult result, CancellationToken cancellationToken)
@@ -373,28 +414,122 @@ namespace Vector.NNTP.Sockets.Authentication
             switch (result.Status)
             {
                 case NntpAuthStatus.Success:
-                    session.Connection.SetAuthenticated(result.Policy!);
+                    NntpSessionPolicy policy = result.Policy!;
+                    bool admitted = await CompleteAdmissionAndAuthenticateAsync(session, policy, cancellationToken).ConfigureAwait(false);
                     ResetAuth(session);
+                    if (!admitted)
+                    {
+                        break;
+                    }
+
                     await session.Writer.WriteLineAsync("281 Authentication accepted", cancellationToken).ConfigureAwait(false);
+                    await ApplyPostAuthenticationEnforcementAsync(session, policy, cancellationToken).ConfigureAwait(false);
                     break;
                 case NntpAuthStatus.TransientFailure:
+                    RollbackSessionAuthenticating(session);
                     ResetAuth(session);
                     await session.Writer.WriteLineAsync("503 Temporary authentication failure", cancellationToken).ConfigureAwait(false);
                     break;
                 case NntpAuthStatus.InvalidCredentials:
+                    RollbackSessionAuthenticating(session);
                     ResetAuth(session);
                     await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
                     break;
                 default:
+                    RollbackSessionAuthenticating(session);
                     ResetAuth(session);
                     await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
                     break;
             }
         }
 
+        private async ValueTask<bool> CompleteAdmissionAndAuthenticateAsync(
+            NntpSession session,
+            NntpSessionPolicy policy,
+            CancellationToken cancellationToken)
+        {
+            string sessionId = session.Connection.SessionId;
+            string clientIp = session.Connection.ClientRemoteEndPoint.Address.ToString();
+            if (_sessionDatabase.TryGet(sessionId, out SessionContext? ctx))
+            {
+                _ = ctx.TryBindPendingAuthentication(policy.Username, policy.AccountKey, policy, AuthenticatingPhase.PendingAdmission);
+            }
+
+            int ttlSeconds = NntpSessionTtlCalculator.ComputeTtlSeconds(_idleOptions.CurrentValue.IdleTimeout);
+            NntpSessionAdmissionResult admit = await _sessionCoordinator.TryAdmitAsync(
+                policy,
+                sessionId,
+                clientIp,
+                ttlSeconds,
+                cancellationToken).ConfigureAwait(false);
+
+            if (admit != NntpSessionAdmissionResult.Success)
+            {
+                RollbackSessionAuthenticating(session);
+                await WriteAdmissionRejectedAsync(session, admit, cancellationToken).ConfigureAwait(false);
+                return false;
+            }
+
+            if (_sessionDatabase.TryGet(sessionId, out SessionContext? row))
+            {
+                _ = row.TryCompleteAuthentication();
+            }
+
+            bool admissionAcquired = policy.RequiresDistributedAdmission();
+            session.Connection.SetAuthenticated(policy, admissionAcquired);
+            return true;
+        }
+
+        private async ValueTask ApplyPostAuthenticationEnforcementAsync(NntpSession session, NntpSessionPolicy policy, CancellationToken cancellationToken)
+        {
+            if (policy.AccountType == NntpAccountType.ByteLimited && policy.ByteLimit > 0)
+            {
+                _ = await _blockQuotaCoordinator.TryInitializeQuotaAsync(policy.AccountKey, policy.ByteLimit, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (policy.AccountType == NntpAccountType.RateLimited && policy.RateBytesPerSecond > 0 &&
+                session.Transport is NntpSocketTransport socketTransport)
+            {
+                long perSession = await _rateAllocationCoordinator.GetPerSessionSendRateBytesPerSecondAsync(policy, cancellationToken).ConfigureAwait(false);
+                DynamicSendRateLimitedStream? limiter = await socketTransport.ApplyOutboundRateLimitAsync(perSession, cancellationToken).ConfigureAwait(false);
+                session.State.DynamicSendLimiter = limiter;
+            }
+        }
+
+        private async ValueTask WriteAdmissionRejectedAsync(NntpSession session, NntpSessionAdmissionResult result, CancellationToken cancellationToken)
+        {
+            string line = result switch
+            {
+                NntpSessionAdmissionResult.MaxSessionsExceeded => NntpResponseLines.TooManySessions481,
+                NntpSessionAdmissionResult.IpLimitExceeded => NntpResponseLines.TooManySourceAddresses481,
+                NntpSessionAdmissionResult.BackendFailure => "503 Temporary authentication failure",
+                NntpSessionAdmissionResult.Success => throw new NotImplementedException(),
+                NntpSessionAdmissionResult.PolicyInvalid => throw new NotImplementedException(),
+                _ => NntpResponseLines.AuthenticationFailed481,
+            };
+            ResetAuth(session);
+            await session.Writer.WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
+        }
+
+        private void TryBeginSessionAuthenticating(NntpSession session, AuthenticatingPhase phase)
+        {
+            if (_sessionDatabase.TryGet(session.Connection.SessionId, out SessionContext? ctx))
+            {
+                _ = ctx.TryBeginAuthenticating(phase);
+            }
+        }
+
+        private void RollbackSessionAuthenticating(NntpSession session)
+        {
+            if (_sessionDatabase.TryGet(session.Connection.SessionId, out SessionContext? ctx))
+            {
+                _ = ctx.TryRollbackAuthenticating();
+            }
+        }
+
         private void ResetAuth(NntpSession session)
         {
-            session.State.AuthenticationState = AuthenticationState.None;
+            session.State.AuthenticationState = Session.AuthenticationState.None;
             session.State.PendingAuthInfoUser = null;
             session.State.PendingSaslMechanism = null;
             session.State.SaslServerState = null;

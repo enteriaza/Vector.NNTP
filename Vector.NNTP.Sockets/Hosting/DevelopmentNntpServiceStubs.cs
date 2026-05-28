@@ -3,10 +3,10 @@
 // </copyright>
 // COLD PATH: development stubs until RADIUS and storage workers are wired.
 
-using Vector.NNTP.Sockets.Authentication;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Storage;
 
 namespace Vector.NNTP.Sockets.Hosting
@@ -24,9 +24,8 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <para>
         /// <see cref="IScramCredentialStore"/> and <see cref="ICramMd5CredentialStore"/> are required by
         /// <see cref="Transport.NntpCommandDispatcher"/> and <see cref="NntpAuthenticationService"/> even when SCRAM/CRAM
-        /// are not advertised. <see cref="INntpSessionAdmissionTracker"/> is required by
-        /// <see cref="Transport.NntpSessionRunner"/> for session teardown. Production hosts (for example
-        /// <c>AddNntpMySqlAuth</c>) replace these stubs via <c>AddSingleton</c>.
+        /// are not advertised. Session admission is handled by <see cref="INntpSessionCoordinator"/> from
+        /// <c>Vector.NNTP.Session</c>. Production hosts replace credential validation via <c>AddNntpMySqlAuth</c>.
         /// </para>
         /// </remarks>
         /// <param name="services">Service collection.</param>
@@ -38,29 +37,7 @@ namespace Vector.NNTP.Sockets.Hosting
             services.TryAddSingleton<INntpTransitStorage, DevelopmentNntpTransitStorage>();
             services.TryAddSingleton<IScramCredentialStore, DevelopmentScramCredentialStore>();
             services.TryAddSingleton<ICramMd5CredentialStore, DevelopmentCramMd5CredentialStore>();
-            services.TryAddSingleton<INntpSessionAdmissionTracker, DevelopmentNntpSessionAdmissionTracker>();
             return services;
-        }
-
-        /// <summary>
-        /// No-op admission tracker that admits all sessions (no per-account limits until MySQL auth is wired).
-        /// </summary>
-        private sealed class DevelopmentNntpSessionAdmissionTracker : INntpSessionAdmissionTracker
-        {
-            /// <inheritdoc />
-            public bool TryEnter(NntpSessionPolicy policy, IPAddress clientIp)
-            {
-                _ = policy;
-                _ = clientIp;
-                return true;
-            }
-
-            /// <inheritdoc />
-            public void Leave(NntpSessionPolicy policy, IPAddress clientIp)
-            {
-                _ = policy;
-                _ = clientIp;
-            }
         }
 
         /// <summary>

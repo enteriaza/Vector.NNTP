@@ -7,6 +7,9 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Vector.NNTP.Session.Accounts;
+using Vector.NNTP.Session.Coordination;
+using Vector.NNTP.Session.Policy;
 using Vector.NNTP.Sockets.Authentication;
 
 namespace Vector.NNTP.Auth.MySql
@@ -22,20 +25,19 @@ namespace Vector.NNTP.Auth.MySql
     /// supplied password with the decrypted value using an ordinal, case-sensitive comparison.
     /// </para>
     /// <para>
-    /// <b>Session admission:</b> On successful verification a <see cref="NntpSessionPolicy"/> is constructed and passed to
-    /// <see cref="INntpSessionAdmissionTracker"/> to enforce per-account and per-source-IP limits. When limits are
-    /// exceeded the validator returns <see cref="NntpAuthResult.TransientFailure"/>.
+    /// <b>Session admission:</b> Credential validation returns <see cref="NntpSessionPolicy"/> only. Distributed admission
+    /// is performed by <see cref="NntpAuthenticationService"/> via <see cref="INntpSessionCoordinator"/>.
     /// </para>
     /// </remarks>
     /// <remarks>
     /// Initializes a new instance of the <see cref="MySqlNntpCredentialValidator"/> class.
     /// </remarks>
     /// <param name="recordStore">Backing user record store.</param>
-    /// <param name="admissionTracker">Session admission tracker enforcing concurrency limits.</param>
+    /// <param name="accountKeyNormalizer">Account key normalizer for policy construction.</param>
     /// <param name="logger">Logger for backend/auth failures.</param>
     public sealed class MySqlNntpCredentialValidator(
         INntpUserRecordStore recordStore,
-        INntpSessionAdmissionTracker admissionTracker,
+        IAccountKeyNormalizer accountKeyNormalizer,
         ILogger<MySqlNntpCredentialValidator> logger) : INntpCredentialValidator, INntpSaslAccountAuthenticator
     {
         /// <summary>
@@ -44,9 +46,9 @@ namespace Vector.NNTP.Auth.MySql
         private readonly INntpUserRecordStore _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
 
         /// <summary>
-        /// Session admission tracker enforcing concurrency limits.
+        /// Account key normalizer for policy construction.
         /// </summary>
-        private readonly INntpSessionAdmissionTracker _admissionTracker = admissionTracker ?? throw new ArgumentNullException(nameof(admissionTracker));
+        private readonly IAccountKeyNormalizer _accountKeyNormalizer = accountKeyNormalizer ?? throw new ArgumentNullException(nameof(accountKeyNormalizer));
 
         /// <summary>
         /// Logger for backend/auth failures.
@@ -129,7 +131,7 @@ namespace Vector.NNTP.Auth.MySql
                     return NntpAuthResult.InvalidCredentials();
                 }
 
-                return AdmitAndSucceed(mechanism, record, clientIp);
+                return Succeed(mechanism, record, clientIp);
             }
             catch (OperationCanceledException)
             {
@@ -200,17 +202,17 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <param name="record">User record materialised from the backing store.</param>
         /// <returns>Session policy representing the granted permissions and limits.</returns>
-        private static NntpSessionPolicy CreatePolicy(MySqlUserRecord record)
+        private NntpSessionPolicy CreatePolicy(MySqlUserRecord record)
         {
-            return new NntpSessionPolicy(
+            NntpAccountLimits limits = new(
                 record.AccountName,
-                allowPosting: true,
                 record.AccountType,
-                record.CustomerId,
                 record.RateLimit,
                 record.ByteLimit,
                 record.SessionLimit,
-                record.SrcIpLimit);
+                record.SrcIpLimit,
+                record.CustomerId);
+            return NntpSessionPolicyFactory.Create(limits, allowPosting: true, this._accountKeyNormalizer);
         }
 
         /// <summary>
@@ -258,7 +260,7 @@ namespace Vector.NNTP.Auth.MySql
                     return NntpAuthResult.InvalidCredentials();
                 }
 
-                return AdmitAndSucceed(mechanism, record, clientIp);
+                return Succeed(mechanism, record, clientIp);
             }
             catch (OperationCanceledException)
             {
@@ -272,35 +274,24 @@ namespace Vector.NNTP.Auth.MySql
         }
 
         /// <summary>
-        /// Applies admission limits and logs a successful authentication.
+        /// Logs successful authentication and returns policy without admission.
         /// </summary>
         /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="record">Validated user record.</param>
         /// <param name="clientIp">Client IP address.</param>
-        /// <returns>Authentication outcome and optional session policy.</returns>
-        private NntpAuthResult AdmitAndSucceed(string mechanism, MySqlUserRecord record, IPAddress clientIp)
+        /// <returns>Authentication outcome and session policy.</returns>
+        private NntpAuthResult Succeed(string mechanism, MySqlUserRecord record, IPAddress clientIp)
         {
             NntpSessionPolicy policy = CreatePolicy(record);
             string clientIpText = clientIp.ToString();
-            if (!this._admissionTracker.TryEnter(policy, clientIp))
-            {
-                MySqlNntpCredentialValidatorLog.AdmissionRejected(
-                    this._logger,
-                    mechanism,
-                    policy.Username,
-                    clientIpText,
-                    policy.SessionLimit,
-                    policy.SrcIpLimit);
-                return NntpAuthResult.TransientFailure();
-            }
-
+            char accountTypeChar = policy.AccountType == NntpAccountType.RateLimited ? 'R' : 'B';
             MySqlNntpCredentialValidatorLog.AuthenticationSucceeded(
                 this._logger,
                 mechanism,
                 policy.Username,
                 clientIpText,
                 policy.AllowPosting,
-                policy.AccountType,
+                accountTypeChar,
                 policy.CustomerId);
 
             return NntpAuthResult.Success(policy);

@@ -6,15 +6,15 @@
 using System.Collections.Concurrent;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
-using Vector.NNTP.Sockets.Configuration;
-using Vector.NNTP.Sockets.HostProfile;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Vector.NNTP.Encryption.Certificates;
+using Vector.NNTP.Sockets.Configuration;
+using Vector.NNTP.Sockets.HostProfile;
 using Vector.NNTP.Sockets.Proxy;
 using Vector.NNTP.Sockets.Session;
-using Vector.NNTP.Sockets.Transport;
 using Vector.NNTP.Sockets.Tls;
-using Vector.NNTP.Encryption.Certificates;
+using Vector.NNTP.Sockets.Transport;
 
 namespace Vector.NNTP.Sockets.Hosting
 {

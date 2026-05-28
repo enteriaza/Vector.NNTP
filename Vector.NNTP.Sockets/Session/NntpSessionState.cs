@@ -3,6 +3,7 @@
 // </copyright>
 // COLD PATH: mutable protocol session state per Docs/session-state.md.
 
+
 namespace Vector.NNTP.Sockets.Session
 {
     /// <summary>
@@ -95,5 +96,10 @@ namespace Vector.NNTP.Sockets.Session
         /// Gets or sets a value indicating whether the session should close after the next response.
         /// </summary>
         public bool QuitRequested { get; set; }
+
+        /// <summary>
+        /// Gets or sets the dynamic outbound rate limiter when rate shaping is active.
+        /// </summary>
+        public IDynamicSendRateLimiter? DynamicSendLimiter { get; set; }
     }
 }

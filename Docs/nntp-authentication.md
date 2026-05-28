@@ -22,9 +22,9 @@ When neither is present, development credential stubs remain active and log a wa
 
 | Service | Role |
 |---------|------|
-| `MySqlNntpCredentialValidator` | `INntpCredentialValidator` — AES-decrypted password compare |
+| `MySqlNntpCredentialValidator` | `INntpCredentialValidator` — AES-decrypted password compare; builds `NntpSessionPolicy` from DB limits |
 | `MySqlCramMd5CredentialStore` | CRAM-MD5 shared secret from the same row |
-| `NntpSessionAdmissionTracker` | Enforces `account_session_limit` and `account_srcip_limit` |
+| `INntpSessionCoordinator` (`Vector.NNTP.Session.Redis`) | Enforces `account_session_limit` and `account_srcip_limit` at auth time (via `NntpAuthenticationService`) |
 
 Password lookup uses:
 
@@ -36,7 +36,7 @@ FROM nntpusers
 WHERE account_name = @account_name;
 ```
 
-Disabled accounts (`is_enabled = 'N'`) receive **481**. Admission limit violations during login receive **503** (transient authentication failure).
+Disabled accounts (`is_enabled = 'N'`) receive **481**. Session or distinct source-IP limit exhaustion during login receives **481 Too many sessions** or **481 Too many source addresses**. Redis or coordinator backend faults receive **503 Temporary authentication failure**.
 
 **RADIUS is not used** for reader authentication in this repository.
 

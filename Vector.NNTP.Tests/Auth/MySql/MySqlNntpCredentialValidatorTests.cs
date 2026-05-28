@@ -41,8 +41,8 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 "00000000-0000-0000-0000-0000000042");
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
-            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.AuthInfoUserPass,
@@ -56,8 +56,52 @@ namespace Vector.NNTP.Tests.Auth.MySql
             Assert.That(result.Policy, Is.Not.Null);
             Assert.That(result.Policy!.Username, Is.EqualTo("user1"));
             Assert.That(result.Policy!.AllowPosting, Is.True);
-            Assert.That(result.Policy!.AccountType, Is.EqualTo('B'));
+            Assert.That(result.Policy!.AccountType, Is.EqualTo(NntpAccountType.ByteLimited));
+            Assert.That(result.Policy!.RateBytesPerSecond, Is.EqualTo(0));
+            Assert.That(result.Policy!.ByteLimit, Is.EqualTo(1000L));
             Assert.That(result.Policy!.CustomerId, Is.EqualTo("00000000-0000-0000-0000-0000000042"));
+            Assert.That(result.Policy!.SessionLimit, Is.EqualTo(2));
+            Assert.That(result.Policy!.SrcIpLimit, Is.EqualTo(1));
+        }
+
+        /// <summary>
+        /// Ensures rate-limited accounts map Mbps to bytes/sec without performing admission.
+        /// </summary>
+        /// <returns>A task that completes when the assertion is evaluated.</returns>
+        [Test]
+        public async Task ValidatePasswordAsync_RateLimitedAccount_MapsMbpsToBytesPerSecond()
+        {
+            MySqlUserRecord record = new MySqlUserRecord(
+                "user1",
+                "secret",
+                allowAuthPlain: true,
+                allowAuthScram256: true,
+                scramSalt: ReadOnlyMemory<byte>.Empty,
+                scramIterations: 0,
+                scramStoredKey: ReadOnlyMemory<byte>.Empty,
+                scramServerKey: ReadOnlyMemory<byte>.Empty,
+                'R',
+                10,
+                0L,
+                0,
+                0,
+                true,
+                string.Empty);
+            FakeUserRecordStore store = new FakeUserRecordStore(record);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
+
+            NntpAuthResult result = await validator.ValidatePasswordAsync(
+                NntpAuthMechanisms.AuthInfoUserPass,
+                "user1",
+                "secret",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
+
+            Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.Success));
+            Assert.That(result.Policy!.AccountType, Is.EqualTo(NntpAccountType.RateLimited));
+            Assert.That(result.Policy!.RateBytesPerSecond, Is.EqualTo(NntpRateLimitConverter.MegabitsPerSecondToBytesPerSecond(10)));
         }
 
         /// <summary>
@@ -84,8 +128,8 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 string.Empty);
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
-            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.SaslPlain,
@@ -96,44 +140,6 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 CancellationToken.None).ConfigureAwait(false);
 
             Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.InvalidCredentials));
-        }
-
-        /// <summary>
-        /// Ensures that the admission tracker can veto authentication based on limits.
-        /// </summary>
-        /// <returns>A task that completes when the assertion is evaluated.</returns>
-        [Test]
-        public async Task ValidatePasswordAsync_AdmissionTrackerDenies_TransientFailure()
-        {
-            MySqlUserRecord record = new MySqlUserRecord(
-                "user1",
-                "secret",
-                allowAuthPlain: true,
-                allowAuthScram256: true,
-                scramSalt: ReadOnlyMemory<byte>.Empty,
-                scramIterations: 0,
-                scramStoredKey: ReadOnlyMemory<byte>.Empty,
-                scramServerKey: ReadOnlyMemory<byte>.Empty,
-                'R',
-                0,
-                0L,
-                1,
-                1,
-                true,
-                string.Empty);
-            FakeUserRecordStore store = new FakeUserRecordStore(record);
-            FakeAdmissionTracker tracker = new FakeAdmissionTracker(false);
-            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
-
-            NntpAuthResult result = await validator.ValidatePasswordAsync(
-                NntpAuthMechanisms.AuthInfoUserPass,
-                "user1",
-                "secret",
-                IPAddress.Loopback,
-                true,
-                CancellationToken.None).ConfigureAwait(false);
-
-            Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.TransientFailure));
         }
 
         /// <summary>
@@ -160,8 +166,8 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 "00000000-0000-0000-0000-0000000042");
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
-            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
 
             NntpAuthResult result = await validator.CompleteSaslAccountAsync(
                 NntpAuthMechanisms.SaslScramSha256,
@@ -200,8 +206,8 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 "00000000-0000-0000-0000-0000000042");
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
-            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
 
             NntpAuthResult result = await validator.CompleteSaslAccountAsync(
                 NntpAuthMechanisms.SaslCramMd5,
@@ -223,8 +229,8 @@ namespace Vector.NNTP.Tests.Auth.MySql
         public async Task ValidatePasswordAsync_RecordStoreThrows_TransientFailure()
         {
             ThrowingUserRecordStore store = new ThrowingUserRecordStore();
-            FakeAdmissionTracker tracker = new FakeAdmissionTracker(true);
-            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, tracker, NullLogger<MySqlNntpCredentialValidator>.Instance);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.AuthInfoUserPass,
@@ -280,41 +286,6 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 _ = accountName;
                 _ = cancellationToken;
                 throw new InvalidOperationException("Simulated backend outage.");
-            }
-        }
-
-        /// <summary>
-        /// Fake admission tracker for validator unit tests.
-        /// </summary>
-        private sealed class FakeAdmissionTracker : INntpSessionAdmissionTracker
-        {
-            /// <summary>
-            /// Whether <see cref="TryEnter"/> should succeed.
-            /// </summary>
-            private readonly bool _allow;
-
-            /// <summary>
-            /// Initializes a new instance of the <see cref="FakeAdmissionTracker"/> class.
-            /// </summary>
-            /// <param name="allow">When <see langword="true"/>, admission succeeds.</param>
-            public FakeAdmissionTracker(bool allow)
-            {
-                this._allow = allow;
-            }
-
-            /// <inheritdoc />
-            public bool TryEnter(NntpSessionPolicy policy, IPAddress clientIp)
-            {
-                _ = policy;
-                _ = clientIp;
-                return this._allow;
-            }
-
-            /// <inheritdoc />
-            public void Leave(NntpSessionPolicy policy, IPAddress clientIp)
-            {
-                _ = policy;
-                _ = clientIp;
             }
         }
     }

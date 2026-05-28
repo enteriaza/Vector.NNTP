@@ -3,6 +3,10 @@
 // </copyright>
 // COLD PATH: RFC-aligned golden transcript protocol tests over in-memory pipes.
 
+using System.Net;
+using Vector.NNTP.Tests.Session;
+using Vector.NNTP.Tests.Sockets.Fakes;
+
 namespace Vector.NNTP.Tests.Sockets
 {
     /// <summary>
@@ -94,6 +98,80 @@ namespace Vector.NNTP.Tests.Sockets
             finally
             {
                 await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Verifies AUTHINFO PASS returns 481 Too many sessions when the cluster session cap is reached.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task AuthInfoPass_WhenMaxSessionsExceeded_Returns481TooManySessions()
+        {
+            var coordinator = new InMemorySessionCoordinator();
+            NntpSessionTestServices.NntpSessionTestBundle session = NntpSessionTestServices.CreateWithCoordinator(coordinator);
+            var users = new Dictionary<string, string> { ["alice"] = "secret" };
+            var validator = new FakeNntpCredentialValidator(
+                users,
+                _ => new NntpAccountLimits("alice", 'R', 0, 0, 1, 0, string.Empty));
+
+            NntpProtocolHarness first = NntpProtocolHarness.CreateReader(session, validator);
+            NntpProtocolHarness second = NntpProtocolHarness.CreateReader(session, validator);
+            try
+            {
+                await first.AuthenticateAsync().ConfigureAwait(false);
+
+                _ = await second.ReadGreetingAsync().ConfigureAwait(false);
+                await second.SendAsync("AUTHINFO USER alice").ConfigureAwait(false);
+                _ = await second.ReadLineAsync().ConfigureAwait(false);
+                await second.SendAsync("AUTHINFO PASS secret").ConfigureAwait(false);
+                string line = await second.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(line, Is.EqualTo("481 Too many sessions"));
+            }
+            finally
+            {
+                await first.DisposeAsync().ConfigureAwait(false);
+                await second.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Verifies AUTHINFO PASS returns 481 Too many source addresses when the distinct-IP cap is reached.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task AuthInfoPass_WhenIpLimitExceeded_Returns481TooManySourceAddresses()
+        {
+            var coordinator = new InMemorySessionCoordinator();
+            NntpSessionTestServices.NntpSessionTestBundle session = NntpSessionTestServices.CreateWithCoordinator(coordinator);
+            var users = new Dictionary<string, string> { ["alice"] = "secret" };
+            var validator = new FakeNntpCredentialValidator(
+                users,
+                _ => new NntpAccountLimits("alice", 'R', 0, 0, 0, 1, string.Empty));
+
+            NntpProtocolHarness first = NntpProtocolHarness.CreateReader(
+                session,
+                validator,
+                IPAddress.Parse("10.0.0.1"));
+            NntpProtocolHarness second = NntpProtocolHarness.CreateReader(
+                session,
+                validator,
+                IPAddress.Parse("10.0.0.2"));
+            try
+            {
+                await first.AuthenticateAsync().ConfigureAwait(false);
+
+                _ = await second.ReadGreetingAsync().ConfigureAwait(false);
+                await second.SendAsync("AUTHINFO USER alice").ConfigureAwait(false);
+                _ = await second.ReadLineAsync().ConfigureAwait(false);
+                await second.SendAsync("AUTHINFO PASS secret").ConfigureAwait(false);
+                string line = await second.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(line, Is.EqualTo("481 Too many source addresses"));
+            }
+            finally
+            {
+                await first.DisposeAsync().ConfigureAwait(false);
+                await second.DisposeAsync().ConfigureAwait(false);
             }
         }
 

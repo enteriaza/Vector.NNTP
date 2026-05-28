@@ -3,14 +3,14 @@
 // </copyright>
 // COLD PATH: DI registration for reader and transit socket hosts.
 
-using Vector.NNTP.Sockets.Authentication;
-using Vector.NNTP.Sockets.Configuration;
-using Vector.NNTP.Sockets.HostProfile;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Vector.NNTP.Sockets.Transport;
+using Vector.NNTP.Sockets.Authentication;
+using Vector.NNTP.Sockets.Configuration;
+using Vector.NNTP.Sockets.HostProfile;
 using Vector.NNTP.Sockets.Tls;
+using Vector.NNTP.Sockets.Transport;
 
 namespace Vector.NNTP.Sockets.Hosting
 {
@@ -50,6 +50,8 @@ namespace Vector.NNTP.Sockets.Hosting
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NntpServerOptions>, NntpServerOptionsValidator>());
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<NntpServerOptions>, NntpServerIdleTimeoutPostConfigure>());
+            _ = services.AddNntpSessionCore();
             _ = services.AddSingleton<NntpAuthenticationService>();
             _ = services.AddSingleton<NntpInFlightSessionTracker>();
             _ = services.AddSingleton<NntpCommandDispatcher>();

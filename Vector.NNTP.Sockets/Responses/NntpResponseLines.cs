@@ -11,6 +11,9 @@ namespace Vector.NNTP.Sockets.Responses
     internal static class NntpResponseLines
     {
         internal const string AuthenticationRequired480 = "480 Authentication required";
+        internal const string TooManySessions481 = "481 Too many sessions";
+        internal const string TooManySourceAddresses481 = "481 Too many source addresses";
+        internal const string AuthenticationFailed481 = "481 Authentication failed";
         internal const string PermissionDenied502 = "502 Permission denied";
         internal const string ProgramFault503 = "503 Program fault, closing connection";
         internal const string TlsRequired483 = "483 Encryption or stronger authentication required";

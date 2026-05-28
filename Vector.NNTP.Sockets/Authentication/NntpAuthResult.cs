@@ -3,6 +3,7 @@
 // </copyright>
 // COLD PATH: credential validation outcome DTO.
 
+
 namespace Vector.NNTP.Sockets.Authentication
 {
     /// <summary>

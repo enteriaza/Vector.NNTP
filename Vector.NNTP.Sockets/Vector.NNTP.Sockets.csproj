@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Vector.NNTP.Encryption\Vector.NNTP.Encryption.csproj" />
+    <ProjectReference Include="..\Vector.NNTP.Session\Vector.NNTP.Session.csproj" />
     <ProjectReference Include="..\Vector.NNTP.Utilities\Vector.NNTP.Utilities.csproj" />
   </ItemGroup>
 

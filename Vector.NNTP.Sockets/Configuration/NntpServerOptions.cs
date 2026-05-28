@@ -48,6 +48,11 @@ namespace Vector.NNTP.Sockets.Configuration
         public int MaxConnectionsPerClientIp { get; set; }
 
         /// <summary>
+        /// Gets or sets optional idle timeout in seconds from <c>idleTimeoutSeconds</c> JSON key.
+        /// </summary>
+        public int? IdleTimeoutSeconds { get; set; }
+
+        /// <summary>
         /// Gets or sets the idle timeout before the server closes the connection.
         /// </summary>
         public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(10);
@@ -90,6 +95,8 @@ namespace Vector.NNTP.Sockets.Configuration
             ArgumentNullException.ThrowIfNull(options);
             return string.IsNullOrWhiteSpace(options.ServerIdentification)
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.ServerIdentification)} is required.")
+                : options.IdleTimeoutSeconds is <= 0
+                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeoutSeconds)} must be positive when set.")
                 : options.IdleTimeout <= TimeSpan.Zero
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeout)} must be positive.")
                 : ValidateOptionsResult.Success;

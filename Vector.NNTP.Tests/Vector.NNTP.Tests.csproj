@@ -37,6 +37,8 @@
     <ProjectReference Include="..\Vector.NNTP.NNRPD\Vector.NNTP.NNRPD.csproj" />
     <ProjectReference Include="..\Vector.NNTP.NNTPD\Vector.NNTP.NNTPD.csproj" />
     <ProjectReference Include="..\Vector.NNTP.Auth.MySql\Vector.NNTP.Auth.MySql.csproj" />
+    <ProjectReference Include="..\Vector.NNTP.Session\Vector.NNTP.Session.csproj" />
+    <ProjectReference Include="..\Vector.NNTP.Session.Redis\Vector.NNTP.Session.Redis.csproj" />
   </ItemGroup>
 
   <ItemGroup>

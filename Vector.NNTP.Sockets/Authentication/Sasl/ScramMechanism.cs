@@ -3,10 +3,6 @@
 // </copyright>
 // COLD PATH: RFC 5802 SCRAM-SHA-256 and SCRAM-SHA-1 server-side exchange.
 
-using System.Diagnostics.CodeAnalysis;
-using System.Security.Cryptography;
-using System.Text;
-
 namespace Vector.NNTP.Sockets.Authentication.Sasl
 {
     /// <summary>
@@ -51,7 +47,7 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
                 : HashAlgorithmName.SHA1;
 
             if (!TrySplitClientFirst(clientFirst, out string? gs2Header, out string? clientFirstBare) ||
-                !TryParseAttribute(clientFirstBare!, 'r', out string? clientNonce) ||
+                !TryParseAttribute(clientFirstBare, 'r', out string? clientNonce) ||
                 string.IsNullOrEmpty(clientNonce))
             {
                 throw new ArgumentException("Invalid SCRAM client-first message.", nameof(clientFirst));
@@ -62,7 +58,7 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             string saltB64 = Convert.ToBase64String(credential.Salt.Span);
             string serverFirst = $"r={combinedNonce},s={saltB64},i={credential.IterationCount}";
 
-            ScramMechanism state = new(hash, credential, gs2Header!, clientFirstBare!, serverFirst, combinedNonce);
+            ScramMechanism state = new(hash, credential, gs2Header, clientFirstBare, serverFirst, combinedNonce);
             return (state, serverFirst);
         }
 
@@ -94,7 +90,7 @@ namespace Vector.NNTP.Sockets.Authentication.Sasl
             byte[] clientProof;
             try
             {
-                clientProof = Convert.FromBase64String(proofB64!);
+                clientProof = Convert.FromBase64String(proofB64);
             }
             catch (FormatException)
             {

@@ -4,8 +4,8 @@
 // COLD PATH: CAPABILITIES command handler.
 
 using Vector.NNTP.Sockets.Authentication;
-using Vector.NNTP.Sockets.HostProfile;
 using Vector.NNTP.Sockets.Commands;
+using Vector.NNTP.Sockets.HostProfile;
 using Vector.NNTP.Sockets.Session;
 using CapabilitiesWriter = Vector.NNTP.Sockets.Commands.NntpCapabilitiesWriter;
 

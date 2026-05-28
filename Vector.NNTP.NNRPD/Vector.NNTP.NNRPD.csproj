@@ -300,6 +300,7 @@
 		<ProjectReference Include="..\Vector.NNTP.MessageBus\Vector.NNTP.MessageBus.csproj" />
 		<ProjectReference Include="..\Vector.NNTP.Sockets\Vector.NNTP.Sockets.csproj" />
 		<ProjectReference Include="..\Vector.NNTP.Auth.MySql\Vector.NNTP.Auth.MySql.csproj" />
+		<ProjectReference Include="..\Vector.NNTP.Session.Redis\Vector.NNTP.Session.Redis.csproj" />
 	</ItemGroup>
 
 	<!-- Local host settings (gitignored); copy when present for dotnet run / publish output layout. -->

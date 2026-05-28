@@ -12,6 +12,7 @@ using Vector.NNTP.Sockets.HostProfile;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Storage;
 using Vector.NNTP.Sockets.Transport;
+using Vector.NNTP.Tests.Session;
 using Vector.NNTP.Tests.Sockets.Fakes;
 
 namespace Vector.NNTP.Tests.Sockets
@@ -68,6 +69,26 @@ namespace Vector.NNTP.Tests.Sockets
         /// <returns>Connected harness instance.</returns>
         internal static NntpProtocolHarness CreateReader() =>
             Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null, scramCredentialStore: null);
+
+        /// <summary>
+        /// Creates a reader harness with shared session services and a custom credential validator.
+        /// </summary>
+        /// <param name="session">Shared session bundle (coordinator must be shared across connections for admission tests).</param>
+        /// <param name="validator">Credential validator.</param>
+        /// <param name="clientIp">Simulated client IP for admission source-IP limits.</param>
+        /// <returns>Connected harness instance.</returns>
+        internal static NntpProtocolHarness CreateReader(
+            NntpSessionTestServices.NntpSessionTestBundle session,
+            FakeNntpCredentialValidator validator,
+            IPAddress? clientIp = null) =>
+            Create(
+                new NntpReaderHostProfile(),
+                new FakeNntpArticleStorage(),
+                transit: null,
+                scramCredentialStore: null,
+                session,
+                validator,
+                clientIp);
 
         /// <summary>
         /// Creates a transit-profile harness with fake transit storage.
@@ -229,12 +250,18 @@ namespace Vector.NNTP.Tests.Sockets
         /// <param name="articles">Optional reader storage.</param>
         /// <param name="transit">Optional transit storage.</param>
         /// <param name="scramCredentialStore">Optional SCRAM credential store used for CAPABILITIES advertisement.</param>
+        /// <param name="session">Optional shared session bundle; defaults to a fresh in-memory stack.</param>
+        /// <param name="validator">Optional credential validator; defaults to alice/secret.</param>
+        /// <param name="clientIp">Optional simulated client IP for admission tests.</param>
         /// <returns>Connected harness.</returns>
         private static NntpProtocolHarness Create(
             INntpHostProfile profile,
             INntpArticleStorage? articles,
             INntpTransitStorage? transit,
-            IScramCredentialStore? scramCredentialStore)
+            IScramCredentialStore? scramCredentialStore,
+            NntpSessionTestServices.NntpSessionTestBundle? session = null,
+            FakeNntpCredentialValidator? validator = null,
+            IPAddress? clientIp = null)
         {
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
@@ -244,7 +271,16 @@ namespace Vector.NNTP.Tests.Sockets
                 ServerIdentification = "VectorNNTPD-Test",
                 IdleTimeout = TimeSpan.FromSeconds(5),
             });
-            var auth = new NntpAuthenticationService(new FakeNntpCredentialValidator(new Dictionary<string, string> { ["alice"] = "secret" }));
+            NntpSessionTestServices.NntpSessionTestBundle sessionBundle = session ?? NntpSessionTestServices.CreateDefault();
+            FakeNntpCredentialValidator credentialValidator = validator
+                ?? new FakeNntpCredentialValidator(new Dictionary<string, string> { ["alice"] = "secret" });
+            var auth = new NntpAuthenticationService(
+                credentialValidator,
+                sessionBundle.Coordinator,
+                sessionBundle.Database,
+                sessionBundle.BlockQuota,
+                sessionBundle.RateAllocation,
+                sessionBundle.IdleOptions);
             var dispatcher = new NntpCommandDispatcher(
                 auth,
                 articles,
@@ -252,8 +288,17 @@ namespace Vector.NNTP.Tests.Sockets
                 tlsCertificateSource: null,
                 scramCredentialStore: scramCredentialStore,
                 NullLogger<NntpCommandDispatcher>.Instance);
-            var runner = new NntpSessionRunner(dispatcher, profile, options, tlsCertificateSource: null, admissionTracker: null, NullLogger<NntpSessionRunner>.Instance);
-            var remote = new IPEndPoint(IPAddress.Loopback, 12345);
+            var runner = new NntpSessionRunner(
+                dispatcher,
+                profile,
+                options,
+                sessionBundle.Database,
+                sessionBundle.Coordinator,
+                sessionBundle.QuotaEnforcer,
+                tlsCertificateSource: null,
+                NullLogger<NntpSessionRunner>.Instance);
+            IPAddress ip = clientIp ?? IPAddress.Loopback;
+            var remote = new IPEndPoint(ip, 12345);
             var context = new NntpConnectionContext(Guid.NewGuid().ToString("N"), remote, remote, profile.Role);
             var transport = new NntpPipeTransport(clientToServer.Reader, serverToClient.Writer);
             Task serverTask = runner.RunAsync(transport, context, tlsAlreadyActive: false, cts.Token);

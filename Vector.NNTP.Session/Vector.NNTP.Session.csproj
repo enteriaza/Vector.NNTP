@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Vector.NNTP.Session</RootNamespace>
+    <AssemblyName>Vector.NNTP.Session</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnableLoggerMessageGenerator>true</EnableLoggerMessageGenerator>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Blake3" Version="1.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Vector.NNTP.Tests" />
+    <InternalsVisibleTo Include="Vector.NNTP.Session.Redis" />
+    <InternalsVisibleTo Include="Vector.NNTP.Sockets" />
+  </ItemGroup>
+
+</Project>

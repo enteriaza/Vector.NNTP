@@ -3,13 +3,13 @@
 // </copyright>
 // HOT PATH: routes classified verbs to per-command handlers.
 
-using Vector.NNTP.Sockets.Authentication;
 using Microsoft.Extensions.Logging;
-using Vector.NNTP.Sockets.Transport.Commands;
+using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Storage;
 using Vector.NNTP.Sockets.Tls;
+using Vector.NNTP.Sockets.Transport.Commands;
 
 namespace Vector.NNTP.Sockets.Transport
 {
@@ -52,7 +52,7 @@ namespace Vector.NNTP.Sockets.Transport
             string line,
             CancellationToken cancellationToken)
         {
-            if (session.State.AuthenticationState == AuthenticationState.SaslInProgress &&
+            if (session.State.AuthenticationState == Session.AuthenticationState.SaslInProgress &&
                 !line.StartsWith("AUTHINFO", StringComparison.OrdinalIgnoreCase))
             {
                 if (line.Equals("QUIT", StringComparison.OrdinalIgnoreCase))
