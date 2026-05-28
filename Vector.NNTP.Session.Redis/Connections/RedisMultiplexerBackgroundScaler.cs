@@ -8,8 +8,17 @@ namespace Vector.NNTP.Session.Redis.Connections
     /// </summary>
     public sealed partial class RedisMultiplexerBackgroundScaler : BackgroundService
     {
+        /// <summary>
+        /// Pool to scale.
+        /// </summary>
         private readonly RedisMultiplexerPool _pool;
+        /// <summary>
+        /// Coordination options.
+        /// </summary>
         private readonly IOptions<NntpSessionCoordinationOptions> _options;
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisMultiplexerBackgroundScaler> _logger;
 
         /// <summary>
@@ -31,7 +40,11 @@ namespace Vector.NNTP.Session.Redis.Connections
             _logger = logger;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Processes scale-up signals until host shutdown.
+        /// </summary>
+        /// <param name="stoppingToken">Host shutdown token.</param>
+        /// <returns>A task representing the background loop.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             await foreach (bool scaleUpSignal in _pool.ScaleUpReader.ReadAllAsync(stoppingToken).ConfigureAwait(false))

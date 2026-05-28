@@ -11,11 +11,34 @@ namespace Vector.NNTP.Session.Redis.Connections
     /// </summary>
     public sealed partial class RedisMultiplexerPool : IAsyncDisposable
     {
+        /// <summary>
+        /// Multiplexer factory.
+        /// </summary>
         private readonly RedisMultiplexerFactory _factory;
+
+        /// <summary>
+        /// Coordination options.
+        /// </summary>
         private readonly IOptions<NntpSessionCoordinationOptions> _options;
+
+        /// <summary>
+        /// Per-host backoff tracker.
+        /// </summary>
         private readonly RedisHostHealthTracker _hostHealth;
+
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisMultiplexerPool> _logger;
+
+        /// <summary>
+        /// Snapshot lock.
+        /// </summary>
         private readonly object _snapshotLock = new();
+
+        /// <summary>
+        /// Scale-up signal channel.
+        /// </summary>
         private readonly Channel<bool> _scaleUpSignal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
@@ -23,8 +46,19 @@ namespace Vector.NNTP.Session.Redis.Connections
             SingleWriter = false,
         });
 
+        /// <summary>
+        /// Snapshot of pooled multiplexers.
+        /// </summary>
         private PooledMultiplexer[] _snapshot = [];
+
+        /// <summary>
+        /// Round-robin index.
+        /// </summary>
         private int _roundRobinIndex;
+
+        /// <summary>
+        /// Disposed flag.
+        /// </summary>
         private bool _disposed;
 
         /// <summary>
@@ -103,7 +137,10 @@ namespace Vector.NNTP.Session.Redis.Connections
             throw new RedisUnavailableException("No connected Redis multiplexers are available.");
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Disposes the pool.
+        /// </summary>
+        /// <returns>A task that completes when the pool is disposed.</returns>
         public async ValueTask DisposeAsync()
         {
             if (_disposed)

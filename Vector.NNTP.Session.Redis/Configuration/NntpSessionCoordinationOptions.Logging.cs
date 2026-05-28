@@ -8,12 +8,27 @@ namespace Vector.NNTP.Session.Redis.Configuration
     /// </summary>
     public sealed partial class NntpSessionCoordinationOptions
     {
+        /// <summary>
+        /// Log a duplicate host warning.
+        /// </summary>
+        /// <param name="logger">Logger instance.</param>
+        /// <param name="host">The host.</param>
         [LoggerMessage(
             EventId = 1,
             Level = LogLevel.Warning,
             Message = "Redis:Hosts contains duplicate entry '{Host}'.")]
         private static partial void LogDuplicateHostWarning(ILogger logger, string host);
 
+        /// <summary>
+        /// Log a validation success message.
+        /// </summary>
+        /// <param name="logger">Logger instance.</param>
+        /// <param name="hostCount">The host count.</param>
+        /// <param name="port">The port.</param>
+        /// <param name="retry">The retry.</param>
+        /// <param name="timeoutSeconds">The timeout seconds.</param>
+        /// <param name="minConnections">The minimum connections.</param>
+        /// <param name="maxConnections">The maximum connections.</param>
         [LoggerMessage(
             EventId = 2,
             Level = LogLevel.Information,

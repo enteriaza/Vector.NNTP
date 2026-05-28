@@ -15,10 +15,22 @@ namespace Vector.NNTP.Session.Redis.Configuration
         IHostEnvironment? hostEnvironment = null)
         : IValidateOptions<NntpSessionCoordinationOptions>
     {
+        /// <summary>
+        /// Success logged flag.
+        /// </summary>
         private int _successLogged;
+        /// <summary>
+        /// Warnings logged flag.
+        /// </summary>
         private int _warningsLogged;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Validates <paramref name="options"/>, emits soft warnings once, and logs a success summary when valid.
+        /// </summary>
+        /// <param name="name">Options name from the DI container (typically <see cref="Options.DefaultName"/>).</param>
+        /// <param name="options">Bound coordination options instance.</param>
+        /// <returns><see cref="ValidateOptionsResult.Success"/> when there are no hard errors; otherwise a failure result.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is <see langword="null"/>.</exception>
         public ValidateOptionsResult Validate(string? name, NntpSessionCoordinationOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);

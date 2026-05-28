@@ -10,8 +10,19 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// </summary>
     public sealed partial class RedisBlockQuotaCoordinator : INntpBlockQuotaCoordinator
     {
+        /// <summary>
+        /// Redis connection accessor.
+        /// </summary>
         private readonly IRedisConnectionAccessor _redis;
+
+        /// <summary>
+        /// Redis coordination keys.
+        /// </summary>
         private readonly RedisCoordinationKeys _keys;
+
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisBlockQuotaCoordinator> _logger;
 
         /// <summary>
@@ -31,7 +42,13 @@ namespace Vector.NNTP.Session.Redis.Coordination
             _keys = new RedisCoordinationKeys(options.Value.KeyPrefix);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Ensures the account quota key exists (idempotent initialize).
+        /// </summary>
+        /// <param name="accountKey">Normalized account key.</param>
+        /// <param name="byteLimit">Initial quota bytes.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns><see langword="true"/> when the key was created or lowered to policy.</returns>
         public async ValueTask<bool> TryInitializeQuotaAsync(string accountKey, long byteLimit, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountKey);
@@ -46,7 +63,13 @@ namespace Vector.NNTP.Session.Redis.Coordination
             return await db.StringSetAsync(quotaKey, byteLimit, when: When.NotExists).ConfigureAwait(false);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Decrements remaining quota by command bytes.
+        /// </summary>
+        /// <param name="accountKey">Normalized account key.</param>
+        /// <param name="commandBytes">Bytes to decrement.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Remaining bytes after decrement.</returns>
         public async ValueTask<long> DecrementAsync(string accountKey, long commandBytes, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountKey);

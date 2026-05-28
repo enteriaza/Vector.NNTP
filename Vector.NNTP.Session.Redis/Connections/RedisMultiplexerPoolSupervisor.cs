@@ -10,8 +10,19 @@ namespace Vector.NNTP.Session.Redis.Connections
     /// </summary>
     public sealed partial class RedisMultiplexerPoolSupervisor : IHostedService
     {
+        /// <summary>
+        /// Pool to start and dispose.
+        /// </summary>
         private readonly RedisMultiplexerPool _pool;
+
+        /// <summary>
+        /// Pool health aggregator.
+        /// </summary>
         private readonly IRedisPoolHealth _health;
+
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisMultiplexerPoolSupervisor> _logger;
 
         /// <summary>
@@ -25,15 +36,16 @@ namespace Vector.NNTP.Session.Redis.Connections
             IRedisPoolHealth health,
             ILogger<RedisMultiplexerPoolSupervisor> logger)
         {
-            ArgumentNullException.ThrowIfNull(pool);
-            ArgumentNullException.ThrowIfNull(health);
-            ArgumentNullException.ThrowIfNull(logger);
-            _pool = pool;
-            _health = health;
-            _logger = logger;
+            _pool = pool ?? throw new ArgumentNullException(nameof(pool));
+            _health = health ?? throw new ArgumentNullException(nameof(health));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Starts the pool and updates health.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when the pool is started.</returns>
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             await _pool.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -45,7 +57,11 @@ namespace Vector.NNTP.Session.Redis.Connections
             LogSupervisorStarted(_logger, _pool.Snapshot.Count);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Disposes the pool.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when the pool is disposed.</returns>
         public async Task StopAsync(CancellationToken cancellationToken)
         {
             await _pool.DisposeAsync().ConfigureAwait(false);

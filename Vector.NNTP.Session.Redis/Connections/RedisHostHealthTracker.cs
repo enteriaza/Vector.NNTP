@@ -9,10 +9,19 @@ namespace Vector.NNTP.Session.Redis.Connections
     /// </summary>
     public sealed class RedisHostHealthTracker
     {
+        /// <summary>
+        /// Coordination options.
+        /// </summary>
         private readonly IOptions<NntpSessionCoordinationOptions> _options;
 
+        /// <summary>
+        /// Attempt counts.
+        /// </summary>
         private readonly Dictionary<int, int> _attemptCounts = [];
 
+        /// <summary>
+        /// Suppressed until.
+        /// </summary>
         private readonly Dictionary<int, DateTimeOffset?> _suppressedUntil = [];
 
         /// <summary>

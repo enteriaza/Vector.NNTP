@@ -10,6 +10,9 @@ namespace Vector.NNTP.Session.Redis.Connections
     /// </summary>
     public sealed class PooledMultiplexer : IAsyncDisposable
     {
+        /// <summary>
+        /// Underlying Redis multiplexer.
+        /// </summary>
         private IConnectionMultiplexer? _multiplexer;
 
         /// <summary>

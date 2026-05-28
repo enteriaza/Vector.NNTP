@@ -15,15 +15,23 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// <param name="pool">Multiplexer pool.</param>
     public sealed class RedisConnectionAccessor(RedisMultiplexerPool pool) : IRedisConnectionAccessor
     {
+        /// <summary>
+        /// Multiplexer pool.
+        /// </summary>
         private readonly RedisMultiplexerPool _pool = pool ?? throw new ArgumentNullException(nameof(pool));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a database handle from a live pool multiplexer.
+        /// </summary>
+        /// <returns>Redis database API.</returns>
         public IDatabase GetDatabase()
         {
             return _pool.GetMultiplexer().GetDatabase();
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Signals the pool to scale up when an operation exceeded the slow-call threshold.
+        /// </summary>
         public void SignalScaleUp()
         {
             _pool.SignalScaleUp();

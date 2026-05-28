@@ -8,9 +8,21 @@ namespace Vector.NNTP.Session.Redis.Connections
     /// </summary>
     public sealed partial class RedisMultiplexerPool
     {
+        /// <summary>
+        /// Log a multiplexer added message.
+        /// </summary>
+        /// <param name="logger">Logger instance.</param>
+        /// <param name="connectionId">The connection ID.</param>
+        /// <param name="poolSize">The pool size.</param>
         [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Redis multiplexer added ConnectionId={ConnectionId} PoolSize={PoolSize}.")]
         private static partial void LogMultiplexerAdded(ILogger logger, Guid connectionId, int poolSize);
 
+        /// <summary>
+        /// Log a multiplexer connect failed message.
+        /// </summary>
+        /// <param name="logger">Logger instance.</param>
+        /// <param name="hostIndex">The host index.</param>
+        /// <param name="exception">The exception.</param>
         [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Redis multiplexer connect failed HostIndex={HostIndex}.")]
         private static partial void LogMultiplexerConnectFailed(ILogger logger, int hostIndex, Exception exception);
     }
