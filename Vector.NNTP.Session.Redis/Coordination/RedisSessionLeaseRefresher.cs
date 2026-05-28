@@ -11,9 +11,27 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// </summary>
     public sealed partial class RedisSessionLeaseRefresher : IRedisSessionLeaseRefresher
     {
-        private readonly IRedisConnectionAccessor _redis;
-        private readonly RedisCoordinationKeys _keys;
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisSessionLeaseRefresher> _logger;
+
+        /// <summary>
+        /// Redis connection accessor.
+        /// </summary>
+        private readonly IRedisConnectionAccessor _redis;
+
+        /// <summary>
+        /// Redis coordination keys.
+        /// </summary>
+        private readonly RedisCoordinationKeys _keys;
+
+        /// <summary>
+        /// The threshold in milliseconds for a slow Redis operation.
+        /// </summary>
+        /// <remarks>
+        /// If the elapsed time is greater than or equal to this threshold, a warning will be logged.
+        /// </remarks>
         private readonly int _slowThresholdMs;
 
         /// <summary>
@@ -30,11 +48,20 @@ namespace Vector.NNTP.Session.Redis.Coordination
             _redis = redis ?? throw new ArgumentNullException(nameof(redis));
             ArgumentNullException.ThrowIfNull(options);
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
             _keys = new RedisCoordinationKeys(options.Value.KeyPrefix);
             _slowThresholdMs = Math.Max(0, options.Value.SlowRedisCallThresholdMs);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Refreshes the Redis lease for the given session.
+        /// </summary>
+        /// <param name="accountKey">The account key of the session.</param>
+        /// <param name="sessionId">The ID of the session.</param>
+        /// <param name="ipText">The IP text of the session.</param>
+        /// <param name="ttlSeconds">The TTL of the session in seconds.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A <see cref="Task"/> that completes when the heartbeat is completed.</returns>
         public async Task HeartbeatAsync(
             string accountKey,
             string sessionId,
@@ -60,17 +87,17 @@ namespace Vector.NNTP.Session.Redis.Coordination
             try
             {
                 _ = await db.ScriptEvaluateAsync(RedisLuaScripts.SessionHeartbeatV1, redisKeys, argv).ConfigureAwait(false);
-                LogTraceRedisLeaseRefreshed(sessionId, accountKey, ttlSeconds);
+                LogTraceRedisLeaseRefreshed(_logger, sessionId, accountKey, ttlSeconds);
                 double elapsedMs = sw.Elapsed.TotalMilliseconds;
                 if (_slowThresholdMs > 0 && elapsedMs >= _slowThresholdMs)
                 {
-                    LogWarningRedisOperationSlow("session-heartbeat", elapsedMs);
+                    LogWarningRedisOperationSlow(_logger, "session-heartbeat", elapsedMs);
                     _redis.SignalScaleUp();
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogWarningRedisLeaseRefreshFailed(accountKey, sessionId, ex);
+                LogWarningRedisLeaseRefreshFailed(_logger, ex, accountKey, sessionId);
                 throw;
             }
         }

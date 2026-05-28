@@ -17,15 +17,42 @@ namespace Vector.NNTP.Session.Redis.Coordination
         IOptionsMonitor<NntpRateAllocationOptions> rateOptions,
         ILogger<RedisRateAllocationCoordinator> logger) : INntpRateAllocationCoordinator
     {
+        /// <summary>
+        /// Cluster session count source.
+        /// </summary>
         private readonly INntpSessionCountCoordinator _sessionCountCoordinator = sessionCountCoordinator ?? throw new ArgumentNullException(nameof(sessionCountCoordinator));
+
+        /// <summary>
+        /// Refresh cadence options.
+        /// </summary>
         private readonly IOptionsMonitor<NntpRateAllocationOptions> _rateOptions = rateOptions ?? throw new ArgumentNullException(nameof(rateOptions));
+
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisRateAllocationCoordinator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        /// <summary>
+        /// The refresh state.
+        /// </summary>
+        /// <remarks>
+        /// The key is the account key.
+        /// The value is a tuple of the current cap and the next refresh time.
+        /// </remarks>
         private readonly Dictionary<string, (long Cap, DateTimeOffset NextRefresh)> _refreshState =
             new(StringComparer.Ordinal);
 
+        /// <summary>
+        /// The refresh lock.
+        /// </summary>
         private readonly object _refreshLock = new();
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the per session send rate bytes per second.
+        /// </summary>
+        /// <param name="policy">The session policy.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The per session send rate bytes per second.</returns>
         public async Task<long> GetPerSessionSendRateBytesPerSecondAsync(
             NntpSessionPolicy policy,
             CancellationToken cancellationToken)
@@ -68,7 +95,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
 
                 DateTimeOffset refreshAt = now.Add(opts.RateAllocationRefreshInterval);
                 _refreshState[accountKey] = (cap, refreshAt);
-                LogInformationAccountRateRebalanced(accountKey, sessions, cap, policy.RateBytesPerSecond);
+                LogInformationAccountRateRebalanced(_logger, accountKey, sessions, cap, policy.RateBytesPerSecond);
                 return cap;
             }
         }

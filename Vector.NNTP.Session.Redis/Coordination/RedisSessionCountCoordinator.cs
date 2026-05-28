@@ -11,8 +11,19 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// </summary>
     public sealed partial class RedisSessionCountCoordinator : INntpSessionCountCoordinator
     {
+        /// <summary>
+        /// Redis connection accessor.
+        /// </summary>
         private readonly IRedisConnectionAccessor _redis;
+
+        /// <summary>
+        /// Redis coordination keys.
+        /// </summary>
         private readonly RedisCoordinationKeys _keys;
+
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisSessionCountCoordinator> _logger;
 
         /// <summary>
@@ -32,7 +43,12 @@ namespace Vector.NNTP.Session.Redis.Coordination
             _keys = new RedisCoordinationKeys(options.Value.KeyPrefix);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the session count for the given username.
+        /// </summary>
+        /// <param name="username">The username to get the session count for.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The session count.</returns>
         public async Task<long> GetSessionCountAsync(string username, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);
@@ -47,7 +63,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
 
             if (long.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long count))
             {
-                LogDebugSessionCountChanged(accountKey, count);
+                LogDebugSessionCountChanged(_logger, accountKey, count);
                 return count;
             }
 

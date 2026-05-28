@@ -21,13 +21,36 @@ namespace Vector.NNTP.Session.Redis.HostedServices
         IOptionsMonitor<NntpSessionIdleOptions> idleOptions,
         ILogger<RedisSessionHeartbeatHostedService> logger) : BackgroundService
     {
+        /// <summary>
+        /// Session database.
+        /// </summary>
         private readonly ISessionDatabase _sessionDatabase = sessionDatabase ?? throw new ArgumentNullException(nameof(sessionDatabase));
+
+        /// <summary>
+        /// Lease refresher.
+        /// </summary>
         private readonly IRedisSessionLeaseRefresher _leaseRefresher = leaseRefresher ?? throw new ArgumentNullException(nameof(leaseRefresher));
+
+        /// <summary>
+        /// Coordination options.
+        /// </summary>
         private readonly IOptionsMonitor<NntpSessionCoordinationOptions> _coordinationOptions = coordinationOptions ?? throw new ArgumentNullException(nameof(coordinationOptions));
+
+        /// <summary>
+        /// Idle options.
+        /// </summary>
         private readonly IOptionsMonitor<NntpSessionIdleOptions> _idleOptions = idleOptions ?? throw new ArgumentNullException(nameof(idleOptions));
+
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisSessionHeartbeatHostedService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Execute the heartbeat hosted service.
+        /// </summary>
+        /// <param name="stoppingToken">Token to stop the hosted service.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
@@ -67,7 +90,7 @@ namespace Vector.NNTP.Session.Redis.HostedServices
                     }
                     catch (Exception ex)
                     {
-                        LogWarningHeartbeatFailed(session.SessionId, session.AccountKey, ex);
+                        LogWarningHeartbeatFailed(this._logger, ex, session.SessionId, session.AccountKey);
                     }
                 }
             }

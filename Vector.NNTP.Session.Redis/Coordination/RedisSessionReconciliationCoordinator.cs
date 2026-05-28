@@ -11,10 +11,29 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// </summary>
     public sealed partial class RedisSessionReconciliationCoordinator : IRedisSessionReconciliationCoordinator
     {
+        /// <summary>
+        /// Redis connection accessor.
+        /// </summary>
         private readonly IRedisConnectionAccessor _redis;
+
+        /// <summary>
+        /// Session database.
+        /// </summary>
         private readonly ISessionDatabase _sessionDatabase;
+
+        /// <summary>
+        /// Redis coordination keys.
+        /// </summary>
         private readonly RedisCoordinationKeys _keys;
+
+        /// <summary>
+        /// Coordination options.
+        /// </summary>
         private readonly NntpSessionCoordinationOptions _options;
+
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisSessionReconciliationCoordinator> _logger;
 
         /// <summary>
@@ -38,17 +57,22 @@ namespace Vector.NNTP.Session.Redis.Coordination
             _keys = new RedisCoordinationKeys(_options.KeyPrefix);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Reconciles the session and IP counters for the given account key.
+        /// </summary>
+        /// <param name="accountKey">The account key to reconcile.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The number of sessions after the reconciliation.</returns>
         public async Task<long> ReconcileAsync(string accountKey, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountKey);
             cancellationToken.ThrowIfCancellationRequested();
-            LogDebugRedisReconciliationStarted(accountKey);
+            LogDebugRedisReconciliationStarted(_logger, accountKey);
             IDatabase db = _redis.GetDatabase();
             RedisKey liveSetKey = _keys.ReconciliationLiveSet(accountKey);
             try
             {
-                await PurgeOrphanAnchorsAsync(db, accountKey, liveSetKey, cancellationToken).ConfigureAwait(false);
+                await PurgeOrphanAnchorsAsync(db, accountKey, liveSetKey).ConfigureAwait(false);
 
                 RedisKey sessionsKey = _keys.Sessions(accountKey);
                 RedisValue[] sessionArgv =
@@ -73,12 +97,12 @@ namespace Vector.NNTP.Session.Redis.Coordination
                     10_000,
                 ];
                 _ = await db.ScriptEvaluateAsync(RedisLuaScripts.IpReconcileV1, [ipsKey], ipArgv).ConfigureAwait(false);
-                LogInformationRedisReconciliationCompleted(accountKey, sessionsAfter);
+                LogInformationRedisReconciliationCompleted(_logger, accountKey, sessionsAfter);
                 return sessionsAfter;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogWarningRedisReconciliationFailed(accountKey, ex);
+                LogWarningRedisReconciliationFailed(_logger, ex, accountKey);
                 throw;
             }
             finally
@@ -93,19 +117,17 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <param name="db">Redis database.</param>
         /// <param name="accountKey">Normalized account key.</param>
         /// <param name="liveSetKey">Ephemeral set populated with live session ids.</param>
-        /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A <see cref="Task"/> that completes when purge finishes.</returns>
         private async Task PurgeOrphanAnchorsAsync(
             IDatabase db,
             string accountKey,
-            RedisKey liveSetKey,
-            CancellationToken cancellationToken)
+            RedisKey liveSetKey)
         {
             IReadOnlyCollection<string> liveSessionIds = _sessionDatabase.SnapshotSessionIdsForAccount(accountKey);
-            await db.KeyDeleteAsync(liveSetKey).ConfigureAwait(false);
+            _ = await db.KeyDeleteAsync(liveSetKey).ConfigureAwait(false);
             if (liveSessionIds.Count > 0)
             {
-                RedisValue[] members = liveSessionIds.Select(static id => (RedisValue)id).ToArray();
+                RedisValue[] members = [.. liveSessionIds.Select(static id => (RedisValue)id)];
                 _ = await db.SetAddAsync(liveSetKey, members).ConfigureAwait(false);
             }
 
@@ -128,7 +150,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
             long purged = (long)purgeResult;
             if (purged > 0)
             {
-                LogInformationRedisOrphanAnchorsPurged(accountKey, purged, liveSessionIds.Count);
+                LogInformationRedisOrphanAnchorsPurged(_logger, accountKey, purged, liveSessionIds.Count);
             }
         }
     }

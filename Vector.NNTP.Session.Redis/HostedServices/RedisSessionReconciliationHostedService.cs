@@ -19,12 +19,31 @@ namespace Vector.NNTP.Session.Redis.HostedServices
         IOptionsMonitor<NntpSessionCoordinationOptions> coordinationOptions,
         ILogger<RedisSessionReconciliationHostedService> logger) : BackgroundService
     {
+        /// <summary>
+        /// Reconciliation coordinator.
+        /// </summary>
         private readonly IRedisSessionReconciliationCoordinator _reconciliationCoordinator = reconciliationCoordinator ?? throw new ArgumentNullException(nameof(reconciliationCoordinator));
+
+        /// <summary>
+        /// Session database.
+        /// </summary>
         private readonly ISessionDatabase _sessionDatabase = sessionDatabase ?? throw new ArgumentNullException(nameof(sessionDatabase));
+
+        /// <summary>
+        /// Coordination options.
+        /// </summary>
         private readonly IOptionsMonitor<NntpSessionCoordinationOptions> _coordinationOptions = coordinationOptions ?? throw new ArgumentNullException(nameof(coordinationOptions));
+
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisSessionReconciliationHostedService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Execute the reconciliation hosted service.
+        /// </summary>
+        /// <param name="stoppingToken">Token to stop the hosted service.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)

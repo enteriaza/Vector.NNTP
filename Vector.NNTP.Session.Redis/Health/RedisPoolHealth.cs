@@ -10,7 +10,9 @@ namespace Vector.NNTP.Session.Redis.Health
     /// </summary>
     public sealed class RedisPoolHealth : IRedisPoolHealth
     {
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the current health status of the Redis pool.
+        /// </summary>
         public RedisPoolHealthStatus Status { get; private set; } = RedisPoolHealthStatus.Recovering;
 
         /// <summary>

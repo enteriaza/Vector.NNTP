@@ -11,10 +11,32 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// </summary>
     public sealed partial class RedisSessionCoordinator : INntpSessionCoordinator
     {
+        /// <summary>
+        /// Redis connection accessor.
+        /// </summary>
         private readonly IRedisConnectionAccessor _redis;
+
+        /// <summary>
+        /// Redis coordination keys.
+        /// </summary>
         private readonly RedisCoordinationKeys _keys;
+
+        /// <summary>
+        /// Reconciliation coordinator.
+        /// </summary>
         private readonly IRedisSessionReconciliationCoordinator _reconciliation;
+
+        /// <summary>
+        /// Logger.
+        /// </summary>
         private readonly ILogger<RedisSessionCoordinator> _logger;
+
+        /// <summary>
+        /// The threshold in milliseconds for a slow Redis operation.
+        /// </summary>
+        /// <remarks>
+        /// If the elapsed time is greater than or equal to this threshold, a warning will be logged.
+        /// </remarks>
         private readonly int _slowThresholdMs;
 
         /// <summary>
@@ -38,7 +60,15 @@ namespace Vector.NNTP.Session.Redis.Coordination
             _slowThresholdMs = Math.Max(0, options.Value.SlowRedisCallThresholdMs);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Tries to admit a session.
+        /// </summary>
+        /// <param name="policy">The session policy.</param>
+        /// <param name="sessionId">The session ID.</param>
+        /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="ttlSeconds">The TTL seconds.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The admission result.</returns>
         public async ValueTask<NntpSessionAdmissionResult> TryAdmitAsync(
             NntpSessionPolicy policy,
             string sessionId,
@@ -75,7 +105,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        LogWarningRedisReconciliationFailed(accountKey, ex);
+                        LogWarningRedisReconciliationFailed(_logger, ex, accountKey);
                     }
 
                     code = await EvaluateAcquireAsync(accountKey, sessionId, clientIpText, maxSessions, ipLimit, ttlSeconds, cancellationToken)
@@ -90,12 +120,19 @@ namespace Vector.NNTP.Session.Redis.Coordination
             }
             catch (Exception ex)
             {
-                LogWarningSessionAdmissionBackendFailure(policy.Username, ex);
+                LogWarningSessionAdmissionBackendFailure(_logger, ex, policy.Username);
                 return NntpSessionAdmissionResult.BackendFailure;
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Releases a session.
+        /// </summary>
+        /// <param name="policy">The session policy.</param>
+        /// <param name="sessionId">The session ID.</param>
+        /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The admission result.</returns>
         public async ValueTask ReleaseAsync(
             NntpSessionPolicy policy,
             string sessionId,
@@ -159,7 +196,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
             double elapsedMs = sw.Elapsed.TotalMilliseconds;
             if (_slowThresholdMs > 0 && elapsedMs >= _slowThresholdMs)
             {
-                LogWarningRedisOperationSlow("account-sharing-acquire", elapsedMs);
+                LogWarningRedisOperationSlow(_logger, "account-sharing-acquire", elapsedMs);
                 _redis.SignalScaleUp();
             }
 
@@ -184,12 +221,12 @@ namespace Vector.NNTP.Session.Redis.Coordination
             };
             if (outcome == NntpSessionAdmissionResult.Success)
             {
-                LogInformationSessionAdmissionGranted(username, clientIp);
+                LogInformationSessionAdmissionGranted(_logger, username, clientIp);
             }
             else
             {
                 string reason = outcome == NntpSessionAdmissionResult.IpLimitExceeded ? "IpLimit" : "MaxSessions";
-                LogInformationSessionAdmissionDenied(username, clientIp, reason);
+                LogInformationSessionAdmissionDenied(_logger, username, clientIp, reason);
             }
 
             return outcome;
