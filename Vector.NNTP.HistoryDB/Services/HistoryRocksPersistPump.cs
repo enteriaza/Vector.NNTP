@@ -41,7 +41,7 @@ namespace Vector.NNTP.HistoryDB.Services
         /// The logger.
         /// </summary>
         private readonly ILogger<HistoryRocksPersistPump> _logger;
-        
+
         /// <summary>
         /// Whether the pump has started.
         /// </summary>
@@ -51,12 +51,12 @@ namespace Vector.NNTP.HistoryDB.Services
         /// The persist task.
         /// </summary>
         private Task? _persistTask;
-        
+
         /// <summary>
         /// The linked cancellation token source.
         /// </summary>
         private CancellationTokenSource? _linkedCts;
-        
+
         /// <summary>
         /// The total number of persisted items.
         /// </summary>

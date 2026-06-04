@@ -22,7 +22,6 @@ namespace Vector.NNTP.HistoryDB.Services
     /// </summary>
     internal sealed class HistoryDatabaseService : IHistoryDatabase
     {
-
         /// <summary>
         /// The options.
         /// </summary>

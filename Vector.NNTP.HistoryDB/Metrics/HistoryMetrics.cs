@@ -11,7 +11,6 @@ namespace Vector.NNTP.HistoryDB.Metrics
     /// </summary>
     internal sealed class HistoryMetrics
     {
-
         /// <summary>
         /// The metrics meter.
         /// </summary>
