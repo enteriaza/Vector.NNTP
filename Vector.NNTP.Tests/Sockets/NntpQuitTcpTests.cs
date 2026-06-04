@@ -80,6 +80,7 @@ namespace Vector.NNTP.Tests.Sockets
             using var sessionCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var options = Options.Create(new NntpServerOptions
             {
+                NodeName = "test-node",
                 ServerIdentification = "VectorNNTPD-TcpTest",
                 IdleTimeout = TimeSpan.FromSeconds(5),
             });
@@ -95,6 +96,7 @@ namespace Vector.NNTP.Tests.Sockets
                 auth,
                 new FakeNntpArticleStorage(),
                 transitStorage: null,
+                historyDatabase: null,
                 tlsCertificateSource: null,
                 scramCredentialStore: null,
                 NullLogger<NntpCommandDispatcher>.Instance);
@@ -104,11 +106,17 @@ namespace Vector.NNTP.Tests.Sockets
                 options,
                 session.Database,
                 session.Coordinator,
+                session.TransitPeerCoordinator,
                 session.QuotaEnforcer,
                 tlsCertificateSource: null,
                 NullLogger<NntpSessionRunner>.Instance);
             var remote = (IPEndPoint)socket.RemoteEndPoint!;
-            var context = new NntpConnectionContext(Guid.NewGuid().ToString("N"), remote, remote, NntpHostRole.Reader);
+            var context = new NntpConnectionContext(
+                Guid.NewGuid().ToString("N"),
+                remote,
+                remote,
+                NntpHostRole.Reader,
+                options.Value.NodeName);
             var transport = new NntpSocketTransport(socket);
             await runner.RunAsync(transport, context, tlsAlreadyActive: false, sessionCts.Token).ConfigureAwait(false);
         }

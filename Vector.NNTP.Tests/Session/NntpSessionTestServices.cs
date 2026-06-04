@@ -34,7 +34,15 @@ namespace Vector.NNTP.Tests.Session
             TestOptionsMonitor<NntpSessionIdleOptions> idleOptions = new TestOptionsMonitor<NntpSessionIdleOptions>(
                 new NntpSessionIdleOptions { IdleTimeout = TimeSpan.FromSeconds(5) });
 
-            return new NntpSessionTestBundle(database, coordinator, blockQuota, rateAllocation, quotaEnforcer, idleOptions);
+            InMemoryTransitPeerCoordinator transitPeerCoordinator = new InMemoryTransitPeerCoordinator();
+            return new NntpSessionTestBundle(
+                database,
+                coordinator,
+                blockQuota,
+                rateAllocation,
+                quotaEnforcer,
+                idleOptions,
+                transitPeerCoordinator);
         }
 
         /// <summary>
@@ -59,7 +67,15 @@ namespace Vector.NNTP.Tests.Session
             TestOptionsMonitor<NntpSessionIdleOptions> idleOptions = new TestOptionsMonitor<NntpSessionIdleOptions>(
                 new NntpSessionIdleOptions { IdleTimeout = TimeSpan.FromSeconds(5) });
 
-            return new NntpSessionTestBundle(database, coordinator, blockQuota, rateAllocation, quotaEnforcer, idleOptions);
+            InMemoryTransitPeerCoordinator transitPeerCoordinator = new InMemoryTransitPeerCoordinator();
+            return new NntpSessionTestBundle(
+                database,
+                coordinator,
+                blockQuota,
+                rateAllocation,
+                quotaEnforcer,
+                idleOptions,
+                transitPeerCoordinator);
         }
 
         /// <summary>
@@ -71,13 +87,15 @@ namespace Vector.NNTP.Tests.Session
         /// <param name="RateAllocation">Rate allocation coordinator.</param>
         /// <param name="QuotaEnforcer">Post-command quota enforcer.</param>
         /// <param name="IdleOptions">Idle timeout monitor for lease TTL sizing.</param>
+        /// <param name="TransitPeerCoordinator">Transit peer admission coordinator.</param>
         internal readonly record struct NntpSessionTestBundle(
             ISessionDatabase Database,
             INntpSessionCoordinator Coordinator,
             INntpBlockQuotaCoordinator BlockQuota,
             INntpRateAllocationCoordinator RateAllocation,
             NntpQuotaEnforcer QuotaEnforcer,
-            IOptionsMonitor<NntpSessionIdleOptions> IdleOptions);
+            IOptionsMonitor<NntpSessionIdleOptions> IdleOptions,
+            INntpTransitPeerCoordinator TransitPeerCoordinator);
 
         /// <summary>
         /// Minimal <see cref="IOptionsMonitor{T}"/> for tests.

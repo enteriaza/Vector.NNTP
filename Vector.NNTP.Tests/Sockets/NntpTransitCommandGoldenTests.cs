@@ -3,6 +3,8 @@
 // </copyright>
 // COLD PATH: RFC 4644 transit command golden transcript tests.
 
+using Vector.NNTP.Tests.HistoryDB.Fakes;
+
 namespace Vector.NNTP.Tests.Sockets
 {
     /// <summary>
@@ -26,7 +28,7 @@ namespace Vector.NNTP.Tests.Sockets
                 _ = await harness.ReadLineAsync().ConfigureAwait(false);
                 await harness.SendAsync("CHECK <new@test.local>").ConfigureAwait(false);
                 string line = await harness.ReadLineAsync().ConfigureAwait(false);
-                Assert.That(line, Does.StartWith("238 "));
+                Assert.That(line, Is.EqualTo("238 <new@test.local>"));
             }
             finally
             {
@@ -41,19 +43,49 @@ namespace Vector.NNTP.Tests.Sockets
         [Test]
         public async Task Check_KnownMessageId_Returns438()
         {
+            const string messageId = "<stored@test.local>";
+            var history = new FakeHistoryDatabase();
+            history.SeedDuplicate(messageId);
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateTransit(history);
+            try
+            {
+                await NntpProtocolHarness.AuthenticateTransitAsync(harness).ConfigureAwait(false);
+                await harness.SendAsync("MODE STREAM").ConfigureAwait(false);
+                _ = await harness.ReadLineAsync().ConfigureAwait(false);
+                await harness.SendAsync("CHECK " + messageId).ConfigureAwait(false);
+                string line = await harness.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(line, Is.EqualTo("438 " + messageId));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Verifies CHECK is read-only: repeated CHECK returns 238 until TAKETHIS records the id.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task Check_BeforeTakethis_DoesNotReserve_SecondCheckStill238()
+        {
+            const string messageId = "<probe@test.local>";
             NntpProtocolHarness harness = NntpProtocolHarness.CreateTransit();
             try
             {
                 await NntpProtocolHarness.AuthenticateTransitAsync(harness).ConfigureAwait(false);
-                await harness.SendAsync("IHAVE <stored@test.local>").ConfigureAwait(false);
-                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Does.StartWith("335 "));
-                await harness.SendArticleBodyAsync("Subject: stored\r\nMessage-ID: <stored@test.local>\r\n\r\nbody\r\n").ConfigureAwait(false);
-                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Does.StartWith("235 "));
                 await harness.SendAsync("MODE STREAM").ConfigureAwait(false);
                 _ = await harness.ReadLineAsync().ConfigureAwait(false);
-                await harness.SendAsync("CHECK <stored@test.local>").ConfigureAwait(false);
-                string line = await harness.ReadLineAsync().ConfigureAwait(false);
-                Assert.That(line, Does.StartWith("438 "));
+                await harness.SendAsync("CHECK " + messageId).ConfigureAwait(false);
+                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Is.EqualTo("238 " + messageId));
+                await harness.SendAsync("CHECK " + messageId).ConfigureAwait(false);
+                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Is.EqualTo("238 " + messageId));
+                await harness.SendTakethisWithArticleAsync(
+                    messageId,
+                    "Subject: probe\r\nMessage-ID: " + messageId + "\r\n\r\nbody\r\n").ConfigureAwait(false);
+                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Does.StartWith("239 "));
+                await harness.SendAsync("CHECK " + messageId).ConfigureAwait(false);
+                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Is.EqualTo("438 " + messageId));
             }
             finally
             {
@@ -76,6 +108,35 @@ namespace Vector.NNTP.Tests.Sockets
                 Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Does.StartWith("335 "));
                 await harness.SendArticleBodyAsync("Subject: ihave\r\nMessage-ID: <ihave@test.local>\r\n\r\nbody\r\n").ConfigureAwait(false);
                 Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Does.StartWith("235 "));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Verifies TAKETHIS after CHECK returns 239 with no intermediate 373 (RFC 4644 streaming).
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task Takethis_AfterCheck_Returns239_No373()
+        {
+            const string messageId = "<takethis@test.local>";
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateTransit();
+            try
+            {
+                await NntpProtocolHarness.AuthenticateTransitAsync(harness).ConfigureAwait(false);
+                await harness.SendAsync("MODE STREAM").ConfigureAwait(false);
+                _ = await harness.ReadLineAsync().ConfigureAwait(false);
+                await harness.SendAsync("CHECK " + messageId).ConfigureAwait(false);
+                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Is.EqualTo("238 " + messageId));
+                await harness.SendTakethisWithArticleAsync(
+                    messageId,
+                    "Subject: takethis\r\nMessage-ID: " + messageId + "\r\n\r\nbody\r\n").ConfigureAwait(false);
+                string line = await harness.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(line, Does.StartWith("239 "));
+                Assert.That(line, Does.Not.StartWith("373 "));
             }
             finally
             {

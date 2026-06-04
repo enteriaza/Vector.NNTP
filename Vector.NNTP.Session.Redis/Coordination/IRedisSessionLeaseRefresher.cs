@@ -9,11 +9,12 @@ namespace Vector.NNTP.Session.Redis.Coordination
     public interface IRedisSessionLeaseRefresher
     {
         /// <summary>
-        /// Extends lease TTL for a session anchor and its IP set.
+        /// Extends lease TTL for a session anchor, its IP set, and node session registry metadata.
         /// </summary>
         /// <param name="accountKey">Normalized account key.</param>
         /// <param name="sessionId">Session identifier.</param>
         /// <param name="ipText">Client IP text.</param>
+        /// <param name="nodeName">Stable cluster node identity.</param>
         /// <param name="ttlSeconds">Lease TTL seconds.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task that completes when refresh is attempted.</returns>
@@ -21,6 +22,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
             string accountKey,
             string sessionId,
             string ipText,
+            string nodeName,
             int ttlSeconds,
             CancellationToken cancellationToken);
     }

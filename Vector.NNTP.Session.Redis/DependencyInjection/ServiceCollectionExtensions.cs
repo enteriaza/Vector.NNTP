@@ -9,6 +9,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Vector.NNTP.Session.Configuration;
+using Vector.NNTP.Session.Coordination;
 using Vector.NNTP.Session.DependencyInjection;
 using Vector.NNTP.Session.Redis.Connections;
 using Vector.NNTP.Session.Redis.Health;
@@ -53,16 +55,27 @@ namespace Vector.NNTP.Session.Redis.DependencyInjection
             _ = services.AddHostedService<RedisMultiplexerPoolSupervisor>();
             _ = services.AddHostedService<RedisMultiplexerBackgroundScaler>();
 
+            // Node purge runs before heartbeat/reconciliation; register before those hosted services.
+            _ = services.AddOptions<NntpNodeIdentityOptions>()
+                .Bind(configuration.GetSection(NntpNodeIdentityOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+            _ = services.AddHostedService<NodeSessionLifecycleHostedService>();
+
+            _ = services.RemoveAll<INodeSessionRegistry>();
             _ = services.RemoveAll<INntpSessionCoordinator>();
             _ = services.RemoveAll<INntpBlockQuotaCoordinator>();
             _ = services.RemoveAll<INntpSessionCountCoordinator>();
             _ = services.RemoveAll<INntpRateAllocationCoordinator>();
+            _ = services.RemoveAll<INntpTransitPeerCoordinator>();
 
             _ = services.AddSingleton<IRedisSessionReconciliationCoordinator, RedisSessionReconciliationCoordinator>();
             _ = services.AddSingleton<INntpSessionCoordinator, RedisSessionCoordinator>();
             _ = services.AddSingleton<INntpBlockQuotaCoordinator, RedisBlockQuotaCoordinator>();
             _ = services.AddSingleton<INntpSessionCountCoordinator, RedisSessionCountCoordinator>();
             _ = services.AddSingleton<INntpRateAllocationCoordinator, RedisRateAllocationCoordinator>();
+            _ = services.AddSingleton<INntpTransitPeerCoordinator, RedisTransitPeerCoordinator>();
+            _ = services.AddSingleton<INodeSessionRegistry, RedisNodeSessionRegistry>();
             _ = services.AddSingleton<IRedisSessionLeaseRefresher, RedisSessionLeaseRefresher>();
             _ = services.AddHostedService<RedisSessionHeartbeatHostedService>();
 

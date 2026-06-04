@@ -6,12 +6,14 @@
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Storage;
 using Vector.NNTP.Sockets.Transport;
+using Vector.NNTP.Tests.HistoryDB.Fakes;
 using Vector.NNTP.Tests.Session;
 using Vector.NNTP.Tests.Sockets.Fakes;
 
@@ -68,7 +70,7 @@ namespace Vector.NNTP.Tests.Sockets
         /// </summary>
         /// <returns>Connected harness instance.</returns>
         internal static NntpProtocolHarness CreateReader() =>
-            Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null, scramCredentialStore: null);
+            Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null, null, scramCredentialStore: null);
 
         /// <summary>
         /// Creates a reader harness with shared session services and a custom credential validator.
@@ -85,6 +87,7 @@ namespace Vector.NNTP.Tests.Sockets
                 new NntpReaderHostProfile(),
                 new FakeNntpArticleStorage(),
                 transit: null,
+                historyDatabase: null,
                 scramCredentialStore: null,
                 session,
                 validator,
@@ -95,7 +98,20 @@ namespace Vector.NNTP.Tests.Sockets
         /// </summary>
         /// <returns>Connected harness instance.</returns>
         internal static NntpProtocolHarness CreateTransit() =>
-            Create(new NntpTransitHostProfile(), null, new FakeNntpTransitStorage(), scramCredentialStore: null);
+            CreateTransit(new FakeHistoryDatabase());
+
+        /// <summary>
+        /// Creates a transit harness with a supplied fake history database.
+        /// </summary>
+        /// <param name="historyDatabase">History implementation for CHECK and record paths.</param>
+        /// <returns>Connected harness instance.</returns>
+        internal static NntpProtocolHarness CreateTransit(FakeHistoryDatabase historyDatabase) =>
+            Create(
+                new NntpTransitHostProfile(),
+                null,
+                new FakeNntpTransitStorage(),
+                historyDatabase,
+                scramCredentialStore: null);
 
         /// <summary>
         /// Creates a reader-profile harness with a supplied SCRAM credential store.
@@ -103,7 +119,7 @@ namespace Vector.NNTP.Tests.Sockets
         /// <param name="scramCredentialStore">SCRAM credential store used for SASL SCRAM mechanism support.</param>
         /// <returns>Connected harness instance.</returns>
         internal static NntpProtocolHarness CreateReaderWithScram(IScramCredentialStore scramCredentialStore) =>
-            Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null, scramCredentialStore);
+            Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null, null, scramCredentialStore);
 
         /// <summary>
         /// Creates a transit-profile harness with a supplied SCRAM credential store.
@@ -111,7 +127,28 @@ namespace Vector.NNTP.Tests.Sockets
         /// <param name="scramCredentialStore">SCRAM credential store used for SASL SCRAM mechanism support.</param>
         /// <returns>Connected harness instance.</returns>
         internal static NntpProtocolHarness CreateTransitWithScram(IScramCredentialStore scramCredentialStore) =>
-            Create(new NntpTransitHostProfile(), null, new FakeNntpTransitStorage(), scramCredentialStore);
+            Create(
+                new NntpTransitHostProfile(),
+                null,
+                new FakeNntpTransitStorage(),
+                new FakeHistoryDatabase(),
+                scramCredentialStore);
+
+        /// <summary>
+        /// Creates a transit harness simulating an admitted trusted transit peer (streaming without AUTH).
+        /// </summary>
+        /// <param name="transitPeerId">Stable peer identifier.</param>
+        /// <param name="transitPeerDisplayName">Display name.</param>
+        /// <returns>Connected harness instance.</returns>
+        internal static NntpProtocolHarness CreateTransitTrustedPeer(string transitPeerId, string transitPeerDisplayName) =>
+            Create(
+                new NntpTransitHostProfile(),
+                null,
+                new FakeNntpTransitStorage(),
+                new FakeHistoryDatabase(),
+                scramCredentialStore: null,
+                transitPeerId: transitPeerId,
+                transitPeerDisplayName: transitPeerDisplayName);
 
         /// <summary>
         /// Authenticates on a transit harness (same fake credentials as reader).
@@ -175,6 +212,22 @@ namespace Vector.NNTP.Tests.Sockets
             }
 
             await this.SendAsync(".", cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Sends a TAKETHIS command line followed immediately by a dot-stuffed article body (RFC 4644 pipelining).
+        /// </summary>
+        /// <param name="messageId">Message-ID argument (including angle brackets).</param>
+        /// <param name="body">Raw article bytes.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="Task"/> that completes when the command and body are flushed.</returns>
+        internal async Task SendTakethisWithArticleAsync(
+            string messageId,
+            string body,
+            CancellationToken cancellationToken = default)
+        {
+            await this.SendAsync("TAKETHIS " + messageId, cancellationToken).ConfigureAwait(false);
+            await this.SendArticleBodyAsync(body, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -249,25 +302,32 @@ namespace Vector.NNTP.Tests.Sockets
         /// <param name="profile">Host profile.</param>
         /// <param name="articles">Optional reader storage.</param>
         /// <param name="transit">Optional transit storage.</param>
+        /// <param name="historyDatabase">Optional history database for CHECK.</param>
         /// <param name="scramCredentialStore">Optional SCRAM credential store used for CAPABILITIES advertisement.</param>
         /// <param name="session">Optional shared session bundle; defaults to a fresh in-memory stack.</param>
         /// <param name="validator">Optional credential validator; defaults to alice/secret.</param>
         /// <param name="clientIp">Optional simulated client IP for admission tests.</param>
+        /// <param name="transitPeerId">Optional trusted transit peer id (skips AUTH for streaming).</param>
+        /// <param name="transitPeerDisplayName">Optional display name for logs.</param>
         /// <returns>Connected harness.</returns>
         private static NntpProtocolHarness Create(
             INntpHostProfile profile,
             INntpArticleStorage? articles,
             INntpTransitStorage? transit,
+            IHistoryDatabase? historyDatabase,
             IScramCredentialStore? scramCredentialStore,
             NntpSessionTestServices.NntpSessionTestBundle? session = null,
             FakeNntpCredentialValidator? validator = null,
-            IPAddress? clientIp = null)
+            IPAddress? clientIp = null,
+            string? transitPeerId = null,
+            string? transitPeerDisplayName = null)
         {
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
             var cts = new CancellationTokenSource();
             var options = Options.Create(new NntpServerOptions
             {
+                NodeName = "test-node",
                 ServerIdentification = "VectorNNTPD-Test",
                 IdleTimeout = TimeSpan.FromSeconds(5),
             });
@@ -285,6 +345,7 @@ namespace Vector.NNTP.Tests.Sockets
                 auth,
                 articles,
                 transit,
+                historyDatabase,
                 tlsCertificateSource: null,
                 scramCredentialStore: scramCredentialStore,
                 NullLogger<NntpCommandDispatcher>.Instance);
@@ -294,12 +355,20 @@ namespace Vector.NNTP.Tests.Sockets
                 options,
                 sessionBundle.Database,
                 sessionBundle.Coordinator,
+                sessionBundle.TransitPeerCoordinator,
                 sessionBundle.QuotaEnforcer,
                 tlsCertificateSource: null,
                 NullLogger<NntpSessionRunner>.Instance);
             IPAddress ip = clientIp ?? IPAddress.Loopback;
             var remote = new IPEndPoint(ip, 12345);
-            var context = new NntpConnectionContext(Guid.NewGuid().ToString("N"), remote, remote, profile.Role);
+            var context = new NntpConnectionContext(
+                Guid.NewGuid().ToString("N"),
+                remote,
+                remote,
+                profile.Role,
+                options.Value.NodeName,
+                transitPeerId,
+                transitPeerDisplayName ?? transitPeerId);
             var transport = new NntpPipeTransport(clientToServer.Reader, serverToClient.Writer);
             Task serverTask = runner.RunAsync(transport, context, tlsAlreadyActive: false, cts.Token);
             return new NntpProtocolHarness(clientToServer, serverToClient, serverTask, cts);

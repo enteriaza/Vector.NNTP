@@ -3,6 +3,7 @@
 // </copyright>
 // COLD PATH: TAKETHIS command handler (RFC 4644).
 
+using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Protocol;
 using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
@@ -11,14 +12,22 @@ using Vector.NNTP.Sockets.Storage;
 namespace Vector.NNTP.Sockets.Transport.Commands
 {
     /// <summary>
-    /// Handles the NNTP TAKETHIS streaming command.
+    /// Handles the NNTP TAKETHIS streaming command (RFC 4644).
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unlike IHAVE, TAKETHIS does not use an intermediate response: the article body follows the
+    /// command line immediately (often pipelined after CHECK <c>238</c>). The handler records the
+    /// message-id in HistoryDB before reading the body, then replies <c>239</c> or <c>439</c>.
+    /// </para>
+    /// </remarks>
     internal static class NntpCmdTakethis
     {
         /// <summary>
         /// Accepts a streaming-mode article transfer after CHECK filtering.
         /// </summary>
         /// <param name="session">Active session.</param>
+        /// <param name="historyDatabase">Transit history for record-before-body (may be null).</param>
         /// <param name="storage">Transit storage (may be null).</param>
         /// <param name="line">Full command line.</param>
         /// <param name="lineReader">Line reader for the article body.</param>
@@ -26,6 +35,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         /// <returns><see langword="true"/> to continue the session.</returns>
         internal static async ValueTask<bool> DispatchAsync(
             NntpSession session,
+            IHistoryDatabase? historyDatabase,
             INntpTransitStorage? storage,
             string line,
             NntpLineReader lineReader,
@@ -36,37 +46,79 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             ArgumentNullException.ThrowIfNull(lineReader);
 
             string? messageId = NntpCommandLineHelpers.ExtractArgument(line);
-            bool isValidCommand = storage is not null &&
-                !string.IsNullOrEmpty(messageId) &&
-                MessageIdSyntax.IsValid(messageId);
-
-            // Always expect and read the body due to pipelining
-            if (isValidCommand)
+            if (historyDatabase is null || storage is null)
             {
-                await session.Writer.WriteLineAsync("373 Send article", cancellationToken).ConfigureAwait(false);
+                await DrainBodyAndRespondAsync(session, lineReader, "503 Service unavailable", cancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            }
+
+            if (string.IsNullOrEmpty(messageId) || !MessageIdSyntax.IsValid(messageId))
+            {
+                await DrainBodyAndRespondAsync(session, lineReader, "501 Message-ID required", cancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            }
+
+            HistoryRecordResult record = await historyDatabase.TryRecordAsync(messageId, cancellationToken)
+                .ConfigureAwait(false);
+            if (record == HistoryRecordResult.Unavailable)
+            {
+                await DrainBodyAndRespondAsync(session, lineReader, "503 Service unavailable", cancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            }
+
+            if (record == HistoryRecordResult.Duplicate)
+            {
+                await DrainBodyAndRespondAsync(session, lineReader, "439 Transfer failed", cancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            }
+
+            if (record == HistoryRecordResult.TryAgainLater)
+            {
+                await DrainBodyAndRespondAsync(session, lineReader, "439 Transfer failed", cancellationToken)
+                    .ConfigureAwait(false);
+                return true;
             }
 
             session.State.MultiLineBodyPending = true;
             try
             {
-                byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
-
-                // Now handle the rejection cases if validation failed
-                if (storage is null)
-                {
-                    await NntpReaderErrors.WriteServiceUnavailable503(session, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-
-                if (string.IsNullOrEmpty(messageId) || !MessageIdSyntax.IsValid(messageId))
-                {
-                    await session.Writer.WriteLineAsync("501 Message-ID required", cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-
+                byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken)
+                    .ConfigureAwait(false);
                 bool ok = await storage.TakeThisAsync(messageId, body, cancellationToken).ConfigureAwait(false);
-                await session.Writer.WriteLineAsync(ok ? "235 Article transferred OK" : "439 Transfer failed", cancellationToken).ConfigureAwait(false);
+                await session.Writer.WriteLineAsync(
+                    ok ? "239 Article transferred OK" : "439 Transfer failed",
+                    cancellationToken).ConfigureAwait(false);
                 return true;
+            }
+            finally
+            {
+                session.State.MultiLineBodyPending = false;
+            }
+        }
+
+        /// <summary>
+        /// Reads a pipelined article body and writes a single-line response.
+        /// </summary>
+        /// <param name="session">Active session.</param>
+        /// <param name="lineReader">Line reader.</param>
+        /// <param name="responseLine">Response line without CRLF.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        private static async Task DrainBodyAndRespondAsync(
+            NntpSession session,
+            NntpLineReader lineReader,
+            string responseLine,
+            CancellationToken cancellationToken)
+        {
+            session.State.MultiLineBodyPending = true;
+            try
+            {
+                _ = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+                await session.Writer.WriteLineAsync(responseLine, cancellationToken).ConfigureAwait(false);
             }
             finally
             {

@@ -100,5 +100,29 @@ namespace Vector.NNTP.Session.Redis.Coordination
         {
             return _prefix + "acct:" + accountKey + ":ip:";
         }
+
+        /// <summary>Transit peer live sessions ZSET (member = session id, score = Unix seconds).</summary>
+        /// <param name="peerId">Stable transit peer identifier.</param>
+        /// <returns>Redis key.</returns>
+        internal string TransitPeerSessions(string peerId)
+        {
+            return _prefix + "transitpeer:" + peerId + ":sessions";
+        }
+
+        /// <summary>Session metadata HASH for node registry (<c>session:{sessionId}</c>).</summary>
+        /// <param name="sessionId">Session identifier.</param>
+        /// <returns>Redis key.</returns>
+        internal string SessionMeta(string sessionId)
+        {
+            return _prefix + "session:" + sessionId;
+        }
+
+        /// <summary>Node index SET of session ids owned by a cluster node.</summary>
+        /// <param name="nodeName">Stable node identity.</param>
+        /// <returns>Redis key.</returns>
+        internal string NodeSessions(string nodeName)
+        {
+            return _prefix + "node:" + nodeName + ":sessions";
+        }
     }
 }

@@ -3,6 +3,7 @@
 // </copyright>
 using System.Diagnostics;
 using StackExchange.Redis;
+using Vector.NNTP.Session.Utilities;
 
 namespace Vector.NNTP.Session.Redis.Coordination
 {
@@ -53,40 +54,38 @@ namespace Vector.NNTP.Session.Redis.Coordination
             _slowThresholdMs = Math.Max(0, options.Value.SlowRedisCallThresholdMs);
         }
 
-        /// <summary>
-        /// Refreshes the Redis lease for the given session.
-        /// </summary>
-        /// <param name="accountKey">The account key of the session.</param>
-        /// <param name="sessionId">The ID of the session.</param>
-        /// <param name="ipText">The IP text of the session.</param>
-        /// <param name="ttlSeconds">The TTL of the session in seconds.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A <see cref="Task"/> that completes when the heartbeat is completed.</returns>
+        /// <inheritdoc />
         public async Task HeartbeatAsync(
             string accountKey,
             string sessionId,
             string ipText,
+            string nodeName,
             int ttlSeconds,
             CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountKey);
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentException.ThrowIfNullOrEmpty(ipText);
+            ArgumentException.ThrowIfNullOrEmpty(nodeName);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(ttlSeconds);
             cancellationToken.ThrowIfCancellationRequested();
+            int metaTtl = NntpSessionTtlCalculator.ComputeMetadataTtlSeconds(ttlSeconds);
+            long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             RedisKey[] redisKeys =
             [
                 _keys.SessionAnchor(accountKey, sessionId),
                 _keys.IpSessions(accountKey, ipText),
                 _keys.Sessions(accountKey),
                 _keys.Ips(accountKey),
+                _keys.SessionMeta(sessionId),
+                _keys.NodeSessions(nodeName),
             ];
-            RedisValue[] argv = [ttlSeconds];
+            RedisValue[] argv = [ttlSeconds, nowMs, metaTtl];
             IDatabase db = _redis.GetDatabase();
             Stopwatch sw = Stopwatch.StartNew();
             try
             {
-                _ = await db.ScriptEvaluateAsync(RedisLuaScripts.SessionHeartbeatV1, redisKeys, argv).ConfigureAwait(false);
+                _ = await db.ScriptEvaluateAsync(RedisLuaScripts.SessionHeartbeatV2, redisKeys, argv).ConfigureAwait(false);
                 LogTraceRedisLeaseRefreshed(_logger, sessionId, accountKey, ttlSeconds);
                 double elapsedMs = sw.Elapsed.TotalMilliseconds;
                 if (_slowThresholdMs > 0 && elapsedMs >= _slowThresholdMs)

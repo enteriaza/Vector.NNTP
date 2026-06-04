@@ -3,6 +3,7 @@
 // </copyright>
 using System.Diagnostics;
 using StackExchange.Redis;
+using Vector.NNTP.Session.Utilities;
 
 namespace Vector.NNTP.Session.Redis.Coordination
 {
@@ -66,6 +67,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <param name="policy">The session policy.</param>
         /// <param name="sessionId">The session ID.</param>
         /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="nodeName">Stable cluster node identity.</param>
         /// <param name="ttlSeconds">The TTL seconds.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The admission result.</returns>
@@ -73,12 +75,14 @@ namespace Vector.NNTP.Session.Redis.Coordination
             NntpSessionPolicy policy,
             string sessionId,
             string clientIpText,
+            string nodeName,
             int ttlSeconds,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(policy);
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentException.ThrowIfNullOrEmpty(clientIpText);
+            ArgumentException.ThrowIfNullOrEmpty(nodeName);
             cancellationToken.ThrowIfCancellationRequested();
             if (!policy.RequiresDistributedAdmission())
             {
@@ -95,7 +99,15 @@ namespace Vector.NNTP.Session.Redis.Coordination
             string accountKey = policy.AccountKey;
             try
             {
-                long code = await EvaluateAcquireAsync(accountKey, sessionId, clientIpText, maxSessions, ipLimit, ttlSeconds, cancellationToken)
+                long code = await EvaluateAcquireAsync(
+                        accountKey,
+                        sessionId,
+                        clientIpText,
+                        nodeName,
+                        maxSessions,
+                        ipLimit,
+                        ttlSeconds,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 if (code is 1 or 2)
                 {
@@ -108,7 +120,15 @@ namespace Vector.NNTP.Session.Redis.Coordination
                         LogWarningRedisReconciliationFailed(_logger, ex, accountKey);
                     }
 
-                    code = await EvaluateAcquireAsync(accountKey, sessionId, clientIpText, maxSessions, ipLimit, ttlSeconds, cancellationToken)
+                    code = await EvaluateAcquireAsync(
+                            accountKey,
+                            sessionId,
+                            clientIpText,
+                            nodeName,
+                            maxSessions,
+                            ipLimit,
+                            ttlSeconds,
+                            cancellationToken)
                         .ConfigureAwait(false);
                 }
 
@@ -131,17 +151,20 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <param name="policy">The session policy.</param>
         /// <param name="sessionId">The session ID.</param>
         /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="nodeName">Stable cluster node identity.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The admission result.</returns>
         public async ValueTask ReleaseAsync(
             NntpSessionPolicy policy,
             string sessionId,
             string clientIpText,
+            string nodeName,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(policy);
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentException.ThrowIfNullOrEmpty(clientIpText);
+            ArgumentException.ThrowIfNullOrEmpty(nodeName);
             cancellationToken.ThrowIfCancellationRequested();
             if (!policy.RequiresDistributedAdmission())
             {
@@ -155,10 +178,12 @@ namespace Vector.NNTP.Session.Redis.Coordination
                 _keys.Ips(accountKey),
                 _keys.IpSessions(accountKey, clientIpText),
                 _keys.SessionAnchor(accountKey, sessionId),
+                _keys.SessionMeta(sessionId),
+                _keys.NodeSessions(nodeName),
             ];
             RedisValue[] argv = [sessionId, clientIpText];
             IDatabase db = _redis.GetDatabase();
-            _ = await db.ScriptEvaluateAsync(RedisLuaScripts.AuthSessionReleaseV1, redisKeys, argv).ConfigureAwait(false);
+            _ = await db.ScriptEvaluateAsync(RedisLuaScripts.AuthSessionReleaseV2, redisKeys, argv).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -167,6 +192,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <param name="accountKey">Normalized account key.</param>
         /// <param name="sessionId">Session identifier.</param>
         /// <param name="ipText">Client IP text.</param>
+        /// <param name="nodeName">Stable cluster node identity.</param>
         /// <param name="maxSessions">Maximum concurrent sessions.</param>
         /// <param name="ipLimit">Maximum distinct source IPs.</param>
         /// <param name="ttlSeconds">Lease TTL seconds.</param>
@@ -176,23 +202,40 @@ namespace Vector.NNTP.Session.Redis.Coordination
             string accountKey,
             string sessionId,
             string ipText,
+            string nodeName,
             int maxSessions,
             int ipLimit,
             int ttlSeconds,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            int metaTtl = NntpSessionTtlCalculator.ComputeMetadataTtlSeconds(ttlSeconds);
+            long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             RedisKey[] redisKeys =
             [
                 _keys.Sessions(accountKey),
                 _keys.Ips(accountKey),
                 _keys.IpSessions(accountKey, ipText),
                 _keys.SessionAnchor(accountKey, sessionId),
+                _keys.SessionMeta(sessionId),
+                _keys.NodeSessions(nodeName),
             ];
-            RedisValue[] argv = [sessionId, ipText, maxSessions, ipLimit, ttlSeconds];
+            RedisValue[] argv =
+            [
+                sessionId,
+                ipText,
+                maxSessions,
+                ipLimit,
+                ttlSeconds,
+                RedisValue.EmptyString,
+                nodeName,
+                accountKey,
+                nowMs,
+                metaTtl,
+            ];
             IDatabase db = _redis.GetDatabase();
             Stopwatch sw = Stopwatch.StartNew();
-            RedisResult result = await db.ScriptEvaluateAsync(RedisLuaScripts.AuthSessionAcquireV1, redisKeys, argv).ConfigureAwait(false);
+            RedisResult result = await db.ScriptEvaluateAsync(RedisLuaScripts.AuthSessionAcquireV2, redisKeys, argv).ConfigureAwait(false);
             double elapsedMs = sw.Elapsed.TotalMilliseconds;
             if (_slowThresholdMs > 0 && elapsedMs >= _slowThresholdMs)
             {

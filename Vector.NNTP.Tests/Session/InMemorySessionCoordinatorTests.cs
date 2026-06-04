@@ -26,8 +26,8 @@ namespace Vector.NNTP.Tests.Session
                 allowPosting: true,
                 this._normalizer);
 
-            NntpSessionAdmissionResult first = await coordinator.TryAdmitAsync(policy, "s1", "127.0.0.1", 60, CancellationToken.None).ConfigureAwait(false);
-            NntpSessionAdmissionResult second = await coordinator.TryAdmitAsync(policy, "s2", "127.0.0.1", 60, CancellationToken.None).ConfigureAwait(false);
+            NntpSessionAdmissionResult first = await coordinator.TryAdmitAsync(policy, "s1", "127.0.0.1", "test-node", 60, CancellationToken.None).ConfigureAwait(false);
+            NntpSessionAdmissionResult second = await coordinator.TryAdmitAsync(policy, "s2", "127.0.0.1", "test-node", 60, CancellationToken.None).ConfigureAwait(false);
 
             Assert.That(first, Is.EqualTo(NntpSessionAdmissionResult.Success));
             Assert.That(second, Is.EqualTo(NntpSessionAdmissionResult.MaxSessionsExceeded));
@@ -46,9 +46,9 @@ namespace Vector.NNTP.Tests.Session
                 allowPosting: true,
                 this._normalizer);
 
-            _ = await coordinator.TryAdmitAsync(policy, "s1", "127.0.0.1", 60, CancellationToken.None).ConfigureAwait(false);
-            await coordinator.ReleaseAsync(policy, "s1", "127.0.0.1", CancellationToken.None).ConfigureAwait(false);
-            NntpSessionAdmissionResult second = await coordinator.TryAdmitAsync(policy, "s2", "127.0.0.1", 60, CancellationToken.None).ConfigureAwait(false);
+            _ = await coordinator.TryAdmitAsync(policy, "s1", "127.0.0.1", "test-node", 60, CancellationToken.None).ConfigureAwait(false);
+            await coordinator.ReleaseAsync(policy, "s1", "127.0.0.1", "test-node", CancellationToken.None).ConfigureAwait(false);
+            NntpSessionAdmissionResult second = await coordinator.TryAdmitAsync(policy, "s2", "127.0.0.1", "test-node", 60, CancellationToken.None).ConfigureAwait(false);
 
             Assert.That(second, Is.EqualTo(NntpSessionAdmissionResult.Success));
         }

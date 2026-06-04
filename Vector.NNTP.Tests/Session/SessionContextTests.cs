@@ -19,7 +19,7 @@ namespace Vector.NNTP.Tests.Session
         [Test]
         public void TryBeginAuthenticating_FromUnauthenticated_Succeeds()
         {
-            SessionContext ctx = new SessionContext("sid", IPAddress.Loopback, DateTimeOffset.UtcNow, "v1");
+            SessionContext ctx = new SessionContext("sid", IPAddress.Loopback, DateTimeOffset.UtcNow, "v1", "test-node");
             Assert.That(ctx.TryBeginAuthenticating(AuthenticatingPhase.SaslContinuation), Is.True);
             Assert.That(ctx.AuthenticationState, Is.EqualTo(AuthenticationState.Authenticating));
         }
@@ -30,9 +30,19 @@ namespace Vector.NNTP.Tests.Session
         [Test]
         public void TryBeginAuthenticating_WhenAlreadyAuthenticating_Fails()
         {
-            SessionContext ctx = new SessionContext("sid", IPAddress.Loopback, DateTimeOffset.UtcNow, "v1");
+            SessionContext ctx = new SessionContext("sid", IPAddress.Loopback, DateTimeOffset.UtcNow, "v1", "test-node");
             Assert.That(ctx.TryBeginAuthenticating(AuthenticatingPhase.SaslContinuation), Is.True);
             Assert.That(ctx.TryBeginAuthenticating(AuthenticatingPhase.SaslContinuation), Is.False);
+        }
+
+        /// <summary>
+        /// Verifies authenticated transition from pending admission phase.
+        /// </summary>
+        [Test]
+        public void NodeName_IsSetAtConstruction()
+        {
+            SessionContext ctx = new SessionContext("sid", IPAddress.Loopback, DateTimeOffset.UtcNow, "v1", "nntpd01");
+            Assert.That(ctx.NodeName, Is.EqualTo("nntpd01"));
         }
 
         /// <summary>
@@ -46,7 +56,7 @@ namespace Vector.NNTP.Tests.Session
                 new NntpAccountLimits("user", 'R', 0, 0, 0, 0, string.Empty),
                 allowPosting: true,
                 normalizer);
-            SessionContext ctx = new SessionContext("sid", IPAddress.Loopback, DateTimeOffset.UtcNow, "v1");
+            SessionContext ctx = new SessionContext("sid", IPAddress.Loopback, DateTimeOffset.UtcNow, "v1", "test-node");
             Assert.That(ctx.TryBeginAuthenticating(AuthenticatingPhase.SaslContinuation), Is.True);
             Assert.That(ctx.TryBindPendingAuthentication("user", policy.AccountKey, policy, AuthenticatingPhase.PendingAdmission), Is.True);
             Assert.That(ctx.TryCompleteAuthentication(), Is.True);

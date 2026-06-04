@@ -95,6 +95,12 @@ namespace Vector.NNTP.Sockets.Session
             !Options.RequireTlsForAuthInfo || State.IsTlsActive;
 
         /// <summary>
+        /// Gets a value indicating whether this session is a trusted transit peer allowed streaming without AUTH.
+        /// </summary>
+        public bool IsTrustedTransitPeer =>
+            Connection.IsTransitPeer && Profile.AllowsStreamingCommands;
+
+        /// <summary>
         /// Rebinds <see cref="LineReader"/> and <see cref="Writer"/> after transport upgrade (STARTTLS).
         /// </summary>
         internal void RebindTransportIo()

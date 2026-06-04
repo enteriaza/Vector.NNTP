@@ -52,5 +52,33 @@ namespace Vector.NNTP.Sockets.Hosting
             Level = LogLevel.Information,
             Message = "TLS handshake certificate updated (thumbprint {Thumbprint})")]
         private partial void LogTlsCertificateUpdated(string thumbprint);
+
+        [LoggerMessage(
+            EventId = 5,
+            Level = LogLevel.Information,
+            Message = "Accepted transit peer {ClientIp} (peer {PeerId}, name {PeerName}, matched {MatchedEntry})")]
+        private static partial void LogAcceptedTransitPeer(
+            ILogger logger,
+            IPAddress clientIp,
+            string peerId,
+            string peerName,
+            string matchedEntry);
+
+        [LoggerMessage(
+            EventId = 6,
+            Level = LogLevel.Information,
+            Message = "Rejected transit peer {ClientIp}: peer {PeerId} at capacity ({Occupied}/{MaxConnections}, 0=max unlimited)")]
+        private static partial void LogTransitPeerAtCapacity(
+            ILogger logger,
+            string peerId,
+            IPAddress clientIp,
+            long occupied,
+            int maxConnections);
+
+        [LoggerMessage(
+            EventId = 7,
+            Level = LogLevel.Warning,
+            Message = "Rejected transit peer {ClientIp}: Redis admission failed for peer {PeerId}")]
+        private static partial void LogTransitPeerAdmissionBackendFailure(ILogger logger, string peerId, IPAddress clientIp);
     }
 }

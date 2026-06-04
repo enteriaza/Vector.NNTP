@@ -96,6 +96,27 @@ namespace Vector.NNTP.Session.Database
             return list;
         }
 
+        /// <inheritdoc />
+        public IReadOnlyCollection<SessionContext> SnapshotAll()
+        {
+            return [.. _sessions.Values];
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyCollection<SessionContext> SnapshotTransitPeers()
+        {
+            List<SessionContext> list = new(_sessions.Count);
+            foreach (SessionContext s in _sessions.Values)
+            {
+                if (!string.IsNullOrEmpty(s.TransitPeerId))
+                {
+                    list.Add(s);
+                }
+            }
+
+            return list;
+        }
+
         /// <summary>
         /// Counts authenticated sessions by account key.
         /// </summary>

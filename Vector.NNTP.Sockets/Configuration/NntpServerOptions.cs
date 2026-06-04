@@ -73,6 +73,15 @@ namespace Vector.NNTP.Sockets.Configuration
         public bool RequireTlsForAuthInfo { get; set; }
 
         /// <summary>
+        /// Gets or sets the stable cluster node identifier for this host (for example <c>nntpd01</c>).
+        /// </summary>
+        /// <remarks>
+        /// Must remain stable across restarts; changing it orphans Redis keys under the previous node prefix.
+        /// </remarks>
+        [Required]
+        public string NodeName { get; set; } = string.Empty;
+
+        /// <summary>
         /// Gets or sets the server identification string embedded in the initial greeting and HELP text.
         /// </summary>
         [Required]
@@ -104,6 +113,11 @@ namespace Vector.NNTP.Sockets.Configuration
         /// </para>
         /// </remarks>
         public string[] ProxyProtocolTrustedSources { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// Gets or sets trusted transit peer definitions for NNTPD peering (address matching, DNS refresh, cluster caps).
+        /// </summary>
+        public NntpTransitPeersOptions TransitPeers { get; set; } = new();
     }
 
     /// <summary>
@@ -115,13 +129,15 @@ namespace Vector.NNTP.Sockets.Configuration
         public ValidateOptionsResult Validate(string? name, NntpServerOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);
-            return string.IsNullOrWhiteSpace(options.ServerIdentification)
+            return string.IsNullOrWhiteSpace(options.NodeName)
+                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.NodeName)} is required.")
+                : string.IsNullOrWhiteSpace(options.ServerIdentification)
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.ServerIdentification)} is required.")
                 : options.IdleTimeoutSeconds is <= 0
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeoutSeconds)} must be positive when set.")
                 : options.IdleTimeout <= TimeSpan.Zero
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeout)} must be positive.")
-                : ValidateOptionsResult.Success;
+                : NntpTransitPeersOptionsValidator.Validate(options.TransitPeers);
         }
     }
 }

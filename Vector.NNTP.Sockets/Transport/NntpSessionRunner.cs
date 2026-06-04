@@ -5,8 +5,10 @@
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Vector.NNTP.Session.Coordination;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Sockets.Metrics;
 using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Tls;
@@ -27,6 +29,7 @@ namespace Vector.NNTP.Sockets.Transport
     /// <param name="options">Server options.</param>
     /// <param name="sessionDatabase">Node-local session registry.</param>
     /// <param name="sessionCoordinator">Distributed admission coordinator.</param>
+    /// <param name="transitPeerCoordinator">Transit peer Redis admission coordinator.</param>
     /// <param name="quotaEnforcer">Quota enforcement service.</param>
     /// <param name="tlsCertificateSource">Optional TLS certificate source.</param>
     /// <param name="logger">Logger.</param>
@@ -37,6 +40,7 @@ namespace Vector.NNTP.Sockets.Transport
         IOptions<NntpServerOptions> options,
         ISessionDatabase sessionDatabase,
         INntpSessionCoordinator sessionCoordinator,
+        INntpTransitPeerCoordinator transitPeerCoordinator,
         NntpQuotaEnforcer quotaEnforcer,
         ITlsCertificateSource? tlsCertificateSource,
         ILogger<NntpSessionRunner> logger,
@@ -47,6 +51,8 @@ namespace Vector.NNTP.Sockets.Transport
         private readonly IOptions<NntpServerOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
         private readonly ISessionDatabase _sessionDatabase = sessionDatabase ?? throw new ArgumentNullException(nameof(sessionDatabase));
         private readonly INntpSessionCoordinator _sessionCoordinator = sessionCoordinator ?? throw new ArgumentNullException(nameof(sessionCoordinator));
+        private readonly INntpTransitPeerCoordinator _transitPeerCoordinator =
+            transitPeerCoordinator ?? throw new ArgumentNullException(nameof(transitPeerCoordinator));
         private readonly NntpQuotaEnforcer _quotaEnforcer = quotaEnforcer ?? throw new ArgumentNullException(nameof(quotaEnforcer));
         private readonly ITlsCertificateSource? _tlsCertificateSource = tlsCertificateSource;
         private readonly ILoggerFactory? _loggerFactory = loggerFactory;
@@ -67,7 +73,13 @@ namespace Vector.NNTP.Sockets.Transport
             CancellationToken cancellationToken)
         {
             string configVersion = _options.Value.ServerIdentification;
-            SessionContext connectionSession = new(context.SessionId, context.ClientRemoteEndPoint.Address, DateTimeOffset.UtcNow, configVersion);
+            SessionContext connectionSession = new(
+                context.SessionId,
+                context.ClientRemoteEndPoint.Address,
+                DateTimeOffset.UtcNow,
+                configVersion,
+                context.NodeName,
+                context.TransitPeerId);
             if (!_sessionDatabase.TryAdd(connectionSession))
             {
                 await transport.DisposeAsync().ConfigureAwait(false);
@@ -80,6 +92,10 @@ namespace Vector.NNTP.Sockets.Transport
                 StartTlsCompleted = tlsAlreadyActive,
             };
             NntpSession session = new(context, state, _profile, _options, transport, _tlsCertificateSource, _loggerFactory);
+            if (session.IsTrustedTransitPeer)
+            {
+                state.Mode = NntpSessionMode.Stream;
+            }
             long rxBefore = context.RxBytes;
             long txBefore = context.TxBytes;
 
@@ -119,7 +135,12 @@ namespace Vector.NNTP.Sockets.Transport
                             cancellationToken).ConfigureAwait(false);
                         if (quotaResult.ShouldDeauthorize)
                         {
-                            await TeardownAdmissionAsync(context.Policy, context.SessionId, context.ClientRemoteEndPoint.Address.ToString(), cancellationToken).ConfigureAwait(false);
+                            await TeardownAdmissionAsync(
+                                context.Policy,
+                                context.SessionId,
+                                context.ClientRemoteEndPoint.Address.ToString(),
+                                context.NodeName,
+                                cancellationToken).ConfigureAwait(false);
                             context.ClearAuthentication();
                             if (_sessionDatabase.TryGet(context.SessionId, out SessionContext? row))
                             {
@@ -187,20 +208,71 @@ namespace Vector.NNTP.Sockets.Transport
             string reason,
             CancellationToken cancellationToken)
         {
-            if (context.AdmissionAcquired && context.Policy is not null)
+            try
             {
-                await TeardownAdmissionAsync(context.Policy, context.SessionId, context.ClientRemoteEndPoint.Address.ToString(), cancellationToken).ConfigureAwait(false);
+                if (context.AdmissionAcquired && context.Policy is not null)
+                {
+                    await TeardownAdmissionAsync(
+                        context.Policy,
+                        context.SessionId,
+                        context.ClientRemoteEndPoint.Address.ToString(),
+                        context.NodeName,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                else if (_sessionDatabase.TryGet(context.SessionId, out SessionContext? row) &&
+                         row.SessionPolicy is NntpSessionPolicy boundPolicy &&
+                         boundPolicy.RequiresDistributedAdmission())
+                {
+                    await TeardownAdmissionAsync(
+                        boundPolicy,
+                        context.SessionId,
+                        context.ClientRemoteEndPoint.Address.ToString(),
+                        context.NodeName,
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
-            else if (_sessionDatabase.TryGet(context.SessionId, out SessionContext? row) &&
-                     row.SessionPolicy is NntpSessionPolicy boundPolicy &&
-                     boundPolicy.RequiresDistributedAdmission())
+            finally
             {
-                await TeardownAdmissionAsync(boundPolicy, context.SessionId, context.ClientRemoteEndPoint.Address.ToString(), cancellationToken).ConfigureAwait(false);
+                await ReleaseTransitPeerResourcesAsync(context, cancellationToken).ConfigureAwait(false);
+                _ = _sessionDatabase.TryRemove(context.SessionId, out _);
+                await transport.DisposeAsync().ConfigureAwait(false);
+                NntpSessionRunnerLog.SessionTeardown(_logger, context.SessionId, reason);
+            }
+        }
+
+        private async ValueTask ReleaseTransitPeerResourcesAsync(
+            NntpConnectionContext context,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(context.TransitPeerId))
+            {
+                return;
             }
 
-            _ = _sessionDatabase.TryRemove(context.SessionId, out _);
-            await transport.DisposeAsync().ConfigureAwait(false);
-            NntpSessionRunnerLog.SessionTeardown(_logger, context.SessionId, reason);
+            try
+            {
+                NntpTransitPeerMetrics.RecordActiveConnection(context.TransitPeerId, -1);
+            }
+            catch (Exception ex)
+            {
+                NntpSessionRunnerLog.TransitPeerMetricsFailed(_logger, ex, context.SessionId);
+            }
+
+            try
+            {
+                await _transitPeerCoordinator
+                    .ReleaseAsync(context.TransitPeerId, context.SessionId, context.NodeName, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                NntpTransitPeerMetrics.RecordRedisError(context.TransitPeerId);
+                NntpSessionRunnerLog.TransitPeerReleaseFailed(_logger, ex, context.SessionId, context.TransitPeerId);
+            }
         }
 
         /// <summary>
@@ -209,6 +281,7 @@ namespace Vector.NNTP.Sockets.Transport
         /// <param name="policy">Session policy.</param>
         /// <param name="sessionId">Session identifier.</param>
         /// <param name="clientIpText">Client IP text.</param>
+        /// <param name="nodeName">Stable cluster node identity.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task that completes when the admission is teared down.</returns>
         /// <exception cref="ArgumentNullException">Thrown when the policy is null.</exception>
@@ -219,17 +292,20 @@ namespace Vector.NNTP.Sockets.Transport
             NntpSessionPolicy policy,
             string sessionId,
             string clientIpText,
+            string nodeName,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(policy);
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentException.ThrowIfNullOrEmpty(clientIpText);
+            ArgumentException.ThrowIfNullOrEmpty(nodeName);
             try
             {
                 await _sessionCoordinator.ReleaseAsync(
                     policy,
                     sessionId,
                     clientIpText,
+                    nodeName,
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

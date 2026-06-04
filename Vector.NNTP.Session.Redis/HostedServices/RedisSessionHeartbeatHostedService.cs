@@ -1,6 +1,9 @@
 // <copyright file="RedisSessionHeartbeatHostedService.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
+using Vector.NNTP.Session.Coordination;
+using Vector.NNTP.Session.Utilities;
+
 namespace Vector.NNTP.Session.Redis.HostedServices
 {
     /// <summary>
@@ -11,12 +14,14 @@ namespace Vector.NNTP.Session.Redis.HostedServices
     /// </remarks>
     /// <param name="sessionDatabase">Node-local sessions.</param>
     /// <param name="leaseRefresher">Lease refresher.</param>
+    /// <param name="transitPeerCoordinator">Transit peer ZSET lease coordinator.</param>
     /// <param name="coordinationOptions">Redis coordination options.</param>
     /// <param name="idleOptions">Resolved idle timeout for TTL sizing.</param>
     /// <param name="logger">Logger.</param>
     public sealed partial class RedisSessionHeartbeatHostedService(
         ISessionDatabase sessionDatabase,
         IRedisSessionLeaseRefresher leaseRefresher,
+        INntpTransitPeerCoordinator transitPeerCoordinator,
         IOptionsMonitor<NntpSessionCoordinationOptions> coordinationOptions,
         IOptionsMonitor<NntpSessionIdleOptions> idleOptions,
         ILogger<RedisSessionHeartbeatHostedService> logger) : BackgroundService
@@ -30,6 +35,12 @@ namespace Vector.NNTP.Session.Redis.HostedServices
         /// Lease refresher.
         /// </summary>
         private readonly IRedisSessionLeaseRefresher _leaseRefresher = leaseRefresher ?? throw new ArgumentNullException(nameof(leaseRefresher));
+
+        /// <summary>
+        /// Transit peer coordinator.
+        /// </summary>
+        private readonly INntpTransitPeerCoordinator _transitPeerCoordinator =
+            transitPeerCoordinator ?? throw new ArgumentNullException(nameof(transitPeerCoordinator));
 
         /// <summary>
         /// Coordination options.
@@ -66,7 +77,11 @@ namespace Vector.NNTP.Session.Redis.HostedServices
                     break;
                 }
 
+                NntpSessionCoordinationOptions coordinationSnapshot = _coordinationOptions.CurrentValue;
                 int ttlSeconds = NntpSessionTtlCalculator.ComputeTtlSeconds(_idleOptions.CurrentValue.IdleTimeout);
+                int transitLeaseSeconds = NntpSessionTtlCalculator.ComputeTransitPeerLeaseSeconds(
+                    coordinationSnapshot.HeartbeatIntervalSeconds,
+                    coordinationSnapshot.TtlMinimumSeconds);
                 IReadOnlyCollection<SessionContext> sessions = _sessionDatabase.SnapshotAuthenticated();
                 foreach (SessionContext session in sessions)
                 {
@@ -81,6 +96,7 @@ namespace Vector.NNTP.Session.Redis.HostedServices
                             session.AccountKey,
                             session.SessionId,
                             session.RemoteIp.ToString(),
+                            session.NodeName,
                             ttlSeconds,
                             stoppingToken).ConfigureAwait(false);
                     }
@@ -91,6 +107,33 @@ namespace Vector.NNTP.Session.Redis.HostedServices
                     catch (Exception ex)
                     {
                         LogWarningHeartbeatFailed(this._logger, ex, session.SessionId, session.AccountKey);
+                    }
+                }
+
+                IReadOnlyCollection<SessionContext> transitPeers = _sessionDatabase.SnapshotTransitPeers();
+                foreach (SessionContext transit in transitPeers)
+                {
+                    if (string.IsNullOrEmpty(transit.TransitPeerId))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        await _transitPeerCoordinator.RefreshLeaseAsync(
+                            transit.TransitPeerId,
+                            transit.SessionId,
+                            transit.NodeName,
+                            transitLeaseSeconds,
+                            stoppingToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarningTransitPeerHeartbeatFailed(this._logger, ex, transit.SessionId, transit.TransitPeerId);
                     }
                 }
             }

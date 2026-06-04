@@ -3,6 +3,7 @@
 // </copyright>
 // COLD PATH: CHECK and IHAVE command handlers (RFC 4644).
 
+using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Protocol;
 using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
@@ -19,7 +20,8 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         /// Handles CHECK (streaming filter) or IHAVE (offer and optional body transfer).
         /// </summary>
         /// <param name="session">Active session.</param>
-        /// <param name="storage">Transit storage (may be null).</param>
+        /// <param name="historyDatabase">Transit history for CHECK (may be null).</param>
+        /// <param name="storage">Transit storage for IHAVE/TAKETHIS (may be null).</param>
         /// <param name="verb">CHECK or IHAVE.</param>
         /// <param name="line">Full command line.</param>
         /// <param name="lineReader">Line reader for IHAVE article body.</param>
@@ -27,6 +29,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         /// <returns><see langword="true"/> to continue the session.</returns>
         internal static async ValueTask<bool> DispatchAsync(
             NntpSession session,
+            IHistoryDatabase? historyDatabase,
             INntpTransitStorage? storage,
             string verb,
             string line,
@@ -37,11 +40,6 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             ArgumentNullException.ThrowIfNull(verb);
             ArgumentNullException.ThrowIfNull(line);
             ArgumentNullException.ThrowIfNull(lineReader);
-            if (storage is null)
-            {
-                await NntpReaderErrors.WriteServiceUnavailable503(session, cancellationToken).ConfigureAwait(false);
-                return true;
-            }
 
             string? messageId = NntpCommandLineHelpers.ExtractArgument(line);
             if (string.IsNullOrEmpty(messageId) || !MessageIdSyntax.IsValid(messageId))
@@ -52,17 +50,48 @@ namespace Vector.NNTP.Sockets.Transport.Commands
 
             if (verb.Equals("CHECK", StringComparison.OrdinalIgnoreCase))
             {
-                bool wanted = await storage.CheckAsync(messageId, cancellationToken).ConfigureAwait(false);
-                await session.Writer.WriteLineAsync(
-                    wanted ? "238 Article wanted" : "438 Article not wanted",
-                    cancellationToken).ConfigureAwait(false);
+                if (historyDatabase is null)
+                {
+                    await NntpReaderErrors.WriteServiceUnavailable503(session, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                HistoryCheckResult result = await historyDatabase.CheckAsync(messageId, cancellationToken)
+                    .ConfigureAwait(false);
+                string responseLine = MapCheckResponse(result, messageId);
+                if (result == HistoryCheckResult.Unavailable)
+                {
+                    await NntpReaderErrors.WriteServiceUnavailable503(session, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                await session.Writer.WriteLineAsync(responseLine, cancellationToken).ConfigureAwait(false);
                 return true;
             }
 
-            bool sendBody = await storage.IHaveAsync(messageId, cancellationToken).ConfigureAwait(false);
-            if (!sendBody)
+            if (historyDatabase is null || storage is null)
+            {
+                await NntpReaderErrors.WriteServiceUnavailable503(session, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            HistoryRecordResult record = await historyDatabase.TryRecordAsync(messageId, cancellationToken)
+                .ConfigureAwait(false);
+            if (record == HistoryRecordResult.Unavailable)
+            {
+                await NntpReaderErrors.WriteServiceUnavailable503(session, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            if (record == HistoryRecordResult.Duplicate)
             {
                 await session.Writer.WriteLineAsync("435 Already have it", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            if (record == HistoryRecordResult.TryAgainLater)
+            {
+                await session.Writer.WriteLineAsync("431 Try again later", cancellationToken).ConfigureAwait(false);
                 return true;
             }
 
@@ -72,5 +101,14 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             await session.Writer.WriteLineAsync(ok ? "235 Article transferred OK" : "439 Transfer failed", cancellationToken).ConfigureAwait(false);
             return true;
         }
+
+        private static string MapCheckResponse(HistoryCheckResult result, string messageId) =>
+            result switch
+            {
+                HistoryCheckResult.Wanted => $"238 {messageId}",
+                HistoryCheckResult.Duplicate => $"438 {messageId}",
+                HistoryCheckResult.TryAgainLater => $"431 {messageId}",
+                _ => "503 Service unavailable",
+            };
     }
 }

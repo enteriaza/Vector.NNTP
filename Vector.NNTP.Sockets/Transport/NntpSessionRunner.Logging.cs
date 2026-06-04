@@ -28,5 +28,15 @@ namespace Vector.NNTP.Sockets.Transport
         /// <param name="sessionId">Session identifier.</param>
         [LoggerMessage(Level = LogLevel.Warning, Message = "Admission release failed SessionId={SessionId}")]
         public static partial void AdmissionReleaseFailed(ILogger logger, Exception exception, string sessionId);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Transit peer metrics decrement failed SessionId={SessionId}")]
+        public static partial void TransitPeerMetricsFailed(ILogger logger, Exception exception, string sessionId);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Transit peer Redis release failed SessionId={SessionId} PeerId={PeerId}")]
+        public static partial void TransitPeerReleaseFailed(
+            ILogger logger,
+            Exception exception,
+            string sessionId,
+            string peerId);
     }
 }

@@ -25,5 +25,37 @@ namespace Vector.NNTP.Session.Utilities
             int scaled = (int)Math.Ceiling(seconds * 2.0);
             return Math.Max(MinimumTtlSeconds, scaled);
         }
+
+        /// <summary>
+        /// Computes the stale-member cutoff for transit peer Redis ZSET admission (RFC 4644 peering caps).
+        /// </summary>
+        /// <remarks>
+        /// Uses roughly three heartbeat intervals (not socket idle timeout) so dead peers release slots within minutes,
+        /// not after multi-hour idle TTLs.
+        /// </remarks>
+        /// <param name="heartbeatIntervalSeconds">Configured Redis heartbeat interval.</param>
+        /// <param name="ttlMinimumSeconds">Configured minimum lease floor.</param>
+        /// <returns>Seconds of score age after which a ZSET member is purged before <c>ZCARD</c>.</returns>
+        public static int ComputeTransitPeerLeaseSeconds(
+            int heartbeatIntervalSeconds = 60,
+            int ttlMinimumSeconds = MinimumTtlSeconds)
+        {
+            int interval = Math.Max(1, heartbeatIntervalSeconds);
+            int minimum = Math.Max(60, ttlMinimumSeconds);
+            int scaled = interval * 3;
+            return Math.Max(minimum, scaled);
+        }
+
+        /// <summary>
+        /// Computes Redis EXPIRE seconds for <c>session:{id}</c> and <c>node:{node}:sessions</c> metadata keys.
+        /// </summary>
+        /// <param name="leaseSeconds">Coordination lease seconds from <see cref="ComputeTtlSeconds"/>.</param>
+        /// <returns>Metadata TTL seconds (twice the coordination lease).</returns>
+        public static int ComputeMetadataTtlSeconds(int leaseSeconds)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leaseSeconds);
+            long doubled = (long)leaseSeconds * 2L;
+            return doubled > int.MaxValue ? int.MaxValue : (int)doubled;
+        }
     }
 }

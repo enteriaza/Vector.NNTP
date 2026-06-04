@@ -19,6 +19,7 @@ namespace Vector.NNTP.Session.Coordination
         /// <param name="policy">Granted session policy.</param>
         /// <param name="sessionId">Connection session identifier.</param>
         /// <param name="clientIpText">Client IP text for distinct-IP tracking.</param>
+        /// <param name="nodeName">Stable cluster node identity accepting the connection.</param>
         /// <param name="ttlSeconds">Redis lease TTL (safety backstop).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Admission outcome.</returns>
@@ -26,6 +27,7 @@ namespace Vector.NNTP.Session.Coordination
             NntpSessionPolicy policy,
             string sessionId,
             string clientIpText,
+            string nodeName,
             int ttlSeconds,
             CancellationToken cancellationToken);
 
@@ -35,12 +37,14 @@ namespace Vector.NNTP.Session.Coordination
         /// <param name="policy">Session policy used at admit time.</param>
         /// <param name="sessionId">Connection session identifier.</param>
         /// <param name="clientIpText">Client IP text used at admit time.</param>
+        /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task that completes when release is attempted.</returns>
         public ValueTask ReleaseAsync(
             NntpSessionPolicy policy,
             string sessionId,
             string clientIpText,
+            string nodeName,
             CancellationToken cancellationToken);
     }
 }

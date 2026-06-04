@@ -17,5 +17,19 @@ namespace Vector.NNTP.Session.Redis.HostedServices
             Level = LogLevel.Warning,
             Message = "Heartbeat failed SessionId={SessionId} AccountKey={AccountKey}")]
         private static partial void LogWarningHeartbeatFailed(ILogger logger, Exception ex, string sessionId, string accountKey);
+
+        /// <summary>Logs a failed transit peer lease refresh.</summary>
+        /// <param name="logger">Logger.</param>
+        /// <param name="ex">Exception.</param>
+        /// <param name="sessionId">Session id.</param>
+        /// <param name="peerId">Peer id.</param>
+        [LoggerMessage(
+            Level = LogLevel.Warning,
+            Message = "Transit peer heartbeat failed SessionId={SessionId} PeerId={PeerId}")]
+        private static partial void LogWarningTransitPeerHeartbeatFailed(
+            ILogger logger,
+            Exception ex,
+            string sessionId,
+            string peerId);
     }
 }

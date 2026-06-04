@@ -39,6 +39,18 @@ namespace Vector.NNTP.Session.Database
         public IReadOnlyCollection<SessionContext> SnapshotAuthenticated();
 
         /// <summary>
+        /// Returns a point-in-time snapshot of every connection session row on this node.
+        /// </summary>
+        /// <returns>All live TCP sessions (any authentication state).</returns>
+        public IReadOnlyCollection<SessionContext> SnapshotAll();
+
+        /// <summary>
+        /// Returns a snapshot of trusted transit peer connections on this node (for ZSET lease refresh).
+        /// </summary>
+        /// <returns>Sessions with a non-empty <see cref="SessionContext.TransitPeerId"/>.</returns>
+        public IReadOnlyCollection<SessionContext> SnapshotTransitPeers();
+
+        /// <summary>
         /// Counts authenticated sessions sharing an account key on this node.
         /// </summary>
         /// <param name="accountKey">Normalized account key.</param>

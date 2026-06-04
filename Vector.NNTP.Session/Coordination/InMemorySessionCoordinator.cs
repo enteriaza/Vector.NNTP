@@ -27,6 +27,7 @@ namespace Vector.NNTP.Session.Coordination
         /// <param name="policy">The session policy.</param>
         /// <param name="sessionId">The session ID.</param>
         /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="nodeName">Stable cluster node identity (ignored in-memory).</param>
         /// <param name="ttlSeconds">The TTL seconds.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The admission result.</returns>
@@ -34,9 +35,11 @@ namespace Vector.NNTP.Session.Coordination
             NntpSessionPolicy policy,
             string sessionId,
             string clientIpText,
+            string nodeName,
             int ttlSeconds,
             CancellationToken cancellationToken)
         {
+            _ = nodeName;
             _ = ttlSeconds;
             cancellationToken.ThrowIfCancellationRequested();
             ArgumentNullException.ThrowIfNull(policy);
@@ -91,14 +94,17 @@ namespace Vector.NNTP.Session.Coordination
         /// <param name="policy">The session policy.</param>
         /// <param name="sessionId">The session ID.</param>
         /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="nodeName">Stable cluster node identity (ignored in-memory).</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>A task that completes when the session is released.</returns>
         public ValueTask ReleaseAsync(
             NntpSessionPolicy policy,
             string sessionId,
             string clientIpText,
+            string nodeName,
             CancellationToken cancellationToken)
         {
+            _ = nodeName;
             _ = cancellationToken;
             ArgumentNullException.ThrowIfNull(policy);
             string slotKey = policy.AccountKey + "|" + sessionId;

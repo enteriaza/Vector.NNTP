@@ -9,8 +9,13 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.Encryption.Certificates;
+using Vector.NNTP.Session.Configuration;
+using Vector.NNTP.Session.Coordination;
+using Vector.NNTP.Session.Utilities;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Sockets.Metrics;
+using Vector.NNTP.Sockets.Policy;
 using Vector.NNTP.Sockets.Proxy;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Tls;
@@ -29,6 +34,9 @@ namespace Vector.NNTP.Sockets.Hosting
         private readonly ITlsCertificateSource _tlsCertificateSource;
         private readonly CertificateRenewalService? _renewalService;
         private readonly NntpInFlightSessionTracker _inFlight;
+        private readonly INntpTransitPeerMatcher _transitPeerMatcher;
+        private readonly INntpTransitPeerCoordinator _transitPeerCoordinator;
+        private readonly IOptionsMonitor<NntpSessionIdleOptions> _idleOptions;
         private readonly ILogger<NntpSocketAcceptor> _logger;
         private int _activeConnections;
         private readonly ConcurrentDictionary<string, int> _connectionsPerClientIp = new(StringComparer.Ordinal);
@@ -44,6 +52,9 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <param name="tlsCertificateSource">TLS certificate source.</param>
         /// <param name="renewalService">Optional renewal service for certificate hot reload.</param>
         /// <param name="inFlight">In-flight session tracker.</param>
+        /// <param name="transitPeerMatcher">Transit peer address matcher.</param>
+        /// <param name="transitPeerCoordinator">Cluster transit peer admission.</param>
+        /// <param name="idleOptions">Idle timeout for lease TTL sizing.</param>
         /// <param name="logger">Logger.</param>
         public NntpSocketAcceptor(
             NntpSessionRunner runner,
@@ -52,6 +63,9 @@ namespace Vector.NNTP.Sockets.Hosting
             ITlsCertificateSource tlsCertificateSource,
             CertificateRenewalService? renewalService,
             NntpInFlightSessionTracker inFlight,
+            INntpTransitPeerMatcher transitPeerMatcher,
+            INntpTransitPeerCoordinator transitPeerCoordinator,
+            IOptionsMonitor<NntpSessionIdleOptions> idleOptions,
             ILogger<NntpSocketAcceptor> logger)
         {
             _runner = runner ?? throw new ArgumentNullException(nameof(runner));
@@ -60,6 +74,9 @@ namespace Vector.NNTP.Sockets.Hosting
             _tlsCertificateSource = tlsCertificateSource ?? throw new ArgumentNullException(nameof(tlsCertificateSource));
             _renewalService = renewalService;
             _inFlight = inFlight ?? throw new ArgumentNullException(nameof(inFlight));
+            _transitPeerMatcher = transitPeerMatcher ?? throw new ArgumentNullException(nameof(transitPeerMatcher));
+            _transitPeerCoordinator = transitPeerCoordinator ?? throw new ArgumentNullException(nameof(transitPeerCoordinator));
+            _idleOptions = idleOptions ?? throw new ArgumentNullException(nameof(idleOptions));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _trustedProxySources = ParseTrustedProxySources(_options.Value.ProxyProtocolTrustedSources);
             _handshakeCertificate = _renewalService?.GetCurrentCertificate();
@@ -230,6 +247,8 @@ namespace Vector.NNTP.Sockets.Hosting
             _inFlight.Enter();
             IPEndPoint clientEndPoint = (IPEndPoint)socket.RemoteEndPoint!;
             bool slotAcquired = false;
+            bool sessionRunnerInvoked = false;
+            NntpConnectionContext? context = null;
             try
             {
                 IPEndPoint tcpPeer = clientEndPoint;
@@ -263,6 +282,17 @@ namespace Vector.NNTP.Sockets.Hosting
 
                 slotAcquired = true;
 
+                context = await TryBuildConnectionContextAsync(
+                    sessionId,
+                    clientEndPoint,
+                    tcpPeer,
+                    cancellationToken).ConfigureAwait(false);
+                if (context is null)
+                {
+                    socket.Dispose();
+                    return;
+                }
+
                 if (implicitTls)
                 {
                     X509Certificate2? cert = _handshakeCertificate
@@ -274,22 +304,22 @@ namespace Vector.NNTP.Sockets.Hosting
                         return;
                     }
 
-                    NntpConnectionContext context = new(sessionId, clientEndPoint, tcpPeer, _profile.Role);
                     Stream tlsStream = replayPrefix.Length > 0
                         ? new PrefixedReadStream(baseStream, replayPrefix, leaveInnerOpen: false)
                         : baseStream;
                     SslStream ssl = new(tlsStream, leaveInnerStreamOpen: false);
                     await NntpTlsHandshake.AuthenticateServerAsync(ssl, cert, cancellationToken).ConfigureAwait(false);
                     NntpSocketTransport transport = new(socket, ssl);
+                    sessionRunnerInvoked = true;
                     await _runner.RunAsync(transport, context, tlsAlreadyActive: true, cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
-                    NntpConnectionContext context = new(sessionId, clientEndPoint, tcpPeer, _profile.Role);
                     Stream sessionStream = replayPrefix.Length > 0
                         ? new PrefixedReadStream(baseStream, replayPrefix, leaveInnerOpen: false)
                         : baseStream;
                     NntpSocketTransport transport = new(socket, sessionStream);
+                    sessionRunnerInvoked = true;
                     await _runner.RunAsync(transport, context, tlsAlreadyActive: false, cancellationToken).ConfigureAwait(false);
                 }
             }
@@ -299,6 +329,18 @@ namespace Vector.NNTP.Sockets.Hosting
             }
             finally
             {
+                if (context is not null && context.IsTransitPeer && !sessionRunnerInvoked)
+                {
+                    try
+                    {
+                        await ReleaseTransitPeerIfNeededAsync(context, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception)
+                    {
+                        // Teardown must not throw from finally.
+                    }
+                }
+
                 if (slotAcquired)
                 {
                     ReleaseConnectionSlot(clientEndPoint);
@@ -417,6 +459,99 @@ namespace Vector.NNTP.Sockets.Hosting
             if (_renewalService is not null)
             {
                 _renewalService.CertificateChanged -= OnCertificateChanged;
+            }
+        }
+
+        private async ValueTask<NntpConnectionContext?> TryBuildConnectionContextAsync(
+            string sessionId,
+            IPEndPoint clientEndPoint,
+            IPEndPoint tcpPeer,
+            CancellationToken cancellationToken)
+        {
+            if (!_transitPeerMatcher.TryMatch(clientEndPoint.Address, out NntpTransitPeerMatchResult match))
+            {
+                return new NntpConnectionContext(
+                    sessionId,
+                    clientEndPoint,
+                    tcpPeer,
+                    _profile.Role,
+                    _options.Value.NodeName);
+            }
+
+            int leaseSeconds = NntpSessionTtlCalculator.ComputeTransitPeerLeaseSeconds();
+            string nodeName = _options.Value.NodeName;
+            NntpTransitPeerAdmissionResult admit = await _transitPeerCoordinator.TryAcquireAsync(
+                match.PeerId,
+                sessionId,
+                match.MaxConnections,
+                leaseSeconds,
+                nodeName,
+                cancellationToken).ConfigureAwait(false);
+            switch (admit)
+            {
+                case NntpTransitPeerAdmissionResult.Success:
+                    LogAcceptedTransitPeer(
+                        _logger,
+                        clientEndPoint.Address,
+                        match.PeerId,
+                        match.DisplayName,
+                        match.MatchedEntry);
+                    NntpTransitPeerMetrics.RecordMatch(match.PeerId);
+                    NntpTransitPeerMetrics.RecordActiveConnection(match.PeerId, 1);
+                    return new NntpConnectionContext(
+                        sessionId,
+                        clientEndPoint,
+                        tcpPeer,
+                        _profile.Role,
+                        nodeName,
+                        match.PeerId,
+                        match.DisplayName);
+                case NntpTransitPeerAdmissionResult.AtCapacity:
+                    NntpTransitPeerMetrics.RecordAcquireFailure(match.PeerId);
+                    long occupied = TransitPeerCapacityRegistry.TryGetCurrentCapacity(match.PeerId, out long current)
+                        ? current
+                        : -1;
+                    LogTransitPeerAtCapacity(
+                        _logger,
+                        match.PeerId,
+                        clientEndPoint.Address,
+                        occupied,
+                        match.MaxConnections);
+                    return null;
+                default:
+                    NntpTransitPeerMetrics.RecordRedisError(match.PeerId);
+                    LogTransitPeerAdmissionBackendFailure(_logger, match.PeerId, clientEndPoint.Address);
+                    return null;
+            }
+        }
+
+        private async ValueTask ReleaseTransitPeerIfNeededAsync(
+            NntpConnectionContext context,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(context.TransitPeerId))
+            {
+                return;
+            }
+
+            try
+            {
+                NntpTransitPeerMetrics.RecordActiveConnection(context.TransitPeerId, -1);
+            }
+            catch (Exception)
+            {
+                // Metrics must not block teardown.
+            }
+
+            try
+            {
+                await _transitPeerCoordinator
+                    .ReleaseAsync(context.TransitPeerId, context.SessionId, context.NodeName, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                NntpTransitPeerMetrics.RecordRedisError(context.TransitPeerId);
             }
         }
 

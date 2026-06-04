@@ -292,6 +292,7 @@
 		<ProjectReference Include="..\Vector.NNTP.Encryption\Vector.NNTP.Encryption.csproj" />
 		<ProjectReference Include="..\Vector.NNTP.MessageBus\Vector.NNTP.MessageBus.csproj" />
 		<ProjectReference Include="..\Vector.NNTP.Sockets\Vector.NNTP.Sockets.csproj" />
+		<ProjectReference Include="..\Vector.NNTP.HistoryDB\Vector.NNTP.HistoryDB.csproj" />
 		<ProjectReference Include="..\Vector.NNTP.Session.Redis\Vector.NNTP.Session.Redis.csproj" />
 	</ItemGroup>
 

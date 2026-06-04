@@ -22,19 +22,29 @@ namespace Vector.NNTP.Sockets.Session
         /// <param name="clientRemoteEndPoint">Effective client endpoint (post-PROXY).</param>
         /// <param name="proxyHopEndPoint">TCP peer (first hop).</param>
         /// <param name="hostRole">Reader or transit role.</param>
+        /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
+        /// <param name="transitPeerId">Stable transit peer identifier when Redis admission succeeded.</param>
+        /// <param name="transitPeerDisplayName">Display name for logs.</param>
         public NntpConnectionContext(
             string sessionId,
             IPEndPoint clientRemoteEndPoint,
             IPEndPoint proxyHopEndPoint,
-            NntpHostRole hostRole)
+            NntpHostRole hostRole,
+            string nodeName,
+            string? transitPeerId = null,
+            string? transitPeerDisplayName = null)
         {
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentNullException.ThrowIfNull(clientRemoteEndPoint);
             ArgumentNullException.ThrowIfNull(proxyHopEndPoint);
+            ArgumentException.ThrowIfNullOrEmpty(nodeName);
             SessionId = sessionId;
             ClientRemoteEndPoint = clientRemoteEndPoint;
             ProxyHopEndPoint = proxyHopEndPoint;
             HostRole = hostRole;
+            NodeName = nodeName;
+            TransitPeerId = transitPeerId;
+            TransitPeerDisplayName = transitPeerDisplayName;
             SessionStartedUtc = DateTimeOffset.UtcNow;
         }
 
@@ -59,9 +69,29 @@ namespace Vector.NNTP.Sockets.Session
         public NntpHostRole HostRole { get; }
 
         /// <summary>
+        /// Gets the stable cluster node identity that accepted this connection.
+        /// </summary>
+        public string NodeName { get; }
+
+        /// <summary>
         /// Gets the UTC time when the session was established.
         /// </summary>
         public DateTimeOffset SessionStartedUtc { get; }
+
+        /// <summary>
+        /// Gets the stable transit peer identifier when this connection was admitted as a trusted transit peer.
+        /// </summary>
+        public string? TransitPeerId { get; }
+
+        /// <summary>
+        /// Gets the operator display name for the transit peer.
+        /// </summary>
+        public string? TransitPeerDisplayName { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether this connection is a trusted transit peer (match + Redis admission).
+        /// </summary>
+        public bool IsTransitPeer => !string.IsNullOrEmpty(TransitPeerId);
 
         /// <summary>
         /// Gets a value indicating whether the client completed NNTP authentication.

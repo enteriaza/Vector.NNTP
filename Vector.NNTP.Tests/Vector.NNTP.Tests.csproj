@@ -26,6 +26,7 @@
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="NUnit" Version="4.2.2" />
     <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+    <PackageReference Include="RocksDbNative" Version="6.2.2" />
     <PackageReference Include="System.IO.Pipelines" Version="10.0.8" />
   </ItemGroup>
 
@@ -38,6 +39,7 @@
     <ProjectReference Include="..\Vector.NNTP.NNTPD\Vector.NNTP.NNTPD.csproj" />
     <ProjectReference Include="..\Vector.NNTP.Auth.MySql\Vector.NNTP.Auth.MySql.csproj" />
     <ProjectReference Include="..\Vector.NNTP.Session\Vector.NNTP.Session.csproj" />
+    <ProjectReference Include="..\Vector.NNTP.HistoryDB\Vector.NNTP.HistoryDB.csproj" />
     <ProjectReference Include="..\Vector.NNTP.Session.Redis\Vector.NNTP.Session.Redis.csproj" />
   </ItemGroup>
 

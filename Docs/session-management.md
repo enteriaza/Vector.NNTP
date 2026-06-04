@@ -67,9 +67,29 @@ TTL on acquire/heartbeat:
 
 ```
 ttlSeconds = max(300, ceil(idleTimeoutSeconds * 2))
+metadataTtlSeconds = ttlSeconds * 2
 ```
 
 `idleTimeoutSeconds` under `NntpServer` wins over ISO `IdleTimeout` when both are set. Heartbeat interval defaults from `Redis:HeartbeatIntervalSeconds`.
+
+**Liveness:** Redis `EXPIRE` on `session:{sessionId}` and `node:{NodeName}:sessions` is authoritative for orphan cleanup. The HASH field `leaseUpdated` (Unix milliseconds) is informational only for support and logs — do not implement application-side staleness decisions from it.
+
+## Node-scoped registry
+
+Each host sets stable `NntpServer:NodeName` (required). On TCP accept, `SessionContext.NodeName` and `NntpConnectionContext.NodeName` record that identity.
+
+| Key | Purpose |
+|-----|---------|
+| `{prefix}session:{sessionId}` | HASH: `node`, `kind` (`auth` \| `transit`), `accountKey`, `clientIp`, `peerId`, `created`, `leaseUpdated` (ms) |
+| `{prefix}node:{nodeName}:sessions` | SET of session ids owned by this node |
+
+Acquire and refresh Lua scripts atomically update coordination keys, the HASH, `SADD` the node index, and refresh both TTLs. Release deletes coordination state, the HASH, and `SREM` from the node set.
+
+**Startup:** `NodeSessionLifecycleHostedService` runs `PurgeNode` before heartbeat and socket listeners (informational log: auth/transit counts and duration).
+
+**Shutdown:** Socket accept stops and in-flight sessions drain; survivors are released from `ISessionDatabase.SnapshotAll()`, then `PurgeNode` runs again.
+
+Renaming `NodeName` orphans keys under the old `node:{oldName}:*` prefix until manual Redis cleanup.
 
 ## Redis connectivity
 

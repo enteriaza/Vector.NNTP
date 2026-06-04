@@ -529,10 +529,12 @@ namespace Vector.NNTP.Sockets.Authentication
             }
 
             int ttlSeconds = NntpSessionTtlCalculator.ComputeTtlSeconds(_idleOptions.CurrentValue.IdleTimeout);
+            string nodeName = session.Connection.NodeName;
             NntpSessionAdmissionResult admit = await _sessionCoordinator.TryAdmitAsync(
                 policy,
                 sessionId,
                 clientIp,
+                nodeName,
                 ttlSeconds,
                 cancellationToken).ConfigureAwait(false);
 

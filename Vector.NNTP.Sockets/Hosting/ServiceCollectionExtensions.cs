@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Sockets.Policy;
 using Vector.NNTP.Sockets.Tls;
 using Vector.NNTP.Sockets.Transport;
 
@@ -40,7 +41,19 @@ namespace Vector.NNTP.Sockets.Hosting
         {
             return services.AddNntpSocketsCore()
                 .AddSingleton<INntpHostProfile, NntpTransitHostProfile>()
+                .AddTransitPeerServices()
                 .AddNntpSocketsDevelopmentStubs();
+        }
+
+        /// <summary>
+        /// Registers trusted transit peer matcher, refresh, and related hosted services.
+        /// </summary>
+        /// <param name="services">Service collection.</param>
+        /// <returns>The service collection for chaining.</returns>
+        public static IServiceCollection AddTransitPeerServices(this IServiceCollection services)
+        {
+            _ = services.AddHostedService<NntpTransitPeerRefreshHostedService>();
+            return services;
         }
 
         /// <summary>
@@ -63,6 +76,8 @@ namespace Vector.NNTP.Sockets.Hosting
             _ = services.AddSingleton<NntpSessionRunner>();
             _ = services.AddSingleton<NntpSocketAcceptor>();
             _ = services.AddHostedService<NntpSocketHostedService>();
+            services.TryAddSingleton<INntpTransitPeerMatcher, NntpTransitPeerMatcher>();
+            services.TryAddSingleton<NntpTransitPeerMatcher>();
             _ = services.AddNntpSocketsEncryptionTls();
             return services;
         }

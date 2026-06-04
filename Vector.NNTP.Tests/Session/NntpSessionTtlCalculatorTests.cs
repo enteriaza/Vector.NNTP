@@ -28,5 +28,19 @@ namespace Vector.NNTP.Tests.Session
         {
             Assert.That(NntpSessionTtlCalculator.ComputeTtlSeconds(TimeSpan.FromMinutes(10)), Is.EqualTo(1200));
         }
+
+        /// <summary>
+        /// Verifies transit peer ZSET stale cutoff uses heartbeat scale, not idle timeout.
+        /// </summary>
+        [Test]
+        public void ComputeTransitPeerLeaseSeconds_UsesHeartbeatScale()
+        {
+            Assert.That(
+                NntpSessionTtlCalculator.ComputeTransitPeerLeaseSeconds(heartbeatIntervalSeconds: 60, ttlMinimumSeconds: 300),
+                Is.EqualTo(300));
+            Assert.That(
+                NntpSessionTtlCalculator.ComputeTransitPeerLeaseSeconds(heartbeatIntervalSeconds: 120, ttlMinimumSeconds: 300),
+                Is.EqualTo(360));
+        }
     }
 }

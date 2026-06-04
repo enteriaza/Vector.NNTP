@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
+using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Storage;
 using Vector.NNTP.Sockets.Tls;
 using Vector.NNTP.Sockets.Transport.Commands;
@@ -22,6 +23,7 @@ namespace Vector.NNTP.Sockets.Transport
     /// <param name="auth">Authentication service.</param>
     /// <param name="articleStorage">Optional reader storage.</param>
     /// <param name="transitStorage">Optional transit storage.</param>
+    /// <param name="historyDatabase">Optional transit history database for CHECK and TAKETHIS/IHAVE record.</param>
     /// <param name="tlsCertificateSource">Optional TLS certificate source.</param>
     /// <param name="scramCredentialStore">Optional SCRAM credential store for capability advertisement.</param>
     /// <param name="logger">Logger.</param>
@@ -29,6 +31,7 @@ namespace Vector.NNTP.Sockets.Transport
         NntpAuthenticationService auth,
         INntpArticleStorage? articleStorage,
         INntpTransitStorage? transitStorage,
+        IHistoryDatabase? historyDatabase,
         ITlsCertificateSource? tlsCertificateSource,
         IScramCredentialStore? scramCredentialStore,
         ILogger<NntpCommandDispatcher> logger)
@@ -36,6 +39,7 @@ namespace Vector.NNTP.Sockets.Transport
         private readonly NntpAuthenticationService _auth = auth ?? throw new ArgumentNullException(nameof(auth));
         private readonly INntpArticleStorage? _articleStorage = articleStorage;
         private readonly INntpTransitStorage? _transitStorage = transitStorage;
+        private readonly IHistoryDatabase? _historyDatabase = historyDatabase;
         private readonly ITlsCertificateSource? _tlsCertificateSource = tlsCertificateSource;
         private readonly IScramCredentialStore? _scramCredentialStore = scramCredentialStore;
         private readonly ILogger<NntpCommandDispatcher> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -99,7 +103,7 @@ namespace Vector.NNTP.Sockets.Transport
             if (gate != NntpGateResult.Allow)
             {
                 // For multi-line commands, still need to consume the body due to pipelining
-                if (verb is NntpKnownVerb.Post or NntpKnownVerb.Takethis or NntpKnownVerb.Check)
+                if (verb is NntpKnownVerb.Post or NntpKnownVerb.Takethis)
                 {
                     session.State.MultiLineBodyPending = true;
                     try
@@ -157,13 +161,20 @@ namespace Vector.NNTP.Sockets.Transport
                 case NntpKnownVerb.Check:
                     return await NntpCmdCheck.DispatchAsync(
                         session,
-                        _transitStorage,
+                        this._historyDatabase,
+                        this._transitStorage,
                         NntpCommandLineHelpers.GetVerb(line),
                         line,
                         session.LineReader,
                         cancellationToken).ConfigureAwait(false);
                 case NntpKnownVerb.Takethis:
-                    return await NntpCmdTakethis.DispatchAsync(session, _transitStorage, line, session.LineReader, cancellationToken).ConfigureAwait(false);
+                    return await NntpCmdTakethis.DispatchAsync(
+                        session,
+                        this._historyDatabase,
+                        _transitStorage,
+                        line,
+                        session.LineReader,
+                        cancellationToken).ConfigureAwait(false);
                 case NntpKnownVerb.StartTls:
                     if (_tlsCertificateSource is null)
                     {

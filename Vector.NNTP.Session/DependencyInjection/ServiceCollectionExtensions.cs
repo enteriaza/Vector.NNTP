@@ -8,6 +8,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using Vector.NNTP.Session.Configuration;
+using Vector.NNTP.Session.Coordination;
 
 namespace Vector.NNTP.Session.DependencyInjection
 {
@@ -36,6 +38,8 @@ namespace Vector.NNTP.Session.DependencyInjection
             services.TryAddSingleton<INntpSessionCountCoordinator, InMemorySessionCountCoordinator>();
             services.TryAddSingleton<INntpBlockQuotaCoordinator, InMemoryBlockQuotaCoordinator>();
             services.TryAddSingleton<INntpRateAllocationCoordinator, NodeLocalRateAllocationCoordinator>();
+            services.TryAddSingleton<INntpTransitPeerCoordinator, InMemoryTransitPeerCoordinator>();
+            services.TryAddSingleton<INodeSessionRegistry, InMemoryNodeSessionRegistry>();
             services.TryAddSingleton<IAccountKeyNormalizer, Blake3AccountKeyNormalizer>();
             services.TryAddSingleton<NntpQuotaEnforcer>();
             return services;

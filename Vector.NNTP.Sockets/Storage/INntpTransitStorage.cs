@@ -6,16 +6,20 @@
 namespace Vector.NNTP.Sockets.Storage
 {
     /// <summary>
-    /// Transit streaming storage for CHECK, IHAVE, and TAKETHIS (RFC 4644).
+    /// Transit streaming storage for IHAVE and TAKETHIS article bodies (RFC 4644).
     /// </summary>
+    /// <remarks>
+    /// Duplicate filtering for streaming uses <c>Vector.NNTP.HistoryDB</c> (<c>CheckAsync</c> on CHECK,
+    /// <c>TryRecordAsync</c> on TAKETHIS/IHAVE accept). This contract does not implement CHECK semantics.
+    /// </remarks>
     public interface INntpTransitStorage
     {
         /// <summary>
-        /// Checks whether the server wants an article with the given message-id.
+        /// Legacy stub hook; production CHECK uses HistoryDB instead of transit storage.
         /// </summary>
         /// <param name="messageId">Message-ID.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns><see langword="true"/> when the server wants the article (438 otherwise).</returns>
+        /// <returns><see langword="true"/> when the stub wants the article.</returns>
         public ValueTask<bool> CheckAsync(string messageId, CancellationToken cancellationToken);
 
         /// <summary>
@@ -32,7 +36,10 @@ namespace Vector.NNTP.Sockets.Storage
         /// <param name="messageId">Message-ID.</param>
         /// <param name="articleBytes">Article bytes.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns><see langword="true"/> on success (235).</returns>
+        /// <returns>
+        /// <see langword="true"/> when storage accepted the article. Command handlers map this to
+        /// <c>235 Article transferred OK</c> for IHAVE and <c>239 Article transferred OK</c> for TAKETHIS.
+        /// </returns>
         public ValueTask<bool> TakeThisAsync(string messageId, ReadOnlyMemory<byte> articleBytes, CancellationToken cancellationToken);
     }
 }

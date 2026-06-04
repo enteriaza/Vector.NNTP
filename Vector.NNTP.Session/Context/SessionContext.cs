@@ -42,15 +42,26 @@ namespace Vector.NNTP.Session.Context
         /// <param name="remoteIp">Effective client IP (post-PROXY when applicable).</param>
         /// <param name="connectedAtUtc">Connection timestamp.</param>
         /// <param name="configVersion">Configuration version stamped at accept time.</param>
-        public SessionContext(string sessionId, IPAddress remoteIp, DateTimeOffset connectedAtUtc, string configVersion)
+        /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
+        /// <param name="transitPeerId">Optional stable transit peer identifier when admitted as a trusted peer.</param>
+        public SessionContext(
+            string sessionId,
+            IPAddress remoteIp,
+            DateTimeOffset connectedAtUtc,
+            string configVersion,
+            string nodeName,
+            string? transitPeerId = null)
         {
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentNullException.ThrowIfNull(remoteIp);
             ArgumentException.ThrowIfNullOrEmpty(configVersion);
+            ArgumentException.ThrowIfNullOrEmpty(nodeName);
             SessionId = sessionId;
             RemoteIp = remoteIp;
             ConnectedAtUtc = connectedAtUtc;
             ConfigVersion = configVersion;
+            NodeName = nodeName;
+            TransitPeerId = transitPeerId;
             _authenticationState = (int)AuthenticationState.Unauthenticated;
             _lastActivityUnixSeconds = connectedAtUtc.ToUnixTimeSeconds();
         }
@@ -74,6 +85,16 @@ namespace Vector.NNTP.Session.Context
         /// Gets the configuration version stamped at session creation.
         /// </summary>
         public string ConfigVersion { get; }
+
+        /// <summary>
+        /// Gets the stable cluster node identity that accepted this TCP connection.
+        /// </summary>
+        public string NodeName { get; }
+
+        /// <summary>
+        /// Gets the stable transit peer identifier when this connection was admitted as a trusted transit peer.
+        /// </summary>
+        public string? TransitPeerId { get; }
 
         /// <summary>
         /// Gets the current authentication state.

@@ -3,6 +3,7 @@
 // </copyright>
 // HOT PATH: pre-dispatch security and authentication gating.
 
+using Vector.NNTP.Sockets.Metrics;
 using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
 
@@ -49,7 +50,7 @@ namespace Vector.NNTP.Sockets.Transport
                 : verb == NntpKnownVerb.Authinfo && !session.IsAuthInfoPermitted
                 ? NntpGateResult.TlsRequired
                 : !session.Connection.IsAuthenticated
-                ? IsStage1Allowed(verb) ? NntpGateResult.Allow : NntpGateResult.AuthenticationRequired
+                ? EvaluateUnauthenticated(session, verb)
                 : !IsAllowedForProfile(session, verb) ? NntpGateResult.PermissionDenied : NntpGateResult.Allow;
         }
 
@@ -75,6 +76,26 @@ namespace Vector.NNTP.Sockets.Transport
                 NntpGateResult.Allow => throw new NotImplementedException(),
                 _ => default,
             };
+        }
+
+        private static NntpGateResult EvaluateUnauthenticated(NntpSession session, NntpKnownVerb verb)
+        {
+            if (session.IsTrustedTransitPeer && IsStreamingVerb(verb))
+            {
+                string peerId = session.Connection.TransitPeerId!;
+                if (verb == NntpKnownVerb.Check)
+                {
+                    NntpTransitPeerMetrics.RecordCheckWithoutAuth(peerId);
+                }
+                else if (verb == NntpKnownVerb.Takethis)
+                {
+                    NntpTransitPeerMetrics.RecordTakethisWithoutAuth(peerId);
+                }
+
+                return NntpGateResult.Allow;
+            }
+
+            return IsStage1Allowed(verb) ? NntpGateResult.Allow : NntpGateResult.AuthenticationRequired;
         }
 
         private static bool IsStage1Allowed(NntpKnownVerb verb)

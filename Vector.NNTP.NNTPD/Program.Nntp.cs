@@ -3,6 +3,7 @@
 // </copyright>
 
 using Vector.NNTP.Auth.MySql;
+using Vector.NNTP.HistoryDB.DependencyInjection;
 using Vector.NNTP.Session.Redis.DependencyInjection;
 using Vector.NNTP.Sockets.Hosting;
 using SocketsNntpServerOptions = Vector.NNTP.Sockets.Configuration.NntpServerOptions;
@@ -30,6 +31,7 @@ namespace Vector.NNTP.NNTPD
             ArgumentNullException.ThrowIfNull(builder);
 
             _ = builder.Services.AddNntpSessionRedis(builder.Configuration);
+            _ = builder.Services.AddNntpHistoryDatabase(builder.Configuration);
             _ = builder.Services.AddNntpMySqlAuthFromHostConfiguration(builder.Configuration);
             _ = builder.Services.AddNntpSocketsTransit();
 
