@@ -15,7 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Blake3" Version="2.0.0" />
+    <PackageReference Include="Blake3" Version="2.2.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
@@ -27,7 +27,7 @@
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.8" />
     <PackageReference Include="RocksDbNative" Version="6.2.2" />
     <PackageReference Include="RocksDbSharp" Version="6.2.2" />
-    <PackageReference Include="StackExchange.Redis" Version="2.13.1" />
+    <PackageReference Include="StackExchange.Redis" Version="2.13.17" />
     <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="10.0.8" />
   </ItemGroup>
 

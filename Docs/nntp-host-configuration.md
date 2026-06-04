@@ -113,7 +113,7 @@ Unit tests that do not call `AddNntpSessionRedis` keep in-memory coordinators fr
 | `RebuildCheckpointInterval` | Redis `history:rebuild_state` checkpoint interval during rebuild. |
 | `RebuildRedisBatchSize` | Pipeline batch size for Rocks→Redis rebuild. |
 | `EnableMemoryPreloadOnStartup` | Reverse-iterate `by_expiration` into memory after rebuild. |
-| `RocksDb` | Optional Rocks tuning overrides (defaults subject to benchmark validation). |
+| `RocksDb` | Optional Rocks tuning overrides. `EnableStatistics` (default true) and `StatsDumpPeriodSec` (default 600) enable ticker collection and host logger snapshots (`HistoryRocksStatsLogHostedService`). Native RocksDB `LOG` periodic dumps may be absent on RocksDbSharp 6.2.x despite `stats_dump_period_sec`. |
 
 **Operational notes:**
 

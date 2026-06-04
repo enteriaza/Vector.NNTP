@@ -59,6 +59,7 @@ namespace Vector.NNTP.HistoryDB.DependencyInjection
 
             _ = services.AddHostedService<HistoryDatabaseHostedService>();
             _ = services.AddHostedService<HistoryBackgroundWorkerHostedService>();
+            _ = services.AddHostedService<HistoryRocksStatsLogHostedService>();
 
             return services;
         }

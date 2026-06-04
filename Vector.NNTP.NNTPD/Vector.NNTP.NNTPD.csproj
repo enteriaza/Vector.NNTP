@@ -267,8 +267,8 @@
 		<PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.8" />
 
 		<!-- Data Access -->
-		<PackageReference Include="MySqlConnector" Version="2.5.0" />
-		<PackageReference Include="MySqlConnector.DependencyInjection" Version="2.5.0" />
+		<PackageReference Include="MySqlConnector" Version="2.6.0" />
+		<PackageReference Include="MySqlConnector.DependencyInjection" Version="2.6.0" />
 
 		<!-- Message Bus -->
 		<PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
@@ -284,7 +284,7 @@
 		<PackageReference Include="Serilog.Sinks.File.Archive" Version="1.0.6" />
 
 		<!-- Caching -->
-		<PackageReference Include="StackExchange.Redis" Version="2.13.1" />
+		<PackageReference Include="StackExchange.Redis" Version="2.13.17" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -47,6 +47,16 @@ namespace Vector.NNTP.HistoryDB.Rocks
         private readonly ILogger<RocksHistoryStore> _logger;
 
         /// <summary>
+        /// Open-time database options (kept alive for <see cref="DbOptions.GetStatisticsString"/>).
+        /// </summary>
+        private readonly DbOptions _dbOptions;
+
+        /// <summary>
+        /// Full path to the database directory.
+        /// </summary>
+        private readonly string _dbPath;
+
+        /// <summary>
         /// The RocksDB database.
         /// </summary>
         private readonly RocksDb _db;
@@ -95,16 +105,34 @@ namespace Vector.NNTP.HistoryDB.Rocks
             this._options = options.Value;
             this._metrics = metrics;
             this._logger = logger;
-            string path = Path.GetFullPath(this._options.DbDir);
-            Directory.CreateDirectory(path);
+            this._dbPath = Path.GetFullPath(this._options.DbDir);
+            Directory.CreateDirectory(this._dbPath);
 
-            DbOptions dbOptions = new DbOptions()
+            HistoryRocksDbOptions rocks = this._options.RocksDb;
+            this._dbOptions = new DbOptions()
                 .SetCreateIfMissing(true)
                 .SetCreateMissingColumnFamilies(true)
-                .SetStatsDumpPeriodSec(600);
+                .SetStatsDumpPeriodSec(rocks.StatsDumpPeriodSec);
+            if (rocks.EnableStatistics)
+            {
+                _ = this._dbOptions.EnableStatistics();
+            }
+
+            if (rocks.StatsDumpPeriodSec > 0 && rocks.EnableStatistics)
+            {
+                this._logger.LogInformation(
+                    "RocksDB statistics enabled at {DbDir}; native stats_dump_period_sec={StatsDumpPeriodSec}. Host logger snapshots use the same interval (RocksDbSharp 6.2.x may not emit periodic LOG dumps).",
+                    this._dbPath,
+                    rocks.StatsDumpPeriodSec);
+            }
+            else if (rocks.StatsDumpPeriodSec > 0 && !rocks.EnableStatistics)
+            {
+                this._logger.LogWarning(
+                    "RocksDB StatsDumpPeriodSec is {StatsDumpPeriodSec} but EnableStatistics is false; stats snapshots will not include ticker data",
+                    rocks.StatsDumpPeriodSec);
+            }
 
             ColumnFamilyOptions cfOptions = new ColumnFamilyOptions();
-            HistoryRocksDbOptions rocks = this._options.RocksDb;
             if (rocks.WriteBufferBytes > 0)
             {
                 _ = cfOptions.SetWriteBufferSize((ulong)rocks.WriteBufferBytes);
@@ -121,7 +149,7 @@ namespace Vector.NNTP.HistoryDB.Rocks
                 { CfByExpiration, cfOptions },
             };
 
-            this._db = RocksDb.Open(dbOptions, path, families);
+            this._db = RocksDb.Open(this._dbOptions, this._dbPath, families);
             this._digestCf = this._db.GetColumnFamily(CfByDigest);
             this._expirationCf = this._db.GetColumnFamily(CfByExpiration);
         }
@@ -318,6 +346,39 @@ namespace Vector.NNTP.HistoryDB.Rocks
 
             this._disposed = true;
             this._db.Dispose();
+        }
+
+        /// <summary>
+        /// Logs current RocksDB property and ticker statistics to the host logger.
+        /// </summary>
+        /// <remarks>
+        /// Used by <see cref="HostedServices.HistoryRocksStatsLogHostedService"/> because native periodic LOG dumps are unreliable on RocksDbSharp 6.2.x.
+        /// </remarks>
+        internal void EmitStatsSnapshot()
+        {
+            ObjectDisposedException.ThrowIf(this._disposed, this);
+            if (!this._options.RocksDb.EnableStatistics)
+            {
+                return;
+            }
+
+            string dbStats = this._db.GetProperty("rocksdb.stats");
+            if (!string.IsNullOrWhiteSpace(dbStats))
+            {
+                this._logger.LogInformation(
+                    "RocksDB rocksdb.stats snapshot ({DbDir}):\n{Stats}",
+                    this._dbPath,
+                    dbStats);
+            }
+
+            string tickerStats = this._dbOptions.GetStatisticsString();
+            if (!string.IsNullOrWhiteSpace(tickerStats))
+            {
+                this._logger.LogInformation(
+                    "RocksDB ticker statistics snapshot ({DbDir}):\n{Stats}",
+                    this._dbPath,
+                    tickerStats);
+            }
         }
 
         /// <summary>

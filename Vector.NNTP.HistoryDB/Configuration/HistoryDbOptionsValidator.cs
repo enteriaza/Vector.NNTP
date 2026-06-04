@@ -34,6 +34,12 @@ namespace Vector.NNTP.HistoryDB.Configuration
                 return ValidateOptionsResult.Fail($"{nameof(HistoryDbOptions.DbDir)} is not a valid path: {ex.Message}");
             }
 
+            if (options.RocksDb.StatsDumpPeriodSec > 0 && !options.RocksDb.EnableStatistics)
+            {
+                return ValidateOptionsResult.Fail(
+                    $"{nameof(HistoryRocksDbOptions.StatsDumpPeriodSec)} requires {nameof(HistoryRocksDbOptions.EnableStatistics)} = true for periodic RocksDB LOG dumps.");
+            }
+
             return ValidateOptionsResult.Success;
         }
     }
