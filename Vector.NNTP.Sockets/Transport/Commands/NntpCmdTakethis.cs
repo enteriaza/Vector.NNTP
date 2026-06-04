@@ -34,24 +34,44 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             ArgumentNullException.ThrowIfNull(session);
             ArgumentNullException.ThrowIfNull(line);
             ArgumentNullException.ThrowIfNull(lineReader);
-            if (storage is null)
-            {
-                await NntpReaderErrors.WriteServiceUnavailable503(session, cancellationToken).ConfigureAwait(false);
-                return true;
-            }
 
             string? messageId = NntpCommandLineHelpers.ExtractArgument(line);
-            if (string.IsNullOrEmpty(messageId) || !MessageIdSyntax.IsValid(messageId))
+            bool isValidCommand = storage is not null &&
+                !string.IsNullOrEmpty(messageId) &&
+                MessageIdSyntax.IsValid(messageId);
+
+            // Always expect and read the body due to pipelining
+            if (isValidCommand)
             {
-                await session.Writer.WriteLineAsync("501 Message-ID required", cancellationToken).ConfigureAwait(false);
-                return true;
+                await session.Writer.WriteLineAsync("373 Send article", cancellationToken).ConfigureAwait(false);
             }
 
-            await session.Writer.WriteLineAsync("373 Send article", cancellationToken).ConfigureAwait(false);
-            byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
-            bool ok = await storage.TakeThisAsync(messageId, body, cancellationToken).ConfigureAwait(false);
-            await session.Writer.WriteLineAsync(ok ? "235 Article transferred OK" : "439 Transfer failed", cancellationToken).ConfigureAwait(false);
-            return true;
+            session.State.MultiLineBodyPending = true;
+            try
+            {
+                byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+
+                // Now handle the rejection cases if validation failed
+                if (storage is null)
+                {
+                    await NntpReaderErrors.WriteServiceUnavailable503(session, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (string.IsNullOrEmpty(messageId) || !MessageIdSyntax.IsValid(messageId))
+                {
+                    await session.Writer.WriteLineAsync("501 Message-ID required", cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                bool ok = await storage.TakeThisAsync(messageId, body, cancellationToken).ConfigureAwait(false);
+                await session.Writer.WriteLineAsync(ok ? "235 Article transferred OK" : "439 Transfer failed", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+            finally
+            {
+                session.State.MultiLineBodyPending = false;
+            }
         }
     }
 }

@@ -13,6 +13,16 @@ namespace Vector.NNTP.Sockets.Transport
     public sealed partial class NntpCommandDispatcher
     {
         /// <summary>
+        /// Logs a command received from the client.
+        /// </summary>
+        /// <param name="command">Redacted command line.</param>
+        [LoggerMessage(
+            EventId = 0,
+            Level = LogLevel.Debug,
+            Message = "RX: {Command}")]
+        private partial void LogCommandReceived(string command);
+
+        /// <summary>
         /// Logs an unrecognized client command after redaction of sensitive substrings.
         /// </summary>
         /// <param name="line">Redacted command line.</param>

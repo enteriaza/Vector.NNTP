@@ -3,6 +3,7 @@
 // </copyright>
 // COLD PATH: pairs connection context with protocol state for dispatch.
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
@@ -17,6 +18,7 @@ namespace Vector.NNTP.Sockets.Session
     /// </summary>
     public sealed class NntpSession
     {
+        private readonly ILoggerFactory? _loggerFactory;
         /// <summary>
         /// Initializes a new instance of the <see cref="NntpSession"/> class.
         /// </summary>
@@ -26,13 +28,15 @@ namespace Vector.NNTP.Sockets.Session
         /// <param name="options">Server options snapshot.</param>
         /// <param name="transport">Socket transport (cleartext or TLS).</param>
         /// <param name="tlsCertificateSource">TLS certificate source for STARTTLS advertisement.</param>
+        /// <param name="loggerFactory">Logger factory for creating loggers.</param>
         public NntpSession(
             NntpConnectionContext connection,
             NntpSessionState state,
             INntpHostProfile profile,
             IOptions<NntpServerOptions> options,
             INntpSessionTransport transport,
-            ITlsCertificateSource? tlsCertificateSource)
+            ITlsCertificateSource? tlsCertificateSource,
+            ILoggerFactory? loggerFactory = null)
         {
             Connection = connection ?? throw new ArgumentNullException(nameof(connection));
             State = state ?? throw new ArgumentNullException(nameof(state));
@@ -40,6 +44,7 @@ namespace Vector.NNTP.Sockets.Session
             Options = options?.Value ?? throw new ArgumentNullException(nameof(options));
             Transport = transport ?? throw new ArgumentNullException(nameof(transport));
             TlsCertificateSource = tlsCertificateSource;
+            _loggerFactory = loggerFactory;
             RebindTransportIo();
         }
 
@@ -95,7 +100,8 @@ namespace Vector.NNTP.Sockets.Session
         internal void RebindTransportIo()
         {
             LineReader = new NntpLineReader(Transport.Input, Connection);
-            Writer = new NntpResponseWriter(Transport.Output, Connection);
+            ILogger? logger = _loggerFactory?.CreateLogger<NntpResponseWriter>();
+            Writer = new NntpResponseWriter(Transport.Output, Connection, logger);
         }
     }
 }

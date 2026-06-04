@@ -68,6 +68,10 @@ namespace Vector.NNTP.Sockets.Transport
             CancellationToken cancellationToken)
         {
             string line = Encoding.ASCII.GetString(lineBytes.Span);
+            if (!session.State.MultiLineBodyPending && !session.State.IsCompressionActive)
+            {
+                LogCommandReceived(RedactLine(line));
+            }
             if (session.State.AuthenticationState == Session.AuthenticationState.SaslInProgress &&
                 !line.StartsWith("AUTHINFO", StringComparison.OrdinalIgnoreCase))
             {
@@ -83,7 +87,10 @@ namespace Vector.NNTP.Sockets.Transport
             NntpKnownVerb verb = NntpCommandVerbBytes.Classify(lineBytes.Span);
             if (verb == NntpKnownVerb.Unknown)
             {
-                LogUnknownCommand(RedactLine(line));
+                if (!session.State.IsCompressionActive)
+                {
+                    LogUnknownCommand(RedactLine(line));
+                }
                 await session.Writer.WritePreencodedAsync(NntpPreencodedResponses.UnknownCommand500, cancellationToken).ConfigureAwait(false);
                 return !session.State.QuitRequested;
             }
@@ -91,6 +98,20 @@ namespace Vector.NNTP.Sockets.Transport
             NntpGateResult gate = NntpCommandGate.Evaluate(session, verb);
             if (gate != NntpGateResult.Allow)
             {
+                // For multi-line commands, still need to consume the body due to pipelining
+                if (verb is NntpKnownVerb.Post or NntpKnownVerb.Takethis or NntpKnownVerb.Check)
+                {
+                    session.State.MultiLineBodyPending = true;
+                    try
+                    {
+                        _ = await NntpDotStuffingReader.ReadBodyAsync(session.LineReader, cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        session.State.MultiLineBodyPending = false;
+                    }
+                }
+
                 await NntpCommandGate.WriteRejectionAsync(session, gate, cancellationToken).ConfigureAwait(false);
                 return !session.State.QuitRequested;
             }
@@ -167,7 +188,10 @@ namespace Vector.NNTP.Sockets.Transport
                 case NntpKnownVerb.Unknown:
                     break;
                 default:
-                    LogUnknownCommand(RedactLine(line));
+                    if (!session.State.IsCompressionActive)
+                    {
+                        LogUnknownCommand(RedactLine(line));
+                    }
                     await session.Writer.WritePreencodedAsync(NntpPreencodedResponses.UnknownCommand500, cancellationToken).ConfigureAwait(false);
                     break;
             }

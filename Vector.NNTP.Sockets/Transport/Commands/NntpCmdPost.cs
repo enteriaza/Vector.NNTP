@@ -29,29 +29,47 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         {
             ArgumentNullException.ThrowIfNull(session);
             ArgumentNullException.ThrowIfNull(lineReader);
-            if (storage is null)
+
+            bool canPost = storage is not null && session.Connection.Policy?.AllowPosting == true;
+
+            // Always expect and read the body due to pipelining
+            if (canPost)
             {
-                await session.Writer.WriteLineAsync("503 Reader storage not configured", cancellationToken).ConfigureAwait(false);
-                return true;
+                await session.Writer.WriteLineAsync("340 Send article to be posted", cancellationToken).ConfigureAwait(false);
             }
 
-            if (session.Connection.Policy?.AllowPosting != true)
+            session.State.MultiLineBodyPending = true;
+            try
             {
-                await session.Writer.WriteLineAsync("480 Posting not permitted", cancellationToken).ConfigureAwait(false);
+                byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+
+                // Now handle the rejection cases if validation failed
+                if (storage is null)
+                {
+                    await session.Writer.WriteLineAsync("503 Reader storage not configured", cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (session.Connection.Policy?.AllowPosting != true)
+                {
+                    await session.Writer.WriteLineAsync("480 Posting not permitted", cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                NntpPostResult result = await storage.PostArticleAsync(body, cancellationToken).ConfigureAwait(false);
+                if (!result.Success)
+                {
+                    await session.Writer.WriteLineAsync("441 Posting failed", cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                await session.Writer.WriteLineAsync($"240 Article posted OK <{result.MessageId}>", cancellationToken).ConfigureAwait(false);
                 return true;
             }
-
-            await session.Writer.WriteLineAsync("340 Send article to be posted", cancellationToken).ConfigureAwait(false);
-            byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
-            NntpPostResult result = await storage.PostArticleAsync(body, cancellationToken).ConfigureAwait(false);
-            if (!result.Success)
+            finally
             {
-                await session.Writer.WriteLineAsync("441 Posting failed", cancellationToken).ConfigureAwait(false);
-                return true;
+                session.State.MultiLineBodyPending = false;
             }
-
-            await session.Writer.WriteLineAsync($"240 Article posted OK <{result.MessageId}>", cancellationToken).ConfigureAwait(false);
-            return true;
         }
     }
 }

@@ -57,6 +57,7 @@ namespace Vector.NNTP.NNRPD
             ArgumentNullException.ThrowIfNull(builder);
 
             Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Debug()
                 .ReadFrom.Configuration(builder.Configuration)
                 .Enrich.FromLogContext()
                 .Enrich.WithThreadId()

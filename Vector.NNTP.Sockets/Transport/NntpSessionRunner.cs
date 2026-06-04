@@ -30,6 +30,7 @@ namespace Vector.NNTP.Sockets.Transport
     /// <param name="quotaEnforcer">Quota enforcement service.</param>
     /// <param name="tlsCertificateSource">Optional TLS certificate source.</param>
     /// <param name="logger">Logger.</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
     public sealed class NntpSessionRunner(
         NntpCommandDispatcher dispatcher,
         INntpHostProfile profile,
@@ -38,7 +39,8 @@ namespace Vector.NNTP.Sockets.Transport
         INntpSessionCoordinator sessionCoordinator,
         NntpQuotaEnforcer quotaEnforcer,
         ITlsCertificateSource? tlsCertificateSource,
-        ILogger<NntpSessionRunner> logger)
+        ILogger<NntpSessionRunner> logger,
+        ILoggerFactory? loggerFactory = null)
     {
         private readonly NntpCommandDispatcher _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         private readonly INntpHostProfile _profile = profile ?? throw new ArgumentNullException(nameof(profile));
@@ -47,6 +49,7 @@ namespace Vector.NNTP.Sockets.Transport
         private readonly INntpSessionCoordinator _sessionCoordinator = sessionCoordinator ?? throw new ArgumentNullException(nameof(sessionCoordinator));
         private readonly NntpQuotaEnforcer _quotaEnforcer = quotaEnforcer ?? throw new ArgumentNullException(nameof(quotaEnforcer));
         private readonly ITlsCertificateSource? _tlsCertificateSource = tlsCertificateSource;
+        private readonly ILoggerFactory? _loggerFactory = loggerFactory;
         private readonly ILogger<NntpSessionRunner> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         /// <summary>
@@ -76,7 +79,7 @@ namespace Vector.NNTP.Sockets.Transport
                 IsTlsActive = tlsAlreadyActive,
                 StartTlsCompleted = tlsAlreadyActive,
             };
-            NntpSession session = new(context, state, _profile, _options, transport, _tlsCertificateSource);
+            NntpSession session = new(context, state, _profile, _options, transport, _tlsCertificateSource, _loggerFactory);
             long rxBefore = context.RxBytes;
             long txBefore = context.TxBytes;
 
