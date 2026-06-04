@@ -101,7 +101,7 @@ namespace Vector.NNTP.HistoryDB.Rocks
             DbOptions dbOptions = new DbOptions()
                 .SetCreateIfMissing(true)
                 .SetCreateMissingColumnFamilies(true)
-                .SetStatsDumpPeriodSec(0);
+                .SetStatsDumpPeriodSec(600);
 
             ColumnFamilyOptions cfOptions = new ColumnFamilyOptions();
             HistoryRocksDbOptions rocks = this._options.RocksDb;
