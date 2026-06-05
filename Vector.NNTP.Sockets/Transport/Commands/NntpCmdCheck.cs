@@ -96,9 +96,21 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             }
 
             await session.Writer.WriteLineAsync("335 Send article", cancellationToken).ConfigureAwait(false);
-            byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
-            bool ok = await storage.TakeThisAsync(messageId, body, cancellationToken).ConfigureAwait(false);
-            await session.Writer.WriteLineAsync(ok ? "235 Article transferred OK" : "439 Transfer failed", cancellationToken).ConfigureAwait(false);
+            NntpArticleBodyReadResult read = await NntpDotStuffingReader.ReadBodyAsync(
+                lineReader,
+                session.Options.MaxArtSize,
+                cancellationToken).ConfigureAwait(false);
+            if (read.Status == NntpArticleBodyReadStatus.ExceededMaxSize)
+            {
+                await NntpDotStuffingReader.DrainBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+                await session.Writer.WriteLineAsync("439 Transfer failed", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            bool ok = await storage.TakeThisAsync(messageId, read.Body, cancellationToken).ConfigureAwait(false);
+            await session.Writer.WriteLineAsync(
+                ok ? "235 Article transferred OK" : "439 Transfer failed",
+                cancellationToken).ConfigureAwait(false);
             return true;
         }
 

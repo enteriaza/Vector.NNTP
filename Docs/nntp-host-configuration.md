@@ -15,8 +15,14 @@ NNRPD and NNTPD bind a single JSON section named `NntpServer` to **socket**, **s
 | `EnableStartTls` | Sockets | Advertise and accept `STARTTLS` when a certificate is available. |
 | `EnableCompressDeflate` | Sockets | Advertise `COMPRESS DEFLATE` (wire compression not yet implemented). |
 | `RequireTlsForAuthInfo` | Sockets | Reject AUTHINFO/SASL until TLS is active. |
+| `MaxArtSize` | Sockets | Maximum decoded dot-stuffed article body in bytes for POST/TAKETHIS/IHAVE (`0` disables; default `1048576`). Excess returns `439`/`441` without tearing down the session. |
+| `PipeReadBufferBytes` | Sockets | `StreamPipeReader` buffer size for socket sessions (default `65536`, minimum `4096`). Larger values reduce per-article `ReadAsync` calls during streaming transfers. |
 
 Distributed session admission, byte quota, and heartbeats use a separate **`Redis`** section (see [Session management](session-management.md)).
+
+### Article body ingestion (POST, TAKETHIS, IHAVE)
+
+`MaxArtSize` enforces the maximum **decoded** dot-stuffed article body size while reading from the session pipe. The default is **1 MiB** (`1048576`), matching typical `NNTPD.json` deployments. When a peer exceeds the limit, transit commands return **`439`** (TAKETHIS/IHAVE) or **`441`** (POST) and the session stays up; set **`0`** to disable the check. `PipeReadBufferBytes` sizes the socket `StreamPipeReader` buffer (default **65536**, minimum **4096**). Larger buffers reduce `ReadAsync` churn during RFC 4644 streaming at the cost of slightly more memory per connection.
 
 ## Transit peers (NNTPD)
 

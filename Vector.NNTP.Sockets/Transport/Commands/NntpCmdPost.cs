@@ -41,7 +41,16 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             session.State.MultiLineBodyPending = true;
             try
             {
-                byte[] body = await NntpDotStuffingReader.ReadBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+                NntpArticleBodyReadResult read = await NntpDotStuffingReader.ReadBodyAsync(
+                    lineReader,
+                    session.Options.MaxArtSize,
+                    cancellationToken).ConfigureAwait(false);
+                if (read.Status == NntpArticleBodyReadStatus.ExceededMaxSize)
+                {
+                    await NntpDotStuffingReader.DrainBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+                    await session.Writer.WriteLineAsync("441 Posting failed", cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
 
                 // Now handle the rejection cases if validation failed
                 if (storage is null)
@@ -56,7 +65,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                     return true;
                 }
 
-                NntpPostResult result = await storage.PostArticleAsync(body, cancellationToken).ConfigureAwait(false);
+                NntpPostResult result = await storage.PostArticleAsync(read.Body, cancellationToken).ConfigureAwait(false);
                 if (!result.Success)
                 {
                     await session.Writer.WriteLineAsync("441 Posting failed", cancellationToken).ConfigureAwait(false);

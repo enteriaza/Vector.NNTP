@@ -21,6 +21,23 @@ namespace Vector.NNTP.Sockets.Transport
         private readonly NntpConnectionContext _context = context ?? throw new ArgumentNullException(nameof(context));
 
         /// <summary>
+        /// Reads a dot-stuffed article body using the chunked <see cref="NntpArticleBodyReader"/> path.
+        /// </summary>
+        /// <param name="maxBodyBytes">Maximum decoded body size (0 disables the limit).</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Decoded body bytes.</returns>
+        internal ValueTask<NntpArticleBodyReadResult> ReadDotStuffedBodyAsync(long maxBodyBytes, CancellationToken cancellationToken) =>
+            NntpArticleBodyReader.ReadDotStuffedBodyAsync(this._reader, this._context, maxBodyBytes, cancellationToken);
+
+        /// <summary>
+        /// Discards a pipelined dot-stuffed body without enforcing article size limits.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the terminator line is consumed.</returns>
+        internal ValueTask DrainDotStuffedBodyAsync(CancellationToken cancellationToken) =>
+            NntpArticleBodyReader.DrainDotStuffedBodyAsync(this._reader, this._context, cancellationToken);
+
+        /// <summary>
         /// Reads one line without CRLF as raw bytes or reports completion when the connection closes.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>

@@ -1,7 +1,7 @@
 // <copyright file="NntpDotStuffingReader.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-// COLD PATH: reads dot-stuffed multi-line bodies for POST and IHAVE.
+// COLD PATH: legacy wrapper delegating to <see cref="NntpArticleBodyReader"/> for benchmarks and migration.
 
 namespace Vector.NNTP.Sockets.Transport
 {
@@ -11,40 +11,31 @@ namespace Vector.NNTP.Sockets.Transport
     internal static class NntpDotStuffingReader
     {
         /// <summary>
-        /// Reads a dot-stuffed body into a byte array.
+        /// Reads a dot-stuffed body into a byte array via the optimized article body reader.
         /// </summary>
-        /// <param name="lineReader">Line reader for the session.</param>
+        /// <param name="lineReader">Line reader for the session (provides pipe and Rx accounting).</param>
+        /// <param name="maxBodyBytes">Maximum decoded body size (0 disables the limit).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Decoded body bytes.</returns>
-        internal static async ValueTask<byte[]> ReadBodyAsync(NntpLineReader lineReader, CancellationToken cancellationToken)
+        internal static ValueTask<NntpArticleBodyReadResult> ReadBodyAsync(
+            NntpLineReader lineReader,
+            long maxBodyBytes,
+            CancellationToken cancellationToken)
         {
-            using MemoryStream ms = new();
-            while (true)
-            {
-                NntpByteLineReadResult line = await lineReader.ReadLineBytesAsync(cancellationToken).ConfigureAwait(false);
-                if (line.IsCompleted)
-                {
-                    break;
-                }
+            ArgumentNullException.ThrowIfNull(lineReader);
+            return lineReader.ReadDotStuffedBodyAsync(maxBodyBytes, cancellationToken);
+        }
 
-                if (line.IsDotTerminator)
-                {
-                    break;
-                }
-
-                ReadOnlyMemory<byte> payload = line.Line;
-                if (line.IsDotStuffed)
-                {
-                    payload = payload.Slice(1);
-                }
-
-                ms.Write(payload.Span);
-
-                ms.WriteByte((byte)'\r');
-                ms.WriteByte((byte)'\n');
-            }
-
-            return ms.ToArray();
+        /// <summary>
+        /// Discards a pipelined dot-stuffed body without allocating or enforcing article size limits.
+        /// </summary>
+        /// <param name="lineReader">Line reader for the session (provides pipe and Rx accounting).</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the terminator line is consumed.</returns>
+        internal static ValueTask DrainBodyAsync(NntpLineReader lineReader, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(lineReader);
+            return lineReader.DrainDotStuffedBodyAsync(cancellationToken);
         }
     }
 }

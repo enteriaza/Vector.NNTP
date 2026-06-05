@@ -15,19 +15,25 @@ namespace Vector.NNTP.Sockets.Transport
     /// </summary>
     public sealed class NntpSocketTransport : INntpSessionTransport
     {
+        private const int DefaultPipeReadBufferBytes = 65_536;
+        private const int DefaultMinimumReadSize = 4096;
+
         private Stream _stream;
         private PipeReader? _input;
         private PipeWriter? _output;
+        private readonly int _pipeReadBufferBytes;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NntpSocketTransport"/> class over a cleartext connection.
         /// </summary>
         /// <param name="socket">Accepted TCP socket.</param>
-        public NntpSocketTransport(Socket socket)
+        /// <param name="pipeReadBufferBytes">Stream pipe reader buffer size (defaults to 64 KiB).</param>
+        public NntpSocketTransport(Socket socket, int pipeReadBufferBytes = DefaultPipeReadBufferBytes)
         {
             Socket = socket ?? throw new ArgumentNullException(nameof(socket));
-            _stream = CreateOutboundRateLimitStream(new NetworkStream(socket, ownsSocket: false));
-            RebindPipes(_stream);
+            this._pipeReadBufferBytes = pipeReadBufferBytes;
+            this._stream = CreateOutboundRateLimitStream(new NetworkStream(socket, ownsSocket: false));
+            this.RebindPipes(this._stream);
         }
 
         /// <summary>
@@ -38,11 +44,13 @@ namespace Vector.NNTP.Sockets.Transport
         /// Stream already bound to the desired transport mode (for example cleartext with a consumed preamble, or an
         /// authenticated <see cref="SslStream"/>).
         /// </param>
-        public NntpSocketTransport(Socket socket, Stream preboundStream)
+        /// <param name="pipeReadBufferBytes">Stream pipe reader buffer size (defaults to 64 KiB).</param>
+        public NntpSocketTransport(Socket socket, Stream preboundStream, int pipeReadBufferBytes = DefaultPipeReadBufferBytes)
         {
             Socket = socket ?? throw new ArgumentNullException(nameof(socket));
-            _stream = CreateOutboundRateLimitStream(preboundStream ?? throw new ArgumentNullException(nameof(preboundStream)));
-            RebindPipes(_stream);
+            this._pipeReadBufferBytes = pipeReadBufferBytes;
+            this._stream = CreateOutboundRateLimitStream(preboundStream ?? throw new ArgumentNullException(nameof(preboundStream)));
+            this.RebindPipes(this._stream);
         }
 
         /// <summary>
@@ -131,7 +139,10 @@ namespace Vector.NNTP.Sockets.Transport
         /// <param name="stream">Underlying stream.</param>
         private void RebindPipes(Stream stream)
         {
-            StreamPipeReaderOptions readerOptions = new(leaveOpen: true);
+            StreamPipeReaderOptions readerOptions = new(
+                bufferSize: this._pipeReadBufferBytes,
+                minimumReadSize: DefaultMinimumReadSize,
+                leaveOpen: true);
             StreamPipeWriterOptions writerOptions = new(leaveOpen: true);
             _input = PipeReader.Create(stream, readerOptions);
             _output = PipeWriter.Create(stream, writerOptions);

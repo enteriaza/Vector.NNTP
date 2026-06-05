@@ -309,7 +309,7 @@ namespace Vector.NNTP.Sockets.Hosting
                         : baseStream;
                     SslStream ssl = new(tlsStream, leaveInnerStreamOpen: false);
                     await NntpTlsHandshake.AuthenticateServerAsync(ssl, cert, cancellationToken).ConfigureAwait(false);
-                    NntpSocketTransport transport = new(socket, ssl);
+                    NntpSocketTransport transport = new(socket, ssl, this._options.Value.PipeReadBufferBytes);
                     sessionRunnerInvoked = true;
                     await _runner.RunAsync(transport, context, tlsAlreadyActive: true, cancellationToken).ConfigureAwait(false);
                 }
@@ -318,7 +318,7 @@ namespace Vector.NNTP.Sockets.Hosting
                     Stream sessionStream = replayPrefix.Length > 0
                         ? new PrefixedReadStream(baseStream, replayPrefix, leaveInnerOpen: false)
                         : baseStream;
-                    NntpSocketTransport transport = new(socket, sessionStream);
+                    NntpSocketTransport transport = new(socket, sessionStream, this._options.Value.PipeReadBufferBytes);
                     sessionRunnerInvoked = true;
                     await _runner.RunAsync(transport, context, tlsAlreadyActive: false, cancellationToken).ConfigureAwait(false);
                 }

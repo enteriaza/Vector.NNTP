@@ -118,6 +118,18 @@ namespace Vector.NNTP.Sockets.Configuration
         /// Gets or sets trusted transit peer definitions for NNTPD peering (address matching, DNS refresh, cluster caps).
         /// </summary>
         public NntpTransitPeersOptions TransitPeers { get; set; } = new();
+
+        /// <summary>
+        /// Gets or sets the maximum decoded dot-stuffed article body size in bytes (0 disables the limit).
+        /// </summary>
+        [Range(0, long.MaxValue)]
+        public long MaxArtSize { get; set; } = 1_048_576;
+
+        /// <summary>
+        /// Gets or sets the <see cref="System.IO.Pipelines.StreamPipeReader"/> buffer size for socket sessions.
+        /// </summary>
+        [Range(4096, 16_777_216)]
+        public int PipeReadBufferBytes { get; set; } = 65_536;
     }
 
     /// <summary>
@@ -137,6 +149,8 @@ namespace Vector.NNTP.Sockets.Configuration
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeoutSeconds)} must be positive when set.")
                 : options.IdleTimeout <= TimeSpan.Zero
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeout)} must be positive.")
+                : options.PipeReadBufferBytes < 4096
+                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.PipeReadBufferBytes)} must be at least 4096.")
                 : NntpTransitPeersOptionsValidator.Validate(options.TransitPeers);
         }
     }

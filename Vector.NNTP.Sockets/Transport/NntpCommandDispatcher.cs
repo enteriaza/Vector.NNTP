@@ -74,7 +74,7 @@ namespace Vector.NNTP.Sockets.Transport
             string line = Encoding.ASCII.GetString(lineBytes.Span);
             if (!session.State.MultiLineBodyPending && !session.State.IsCompressionActive)
             {
-                LogCommandReceived(RedactLine(line));
+                LogCommandReceived(FormatLineForLog(lineBytes));
             }
             if (session.State.AuthenticationState == Session.AuthenticationState.SaslInProgress &&
                 !line.StartsWith("AUTHINFO", StringComparison.OrdinalIgnoreCase))
@@ -93,8 +93,9 @@ namespace Vector.NNTP.Sockets.Transport
             {
                 if (!session.State.IsCompressionActive)
                 {
-                    LogUnknownCommand(RedactLine(line));
+                    LogUnknownCommand(FormatLineForLog(lineBytes));
                 }
+
                 await session.Writer.WritePreencodedAsync(NntpPreencodedResponses.UnknownCommand500, cancellationToken).ConfigureAwait(false);
                 return !session.State.QuitRequested;
             }
@@ -108,7 +109,8 @@ namespace Vector.NNTP.Sockets.Transport
                     session.State.MultiLineBodyPending = true;
                     try
                     {
-                        _ = await NntpDotStuffingReader.ReadBodyAsync(session.LineReader, cancellationToken).ConfigureAwait(false);
+                        await NntpDotStuffingReader.DrainBodyAsync(session.LineReader, cancellationToken)
+                            .ConfigureAwait(false);
                     }
                     finally
                     {
@@ -201,8 +203,9 @@ namespace Vector.NNTP.Sockets.Transport
                 default:
                     if (!session.State.IsCompressionActive)
                     {
-                        LogUnknownCommand(RedactLine(line));
+                        LogUnknownCommand(FormatLineForLog(lineBytes));
                     }
+
                     await session.Writer.WritePreencodedAsync(NntpPreencodedResponses.UnknownCommand500, cancellationToken).ConfigureAwait(false);
                     break;
             }
@@ -227,6 +230,47 @@ namespace Vector.NNTP.Sockets.Transport
         /// </summary>
         /// <param name="line">The command line to redact.</param>
         /// <returns>The redacted command line.</returns>
+        /// <summary>
+        /// Formats a command line for logging, redacting secrets and replacing non-text payloads with a summary.
+        /// </summary>
+        /// <param name="lineBytes">Command line bytes without CRLF.</param>
+        /// <returns>Safe log text.</returns>
+        private static string FormatLineForLog(ReadOnlyMemory<byte> lineBytes)
+        {
+            ReadOnlySpan<byte> span = lineBytes.Span;
+            if (span.Length == 0)
+            {
+                return "<empty>";
+            }
+
+            if (span.Length > 512 || !IsPrintableAscii(span))
+            {
+                return $"<non-text line {span.Length} bytes>";
+            }
+
+            return RedactLine(Encoding.ASCII.GetString(span));
+        }
+
+        /// <summary>
+        /// Determines whether a span is safe to render as an ASCII command line in logs.
+        /// </summary>
+        /// <param name="span">Candidate command bytes.</param>
+        /// <returns><see langword="true"/> when every byte is tab or printable ASCII.</returns>
+        private static bool IsPrintableAscii(ReadOnlySpan<byte> span)
+        {
+            foreach (byte value in span)
+            {
+                if (value is (byte)'\t' or >= 0x20 and <= 0x7E)
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
         private static string RedactLine(string line)
         {
             return line.Contains("PASS", StringComparison.OrdinalIgnoreCase) ||

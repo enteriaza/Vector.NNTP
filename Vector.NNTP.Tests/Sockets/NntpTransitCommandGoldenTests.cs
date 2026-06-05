@@ -116,6 +116,32 @@ namespace Vector.NNTP.Tests.Sockets
         }
 
         /// <summary>
+        /// Verifies TAKETHIS with a multi-line article (including dot-stuffing) returns 239.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task Takethis_MultiLineArticle_Returns239()
+        {
+            const string messageId = "<multiline@test.local>";
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateTransit();
+            try
+            {
+                await NntpProtocolHarness.AuthenticateTransitAsync(harness).ConfigureAwait(false);
+                await harness.SendAsync("MODE STREAM").ConfigureAwait(false);
+                _ = await harness.ReadLineAsync().ConfigureAwait(false);
+                await harness.SendTakethisWithArticleAsync(
+                    messageId,
+                    "Path: example\r\nFrom: a@b\r\n..leading-dot\r\nMessage-ID: " + messageId + "\r\n\r\nbody\r\n")
+                    .ConfigureAwait(false);
+                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Does.StartWith("239 "));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
         /// Verifies TAKETHIS after CHECK returns 239 with no intermediate 373 (RFC 4644 streaming).
         /// </summary>
         /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
