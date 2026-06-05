@@ -2,6 +2,9 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+using Vector.NNTP.Utilities.Async;
+using Vector.NNTP.Utilities.Retry;
+
 namespace Vector.NNTP.Encryption.Acme
 {
     /// <summary>
@@ -13,6 +16,21 @@ namespace Vector.NNTP.Encryption.Acme
     /// </remarks>
     internal static partial class AcmeTransientRetry
     {
+        /// <summary>
+        /// Base delay in milliseconds for transient ACME retry back-off.
+        /// </summary>
+        private const int BackoffBaseDelayMs = 500;
+
+        /// <summary>
+        /// Maximum delay cap in milliseconds for transient ACME retry back-off.
+        /// </summary>
+        private const int BackoffMaxDelayMs = 30_000;
+
+        /// <summary>
+        /// Exclusive upper bound of uniform jitter added to each retry delay.
+        /// </summary>
+        private const int BackoffJitterMaxMs = 250;
+
         /// <summary>
         /// Executes <paramref name="operation"/> with exponential backoff and jitter.
         /// </summary>
@@ -47,9 +65,17 @@ namespace Vector.NNTP.Encryption.Acme
                         break;
                     }
 
-                    int delayMs = ComputeBackoffMilliseconds(attempt);
+                    int delayMs = RetryUtilities.CalculateBackOff(
+                        attempt,
+                        BackoffBaseDelayMs,
+                        BackoffMaxDelayMs,
+                        BackoffJitterMaxMs);
                     LogTransientAcmeRetry(logger, ex, operationName, attempt, maxAttempts, delayMs);
-                    await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+                    bool delayed = await TaskUtilities.DelayOrCancelledAsync(delayMs, cancellationToken).ConfigureAwait(false);
+                    if (!delayed)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
                 }
             }
 
@@ -95,17 +121,5 @@ namespace Vector.NNTP.Encryption.Acme
             return ex is HttpRequestException or IOException or TaskCanceledException || (ex is InvalidOperationException ioe && ioe.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase)) || (ex.InnerException is not null && IsRetriable(ex.InnerException));
         }
 
-        /// <summary>
-        /// Calculates the exponential backoff time in milliseconds for a given retry attempt, including a random
-        /// jitter.
-        /// </summary>
-        /// <param name="attemptOneBased">The one-based retry attempt number used to determine the backoff duration.</param>
-        /// <returns>The computed backoff time in milliseconds, capped at 30,000 ms and including up to 249 ms of random jitter.</returns>
-        private static int ComputeBackoffMilliseconds(int attemptOneBased)
-        {
-            int cap = 30_000;
-            int exp = Math.Min(cap, 500 * (1 << Math.Min(attemptOneBased - 1, 6)));
-            return exp + Random.Shared.Next(0, 250);
-        }
     }
 }

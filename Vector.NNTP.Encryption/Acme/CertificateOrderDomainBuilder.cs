@@ -3,7 +3,7 @@
 // </copyright>
 
 using Vector.NNTP.Encryption.Configuration;
-using Vector.NNTP.Encryption.Dns;
+using Vector.NNTP.Utilities.Dns;
 
 namespace Vector.NNTP.Encryption.Acme
 {
@@ -12,8 +12,6 @@ namespace Vector.NNTP.Encryption.Acme
     /// </summary>
     internal static class CertificateOrderDomainBuilder
     {
-        private const int MaxLabelLength = 63;
-
         /// <summary>
         /// Builds the ordered list of DNS identifiers for the ACME <c>newOrder</c> request.
         /// </summary>
@@ -92,28 +90,9 @@ namespace Vector.NNTP.Encryption.Acme
                     throw new InvalidOperationException($"Invalid DNS identifier '{raw}' (missing name after '*.' wildcard prefix).");
                 }
 
-                if (!DnsAsciiEncoding.IsAscii(name.AsSpan()))
+                if (!DnsWireFormatUtilities.TryValidateDnsName(name, out string? error))
                 {
-                    throw new InvalidOperationException($"Invalid DNS identifier '{raw}' (non-ASCII characters are not supported).");
-                }
-
-                if (name[0] == '.' || name[^1] == '.' || name.Contains("..", StringComparison.Ordinal))
-                {
-                    throw new InvalidOperationException($"Invalid DNS identifier '{raw}' (leading dot, trailing dot, or empty label).");
-                }
-
-                string[] labels = name.Split('.');
-                for (int i = 0; i < labels.Length; i++)
-                {
-                    if (labels[i].Length == 0)
-                    {
-                        throw new InvalidOperationException($"Invalid DNS identifier '{raw}' (empty label).");
-                    }
-
-                    if (labels[i].Length > MaxLabelLength)
-                    {
-                        throw new InvalidOperationException($"Invalid DNS identifier '{raw}' (label exceeds {MaxLabelLength} characters).");
-                    }
+                    throw new InvalidOperationException($"Invalid DNS identifier '{raw}' ({error}).");
                 }
             }
         }

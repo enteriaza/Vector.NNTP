@@ -9,6 +9,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using Vector.NNTP.Utilities.Dns;
 
 namespace Vector.NNTP.Encryption.Dns
 {

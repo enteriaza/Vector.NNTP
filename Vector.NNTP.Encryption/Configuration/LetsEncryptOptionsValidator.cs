@@ -4,6 +4,7 @@
 // LetsEncryptOptionsValidator.cs -- IValidateOptions implementation for LetsEncryptOptions.
 
 using System.ComponentModel.DataAnnotations;
+using Vector.NNTP.Utilities.Validation;
 
 namespace Vector.NNTP.Encryption.Configuration
 {
@@ -50,6 +51,12 @@ namespace Vector.NNTP.Encryption.Configuration
                     "CloudflareApiToken is required when Let's Encrypt is enabled.",
                     [nameof(LetsEncryptOptions.CloudflareApiToken)]));
             }
+            else if (CredentialPlaceholderDetector.IsPlaceholder(options.CloudflareApiToken))
+            {
+                errors.Add(new ValidationResult(
+                    "CloudflareApiToken appears to be a template placeholder.",
+                    [nameof(LetsEncryptOptions.CloudflareApiToken)]));
+            }
 
             options.CloudflareZoneId = options.CloudflareZoneId?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(options.CloudflareZoneId))
@@ -91,6 +98,32 @@ namespace Vector.NNTP.Encryption.Configuration
                 errors.Add(new ValidationResult(
                     "ClusterBroadcastExchange must not be empty when Let's Encrypt is enabled.",
                     [nameof(LetsEncryptOptions.ClusterBroadcastExchange)]));
+            }
+
+            if (options.ClusterEnabled
+                && CredentialPlaceholderDetector.IsPlaceholder(options.ClusterBroadcastSigningSecret))
+            {
+                errors.Add(new ValidationResult(
+                    "ClusterBroadcastSigningSecret is required and must not be a placeholder when ClusterEnabled is true.",
+                    [nameof(LetsEncryptOptions.ClusterBroadcastSigningSecret)]));
+            }
+
+            options.ClusterBroadcastSigningSecretPrevious = options.ClusterBroadcastSigningSecretPrevious?.Trim();
+            if (!string.IsNullOrWhiteSpace(options.ClusterBroadcastSigningSecretPrevious)
+                && CredentialPlaceholderDetector.IsPlaceholder(options.ClusterBroadcastSigningSecretPrevious))
+            {
+                errors.Add(new ValidationResult(
+                    "ClusterBroadcastSigningSecretPrevious appears to be a template placeholder.",
+                    [nameof(LetsEncryptOptions.ClusterBroadcastSigningSecretPrevious)]));
+            }
+
+            options.PfxExportPassword = options.PfxExportPassword?.Trim();
+            if (!string.IsNullOrWhiteSpace(options.PfxExportPassword)
+                && CredentialPlaceholderDetector.IsPlaceholder(options.PfxExportPassword))
+            {
+                errors.Add(new ValidationResult(
+                    "PfxExportPassword appears to be a template placeholder.",
+                    [nameof(LetsEncryptOptions.PfxExportPassword)]));
             }
 
             return errors.Count == 0

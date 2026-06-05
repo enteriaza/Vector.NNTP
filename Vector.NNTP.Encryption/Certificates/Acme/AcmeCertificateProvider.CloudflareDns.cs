@@ -60,6 +60,7 @@ using System.Text;
 using System.Text.Json;
 using Vector.NNTP.Encryption.Acme;
 using Vector.NNTP.Encryption.Dns;
+using Vector.NNTP.Utilities.Diagnostics;
 using Vector.NNTP.Utilities.IO;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
@@ -269,23 +270,23 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// the previous LINQ <c>nameservers.Select(ip => ip.ToString())</c> which allocated a LINQ iterator and
         /// delegate.</para>
         ///
-        /// <para><b>Not a Utilities candidate:</b> This method is private and called from a single site
-        /// (<see cref="CreateAuthoritativeDnsClientAsync"/>).  No other class in the codebase formats IP address arrays
-        /// for logging.  Extracting to a shared utility would add indirection without reuse benefit.</para>
+        /// <para><b>Address normalisation:</b> Each entry is formatted via
+        /// <see cref="FormattingUtilities.NormaliseAddress(System.Net.IPAddress)"/> so IPv4-mapped IPv6 addresses log as
+        /// dotted-quad.</para>
         /// </remarks>
         /// <param name="nameservers">The nameserver IP addresses to format.  Must not be empty.</param>
         /// <returns>A comma-delimited string of IP addresses (e.g. <c>"1.2.3.4, 5.6.7.8"</c>).</returns>
         private static string FormatNameserverIps(IPAddress[] nameservers)
         {
             if (nameservers.Length == 1)
-                return nameservers[0].ToString();
+                return FormattingUtilities.NormaliseAddress(nameservers[0]).ToString();
 
             StringBuilder sb = new(nameservers.Length * 16); // ~15 chars per IPv4 address + separator
             for (int i = 0; i < nameservers.Length; i++)
             {
                 if (i > 0)
                     _ = sb.Append(", ");
-                _ = sb.Append(nameservers[i]);
+                _ = sb.Append(FormattingUtilities.NormaliseAddress(nameservers[i]));
             }
             return sb.ToString();
         }

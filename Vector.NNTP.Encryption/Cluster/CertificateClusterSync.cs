@@ -12,6 +12,7 @@ using Vector.NNTP.Encryption.Acme;
 using Vector.NNTP.Encryption.Certificates;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Utilities.IO;
+using Vector.NNTP.Utilities.Security;
 using Vector.NNTP.MessageBus.Connections;
 using Vector.NNTP.MessageBus.Configuration;
 using Vector.NNTP.MessageBus.Consuming;
@@ -233,8 +234,15 @@ namespace Vector.NNTP.Encryption.Cluster
                 };
 
                 byte[]? signingSecret = GetClusterSigningSecretUtf8(options.ClusterBroadcastSigningSecret);
-                if (signingSecret is not null)
-                    dto.Signature = ClusterCertificatePayloadHmac.ComputeSignature(dto, signingSecret);
+                try
+                {
+                    if (signingSecret is not null)
+                        dto.Signature = ClusterCertificatePayloadHmac.ComputeSignature(dto, signingSecret);
+                }
+                finally
+                {
+                    SecureMemoryUtilities.ZeroBuffers(signingSecret);
+                }
 
                 ClusterBusEnvelope envelope = new()
                 {
@@ -572,10 +580,17 @@ namespace Vector.NNTP.Encryption.Cluster
         {
             byte[]? current = GetClusterSigningSecretUtf8(options.ClusterBroadcastSigningSecret);
             byte[]? previous = GetClusterSigningSecretUtf8(options.ClusterBroadcastSigningSecretPrevious);
-
-            return current is null && previous is null
-                ? string.IsNullOrEmpty(dto.Signature)
-                : (current is not null && ClusterCertificatePayloadHmac.IsSignatureValid(dto, current, dto.Signature)) || (previous is not null && ClusterCertificatePayloadHmac.IsSignatureValid(dto, previous, dto.Signature));
+            try
+            {
+                return current is null && previous is null
+                    ? string.IsNullOrEmpty(dto.Signature)
+                    : (current is not null && ClusterCertificatePayloadHmac.IsSignatureValid(dto, current, dto.Signature))
+                      || (previous is not null && ClusterCertificatePayloadHmac.IsSignatureValid(dto, previous, dto.Signature));
+            }
+            finally
+            {
+                SecureMemoryUtilities.ZeroBuffers(current, previous);
+            }
         }
 
         /// <summary>

@@ -9,6 +9,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Vector.NNTP.Utilities.Dns;
 
 namespace Vector.NNTP.Encryption.Dns
 {

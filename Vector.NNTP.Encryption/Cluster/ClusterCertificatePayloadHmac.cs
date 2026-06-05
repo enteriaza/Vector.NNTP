@@ -5,6 +5,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using Vector.NNTP.Utilities.Security;
 
 namespace Vector.NNTP.Encryption.Cluster
 {
@@ -22,9 +23,16 @@ namespace Vector.NNTP.Encryption.Cluster
         public static string ComputeSignature(ClusterCertificatePayload payload, ReadOnlySpan<byte> secretUtf8)
         {
             byte[] signable = BuildSignableUtf8(payload);
-            Span<byte> mac = stackalloc byte[32];
-            _ = HMACSHA256.HashData(secretUtf8, signable, mac);
-            return Convert.ToHexString(mac);
+            try
+            {
+                Span<byte> mac = stackalloc byte[32];
+                _ = HMACSHA256.HashData(secretUtf8, signable, mac);
+                return Convert.ToHexString(mac);
+            }
+            finally
+            {
+                SecureMemoryUtilities.ZeroBuffers(signable);
+            }
         }
 
         /// <summary>
@@ -39,23 +47,31 @@ namespace Vector.NNTP.Encryption.Cluster
             if (string.IsNullOrEmpty(signatureHex) || signatureHex.Length != 64)
                 return false;
 
-            byte[] expected;
+            byte[]? expected = null;
+            byte[]? signable = null;
             try
             {
-                expected = Convert.FromHexString(signatureHex);
+                try
+                {
+                    expected = Convert.FromHexString(signatureHex);
+                }
+                catch (FormatException)
+                {
+                    return false;
+                }
+
+                if (expected.Length != 32)
+                    return false;
+
+                signable = BuildSignableUtf8(payload);
+                Span<byte> mac = stackalloc byte[32];
+                _ = HMACSHA256.HashData(secretUtf8, signable, mac);
+                return CryptographicOperations.FixedTimeEquals(mac, expected);
             }
-            catch (FormatException)
+            finally
             {
-                return false;
+                SecureMemoryUtilities.ZeroBuffers(signable, expected);
             }
-
-            if (expected.Length != 32)
-                return false;
-
-            byte[] signable = BuildSignableUtf8(payload);
-            Span<byte> mac = stackalloc byte[32];
-            _ = HMACSHA256.HashData(secretUtf8, signable, mac);
-            return CryptographicOperations.FixedTimeEquals(mac, expected);
         }
 
         /// <summary>

@@ -48,4 +48,55 @@ public sealed class LetsEncryptOptionsValidatorTests
         Assert.That(result.Failed, Is.True);
         Assert.That(result.FailureMessage, Does.Contain("CertDir"));
     }
+
+    /// <summary>
+    /// Verifies placeholder Cloudflare API tokens are rejected when enabled.
+    /// </summary>
+    [Test]
+    public void Validate_WhenEnabled_PlaceholderCloudflareApiToken_Fails()
+    {
+        LetsEncryptOptions options = CreateValidEnabledOptions();
+        options.CloudflareApiToken = "changeme";
+
+        ValidateOptionsResult result = this._validator.Validate(null, options);
+
+        Assert.That(result.Failed, Is.True);
+        Assert.That(result.FailureMessage, Does.Contain("CloudflareApiToken"));
+        Assert.That(result.FailureMessage, Does.Contain("placeholder"));
+    }
+
+    /// <summary>
+    /// Verifies cluster signing secrets must not be placeholders when cluster sync is enabled.
+    /// </summary>
+    [Test]
+    public void Validate_WhenClusterEnabled_PlaceholderSigningSecret_Fails()
+    {
+        LetsEncryptOptions options = CreateValidEnabledOptions();
+        options.ClusterEnabled = true;
+        options.ClusterBroadcastSigningSecret = "changeme";
+
+        ValidateOptionsResult result = this._validator.Validate(null, options);
+
+        Assert.That(result.Failed, Is.True);
+        Assert.That(result.FailureMessage, Does.Contain("ClusterBroadcastSigningSecret"));
+        Assert.That(result.FailureMessage, Does.Contain("placeholder"));
+    }
+
+    /// <summary>
+    /// Builds a minimally valid enabled options instance for negative tests.
+    /// </summary>
+    /// <returns>Enabled options with required fields populated.</returns>
+    private static LetsEncryptOptions CreateValidEnabledOptions()
+    {
+        return new LetsEncryptOptions
+        {
+            Enabled = true,
+            CertDir = @"C:\certs",
+            AcmeAccountEmail = "admin@example.org",
+            CloudflareApiToken = "cf-token-value",
+            CloudflareZoneId = "zone-id",
+            DomainNames = ["news.example.org"],
+            AccountKeyPem = "-----BEGIN EC PRIVATE KEY-----\nMFcCAQEEI\n-----END EC PRIVATE KEY-----",
+        };
+    }
 }

@@ -89,7 +89,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Vector.NNTP.Encryption.Certificates.Acme;
-using Vector.NNTP.Utilities.Encoding;
+using Vector.NNTP.Utilities.Dns;
 
 namespace Vector.NNTP.Encryption.Dns
 {
@@ -116,12 +116,11 @@ namespace Vector.NNTP.Encryption.Dns
     /// <para><b>Thread safety:</b> Each call to <see cref="QueryTxtAsync"/> creates a fresh <see cref="UdpClient"/> with
     /// no shared mutable state.  Safe for concurrent calls (though the sole caller is single-threaded).</para>
     ///
-    /// <para><b>Input validation:</b> <see cref="BuildTxtQuery"/> validates DNS label lengths (1-63 bytes) and total QNAME
-    /// length (≤255 bytes) per RFC 1035 §2.3.4 and §3.1.  Empty labels (caused by consecutive dots in the input, e.g.
-    /// <c>example..com</c>) are rejected to prevent malformed queries.  Label content is validated as pure ASCII via
-    /// <see cref="EncodingUtilities.IsAscii(ReadOnlySpan{char})"/> before encoding, and encoded via
-    /// <see cref="EncodingUtilities.AsciiToSpan"/> which throws on non-ASCII input -- providing a double-safety net
-    /// against silent character substitution.</para>
+    /// <para><b>Input validation:</b> <see cref="DnsWireQueryBuilder.Build(string, ushort, out ushort, bool)"/> validates 
+    /// DNS label lengths (1-63 bytes) and total QNAME length (≤255 bytes) per RFC 1035 §2.3.4 and §3.1.  Empty labels 
+    /// (caused by consecutive dots in the input, e.g. <c>example..com</c>) are rejected to prevent malformed queries.
+    /// Label content is validated as pure ASCII via <see cref="DnsWireFormatUtilities.TryValidateDnsName(string, out string?)"/>
+    /// before wire encoding.</para>
     ///
     /// <para><b>Robustness:</b> <see cref="ParseTxtResponse"/> and <see cref="TrySkipName"/> bounds-check all buffer
     /// accesses and cap compression pointer traversals to prevent infinite loops from adversarial responses.  Malformed
@@ -152,12 +151,6 @@ namespace Vector.NNTP.Encryption.Dns
         /// </summary>
         private const int ReceiveTimeoutMs = 5_000;
 
-        /// <summary>DNS TXT record type value (RFC 1035 §3.2.2).</summary>
-        private const ushort DnsTypeTxt = 16;
-
-        /// <summary>DNS IN (Internet) class value (RFC 1035 §3.2.4).</summary>
-        private const ushort DnsClassIn = 1;
-
         /// <summary>
         /// Fixed DNS header size in bytes (RFC 1035 §4.1.1):
         /// ID (2) + Flags (2) + QDCOUNT (2) + ANCOUNT (2) + NSCOUNT (2) + ARCOUNT (2).
@@ -181,34 +174,9 @@ namespace Vector.NNTP.Encryption.Dns
         private const int MaxCompressionPointerHops = 128;
 
         /// <summary>
-        /// Maximum DNS QNAME length in bytes (including the trailing root label), per RFC 1035 §3.1.  A domain name is
-        /// limited to 255 octets in wire format.
-        /// </summary>
-        private const int MaxQnameLength = 255;
-
-        /// <summary>
-        /// Maximum length of a single DNS label (RFC 1035 §2.3.4).  Labels are limited to 63 octets.
-        /// </summary>
-        private const int MaxLabelLength = 63;
-
-        /// <summary>
-        /// Maximum total query packet size eligible for <c>stackalloc</c> allocation.  Computed as:
-        /// <see cref="DnsHeaderSize"/> (12) + <see cref="MaxQnameLength"/> (255) + QTYPE (2) + QCLASS (2) = 271 bytes.
-        /// </summary>
-        /// <remarks>
-        /// <para>All valid DNS query packets for a single-question TXT lookup fit within this size.  The <c>stackalloc</c>
-        /// fast path in <see cref="BuildTxtQuery"/> avoids a heap <c>byte[]</c> allocation for every query -- significant
-        /// when polling at <c>DnsPollInterval</c> (every few seconds) during ACME DNS-01 validation.</para>
-        ///
-        /// <para>271 bytes is well within safe <c>stackalloc</c> limits (the .NET runtime default stack size is 1 MiB on
-        /// both Windows and Linux; this threshold is 0.026% of that).</para>
-        /// </remarks>
-        private const int MaxStackAllocQuerySize = DnsHeaderSize + MaxQnameLength + 4;
-
-        /// <summary>
         /// Size of the QTYPE (2) + QCLASS (2) suffix appended after the QNAME in the question section.
         /// </summary>
-        private const int QuestionSuffixSize = 4;
+        private const int QuestionSuffixSize = DnsWireFormatUtilities.QuestionSuffixSize;
 
         #endregion
 
@@ -259,8 +227,8 @@ namespace Vector.NNTP.Encryption.Dns
         /// <remarks>
         /// <para><b>Query construction:</b> Builds a minimal DNS query packet: 12-byte header (randomised ID, no
         /// recursion, QDCOUNT=1) followed by the QNAME (label-encoded hostname), QTYPE=TXT (16), QCLASS=IN (1).
-        /// The packet is built on the stack when the total size is ≤ <see cref="MaxStackAllocQuerySize"/> (271 bytes),
-        /// which covers all valid single-question DNS queries.  The stack buffer is copied to a heap <c>byte[]</c> for
+        /// The packet is built via <see cref="DnsWireQueryBuilder.Build(string, ushort, out ushort, bool)"/> (stackalloc
+        /// fast path inside Utilities for valid DNS names).  The result is a heap <c>byte[]</c> for
         /// <see cref="M:System.Net.Sockets.UdpClient.SendAsync(System.ReadOnlyMemory{System.Byte},System.Net.IPEndPoint,System.Threading.CancellationToken)"/>
         /// which accepts the query as <c>ReadOnlyMemory{byte}</c>.</para>
         ///
@@ -296,7 +264,7 @@ namespace Vector.NNTP.Encryption.Dns
             // Select a random nameserver for load distribution across anycast endpoints.
             IPAddress nameserver = _nameservers[Random.Shared.Next(_nameservers.Length)];
 
-            byte[] queryPacket = BuildTxtQuery(recordName, out ushort queryId);
+            byte[] queryPacket = DnsWireQueryBuilder.Build(recordName, DnsWireRecordTypes.Txt, out ushort queryId, recursionDesired: false);
 
             using UdpClient udp = new(nameserver.AddressFamily);
 
@@ -331,122 +299,6 @@ namespace Vector.NNTP.Encryption.Dns
                 // to let the caller's poll loop retry with a fresh socket.
                 return [];
             }
-        }
-
-        #endregion
-
-        #region Private Methods -- Query Construction
-
-        /// <summary>
-        /// Builds a DNS query packet for a TXT record lookup (RFC 1035 §4.1).
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Packet layout:</b></para>
-        /// <code>
-        ///   Header (12 bytes):
-        ///     ID       = random 16-bit value
-        ///     Flags    = 0x0000 (standard query, RD=0 -- authoritative servers don't need recursion)
-        ///     QDCOUNT  = 1
-        ///     ANCOUNT  = 0
-        ///     NSCOUNT  = 0
-        ///     ARCOUNT  = 0
-        ///
-        ///   Question:
-        ///     QNAME    = label-encoded hostname (e.g. [16]"_acme-challenge"[7]"example"[3]"com"[0])
-        ///     QTYPE    = 16 (TXT)
-        ///     QCLASS   = 1  (IN)
-        /// </code>
-        ///
-        /// <para><b>Input validation:</b> Each label is validated against the 63-byte maximum (RFC 1035 §2.3.4) and the
-        /// total QNAME is validated against the 255-byte maximum (RFC 1035 §3.1).  Empty labels (from consecutive dots or
-        /// leading/trailing dots) are rejected because they produce malformed wire-format queries that authoritative servers
-        /// may handle unpredictably.  Label content is validated as pure ASCII via
-        /// <see cref="EncodingUtilities.IsAscii(ReadOnlySpan{char})"/> to prevent silent character substitution in
-        /// <see cref="Encoding.ASCII"/>.  Encoding is performed via <see cref="EncodingUtilities.AsciiToSpan"/> which
-        /// provides a redundant fail-fast check -- if the <see cref="EncodingUtilities.IsAscii(ReadOnlySpan{char})"/>
-        /// guard were ever removed, the encoding would still throw rather than silently corrupt the query.</para>
-        ///
-        /// <para><b>Stack allocation:</b> The query packet is assembled on the stack via <c>stackalloc</c> when the total
-        /// size fits within <see cref="MaxStackAllocQuerySize"/> (271 bytes -- always true for valid DNS names).  The
-        /// assembled packet is then copied to a heap <c>byte[]</c> because
-        /// <see cref="M:System.Net.Sockets.UdpClient.SendAsync(System.ReadOnlyMemory{System.Byte},System.Net.IPEndPoint,System.Threading.CancellationToken)"/>
-        /// accepts the datagram as <see cref="ReadOnlyMemory{T}"/>.  The <c>stackalloc</c> avoids a separate heap allocation for the working
-        /// buffer during packet assembly.</para>
-        /// </remarks>
-        /// <param name="name">The fully-qualified DNS name to query.</param>
-        /// <param name="queryId">Receives the randomised 16-bit query ID for response matching.</param>
-        /// <returns>The complete DNS query packet ready for UDP transmission.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="name"/> is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="name"/> is empty, contains empty labels, a
-        /// label exceeds 63 bytes, the total QNAME exceeds 255 bytes, or a label contains non-ASCII
-        /// characters.</exception>
-        private static byte[] BuildTxtQuery(string name, out ushort queryId)
-        {
-            ArgumentException.ThrowIfNullOrEmpty(name);
-
-            queryId = (ushort)Random.Shared.Next(ushort.MaxValue + 1);
-
-            // Calculate QNAME length: each label is 1 (length byte) + label.Length, plus 1 for the trailing 0x00.
-            string[] labels = name.Split('.');
-            int qnameLength = 1; // trailing 0x00
-            foreach (string label in labels)
-            {
-                if (label.Length == 0)
-                    throw new ArgumentException($"DNS name '{name}' contains an empty label (consecutive dots, leading dot, or trailing dot).", nameof(name));
-
-                if (label.Length > MaxLabelLength)
-                    throw new ArgumentException($"DNS label '{label}' exceeds the maximum length of {MaxLabelLength} bytes (RFC 1035 §2.3.4).", nameof(name));
-
-                // Validate label content is pure ASCII before encoding.  Encoding.ASCII.GetBytes silently replaces
-                // non-ASCII characters with '?' (0x3F), which would produce a malformed DNS query that silently
-                // queries the wrong name.  Fail-fast with a descriptive exception instead.
-                if (!EncodingUtilities.IsAscii(label.AsSpan()))
-                    throw new ArgumentException($"DNS label '{label}' contains non-ASCII characters.  DNS names must be pure ASCII (RFC 1035 §2.3.4).", nameof(name));
-
-                qnameLength += 1 + label.Length;
-            }
-
-            if (qnameLength > MaxQnameLength)
-                throw new ArgumentException($"DNS name '{name}' exceeds the maximum QNAME length of {MaxQnameLength} bytes (RFC 1035 §3.1).", nameof(name));
-
-            // Total: 12 (header) + qnameLength + 2 (QTYPE) + 2 (QCLASS).
-            int packetLength = DnsHeaderSize + qnameLength + QuestionSuffixSize;
-
-            // Assemble on the stack when possible (always true for valid DNS names -- max 271 bytes).
-            // The final packet must be a heap byte[] for UdpClient.SendAsync (ReadOnlyMemory<byte>).
-            Span<byte> span = packetLength <= MaxStackAllocQuerySize
-                ? stackalloc byte[MaxStackAllocQuerySize]
-                : new byte[packetLength];
-
-            // Zero-initialise the header region.  stackalloc is zero-filled by the runtime on .NET 8,
-            // but the heap path (new byte[]) is also zero-filled, so no explicit clear is needed.
-
-            // Header.
-            BinaryPrimitives.WriteUInt16BigEndian(span, queryId);      // ID
-            // Flags: 0x0000 -- standard query, RD=0 (already zero-initialised).
-            BinaryPrimitives.WriteUInt16BigEndian(span[4..], 1);       // QDCOUNT = 1
-            // ANCOUNT, NSCOUNT, ARCOUNT = 0 (already zero-initialised).
-
-            // Question -- QNAME (label-encoded).
-            // Uses EncodingUtilities.AsciiToSpan instead of Encoding.ASCII.GetBytes for consistency with the
-            // IsAscii validation above and to provide a redundant fail-fast safety net: if the IsAscii guard
-            // were ever removed, AsciiToSpan would still throw ArgumentException on non-ASCII input rather
-            // than silently substituting '?' (0x3F) bytes into the wire-format query.
-            int offset = DnsHeaderSize;
-            foreach (string label in labels)
-            {
-                span[offset++] = (byte)label.Length;
-                offset += EncodingUtilities.AsciiToSpan(label, span[offset..]);
-            }
-            span[offset++] = 0; // Root label terminator.
-
-            // QTYPE = TXT (16), QCLASS = IN (1).
-            BinaryPrimitives.WriteUInt16BigEndian(span[offset..], DnsTypeTxt);
-            offset += 2;
-            BinaryPrimitives.WriteUInt16BigEndian(span[offset..], DnsClassIn);
-
-            // Copy from the (possibly stack-allocated) working buffer to a heap byte[] for SendAsync.
-            return span[..packetLength].ToArray();
         }
 
         #endregion
@@ -569,7 +421,7 @@ namespace Vector.NNTP.Encryption.Dns
                 if (offset + rdLength > span.Length)
                     return results;
 
-                if (rrType == DnsTypeTxt && rrClass == DnsClassIn)
+                if (rrType == DnsWireRecordTypes.Txt && rrClass == DnsWireQueryBuilder.DnsClassIn)
                 {
                     string? txtValue = ParseTxtRdata(span, ref offset, rdLength);
                     if (txtValue is not null)
@@ -611,7 +463,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// read garbage.</para>
         ///
         /// <para><b>ASCII decoding of untrusted data:</b> <see cref="Encoding.ASCII"/>.<see cref="Encoding.GetString(byte[], int, int)">GetString</see>
-        /// is used rather than <see cref="EncodingUtilities"/> because the response data comes from an untrusted
+        /// is used rather than strict ASCII validation helpers because the response data comes from an untrusted
         /// network source.  <see cref="Encoding.ASCII"/> silently replaces non-ASCII bytes (≥ 0x80) with <c>'?'</c>
         /// (0x3F) -- this is acceptable here because: (1) ACME challenge TXT values are base64url-encoded (a subset
         /// of ASCII), so non-ASCII bytes indicate a corrupted or spoofed response; (2) the caller

@@ -52,6 +52,7 @@
 
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Vector.NNTP.Utilities.Async;
 using Vector.NNTP.Utilities.IO;
 using Vector.NNTP.Encryption.Configuration;
 
@@ -342,7 +343,7 @@ namespace Vector.NNTP.Encryption.Certificates
             if (old is null)
                 return;
 
-            _ = Task.Delay(delay, cancellationToken).ContinueWith(
+            Task continuation = Task.Delay(delay, cancellationToken).ContinueWith(
                 static (t, state) =>
                 {
                     if (t.Status == TaskStatus.RanToCompletion)
@@ -352,6 +353,7 @@ namespace Vector.NNTP.Encryption.Certificates
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
+            TaskUtilities.ObserveException(continuation);
         }
 
         #endregion
