@@ -9,7 +9,7 @@ namespace Vector.NNTP.Auth.MySql
     /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> helpers for <see cref="MySqlNntpCredentialValidator"/>.
     /// </summary>
-    internal static partial class MySqlNntpCredentialValidatorLog
+    public sealed partial class MySqlNntpCredentialValidator
     {
         /// <summary>
         /// Logs that host-side authentication finalization is starting.
@@ -23,7 +23,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 200,
             Level = LogLevel.Debug,
             Message = "Finalizing MySQL {Mechanism} authentication for user '{Username}' from {ClientIp} (TLS={IsTls})")]
-        public static partial void AuthenticationFinalizing(
+        private static partial void AuthenticationFinalizing(
             ILogger logger,
             string mechanism,
             string username,
@@ -41,7 +41,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 201,
             Level = LogLevel.Debug,
             Message = "MySQL {Mechanism} authentication rejected for user '{Username}' from {ClientIp}: user not found")]
-        public static partial void AuthenticationRejectedUserNotFound(
+        private static partial void AuthenticationRejectedUserNotFound(
             ILogger logger,
             string mechanism,
             string username,
@@ -58,7 +58,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 202,
             Level = LogLevel.Warning,
             Message = "MySQL {Mechanism} authentication rejected for user '{Username}' from {ClientIp}: account disabled")]
-        public static partial void AuthenticationRejectedAccountDisabled(
+        private static partial void AuthenticationRejectedAccountDisabled(
             ILogger logger,
             string mechanism,
             string username,
@@ -75,7 +75,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 203,
             Level = LogLevel.Debug,
             Message = "MySQL {Mechanism} authentication rejected for user '{Username}' from {ClientIp}: invalid credentials")]
-        public static partial void AuthenticationRejectedInvalidCredentials(
+        private static partial void AuthenticationRejectedInvalidCredentials(
             ILogger logger,
             string mechanism,
             string username,
@@ -95,7 +95,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 204,
             Level = LogLevel.Information,
             Message = "MySQL {Mechanism} authentication succeeded for user '{Username}' from {ClientIp} (Posting={AllowPosting}, Type={AccountType}, CustomerId={CustomerId})")]
-        public static partial void AuthenticationSucceeded(
+        private static partial void AuthenticationSucceeded(
             ILogger logger,
             string mechanism,
             string username,
@@ -117,7 +117,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 205,
             Level = LogLevel.Warning,
             Message = "MySQL {Mechanism} authentication rejected for user '{Username}' from {ClientIp}: admission limits exceeded (SessionLimit={SessionLimit}, SrcIpLimit={SrcIpLimit})")]
-        public static partial void AdmissionRejected(
+        private static partial void AdmissionRejected(
             ILogger logger,
             string mechanism,
             string username,
@@ -136,7 +136,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 206,
             Level = LogLevel.Error,
             Message = "MySQL {Mechanism} authentication failed for user '{Username}' due to backend error")]
-        public static partial void AuthenticationBackendFailed(
+        private static partial void AuthenticationBackendFailed(
             ILogger logger,
             Exception ex,
             string mechanism,

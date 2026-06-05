@@ -38,12 +38,9 @@ namespace Vector.NNTP.Auth.MySql
 
             string? connectionString = configuration.GetConnectionString("MainDB");
 
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                throw new InvalidOperationException("Connection string 'MainDB' is required.");
-            }
-
-            return services.AddNntpMySqlAuth(connectionString);
+            return string.IsNullOrWhiteSpace(connectionString)
+                ? throw new InvalidOperationException("Connection string 'MainDB' is required.")
+                : services.AddNntpMySqlAuth(connectionString);
         }
 
         /// <summary>

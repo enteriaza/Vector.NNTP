@@ -28,28 +28,22 @@ namespace Vector.NNTP.Auth.MySql
     /// authentication throughput becomes a bottleneck, consider introducing an async SCRAM lookup contract end-to-end.
     /// </para>
     /// </remarks>
-    public sealed class MySqlScramCredentialStore : IScramCredentialStore
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="MySqlScramCredentialStore"/> class.
+    /// </remarks>
+    /// <param name="recordStore">Backing user record store.</param>
+    /// <param name="logger">Logger instance.</param>
+    public sealed partial class MySqlScramCredentialStore(INntpUserRecordStore recordStore, ILogger<MySqlScramCredentialStore> logger) : IScramCredentialStore
     {
         /// <summary>
         /// Backing user record store.
         /// </summary>
-        private readonly INntpUserRecordStore _recordStore;
+        private readonly INntpUserRecordStore _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
 
         /// <summary>
         /// Logger instance.
         /// </summary>
-        private readonly ILogger<MySqlScramCredentialStore> _logger;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="MySqlScramCredentialStore"/> class.
-        /// </summary>
-        /// <param name="recordStore">Backing user record store.</param>
-        /// <param name="logger">Logger instance.</param>
-        public MySqlScramCredentialStore(INntpUserRecordStore recordStore, ILogger<MySqlScramCredentialStore> logger)
-        {
-            this._recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
-            this._logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
+        private readonly ILogger<MySqlScramCredentialStore> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         /// <summary>
         /// Tries to get a SCRAM credential for a username.
@@ -61,31 +55,31 @@ namespace Vector.NNTP.Auth.MySql
         {
             ArgumentException.ThrowIfNullOrEmpty(username);
 
-            MySqlScramCredentialStoreLog.ScramLookupStarted(this._logger, username);
+            ScramLookupStarted(_logger, username);
 
             try
             {
-                MySqlUserRecord? record = this._recordStore
+                MySqlUserRecord? record = _recordStore
                     .TryGetUserAsync(username, CancellationToken.None)
                     .GetAwaiter()
                     .GetResult();
                 if (record is null)
                 {
-                    MySqlScramCredentialStoreLog.ScramLookupUserNotFound(this._logger, username);
+                    ScramLookupUserNotFound(_logger, username);
                     credential = null;
                     return false;
                 }
 
                 if (!record.IsEnabled)
                 {
-                    MySqlScramCredentialStoreLog.ScramLookupAccountDisabled(this._logger, username);
+                    ScramLookupAccountDisabled(_logger, username);
                     credential = null;
                     return false;
                 }
 
                 if (!record.AllowAuthScram256)
                 {
-                    MySqlScramCredentialStoreLog.ScramLookupNotPermitted(this._logger, username);
+                    ScramLookupNotPermitted(_logger, username);
                     credential = null;
                     return false;
                 }
@@ -95,7 +89,7 @@ namespace Vector.NNTP.Auth.MySql
                     record.ScramStoredKey.IsEmpty ||
                     record.ScramServerKey.IsEmpty)
                 {
-                    MySqlScramCredentialStoreLog.ScramLookupMaterialMissing(this._logger, username);
+                    ScramLookupMaterialMissing(_logger, username);
                     credential = null;
                     return false;
                 }
@@ -105,12 +99,12 @@ namespace Vector.NNTP.Auth.MySql
                     record.ScramIterations,
                     record.ScramStoredKey,
                     record.ScramServerKey);
-                MySqlScramCredentialStoreLog.ScramLookupSucceeded(this._logger, username, record.ScramIterations);
+                ScramLookupSucceeded(_logger, username, record.ScramIterations);
                 return true;
             }
             catch (Exception ex)
             {
-                MySqlScramCredentialStoreLog.ScramLookupFailed(this._logger, ex, username);
+                ScramLookupFailed(_logger, ex, username);
                 credential = null;
                 return false;
             }

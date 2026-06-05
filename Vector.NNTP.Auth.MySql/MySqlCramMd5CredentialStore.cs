@@ -23,7 +23,7 @@ namespace Vector.NNTP.Auth.MySql
     /// </remarks>
     /// <param name="recordStore">Backing user record store.</param>
     /// <param name="logger">Logger instance.</param>
-    public sealed class MySqlCramMd5CredentialStore(
+    public sealed partial class MySqlCramMd5CredentialStore(
         INntpUserRecordStore recordStore,
         ILogger<MySqlCramMd5CredentialStore> logger) : ICramMd5CredentialStore
     {
@@ -47,44 +47,44 @@ namespace Vector.NNTP.Auth.MySql
         {
             ArgumentException.ThrowIfNullOrEmpty(username);
 
-            MySqlCramMd5CredentialStoreLog.CramLookupStarted(this._logger, username);
+            CramLookupStarted(_logger, username);
 
             // CRAM-MD5 lookups are expected to be relatively rare. We perform a synchronous wait on the asynchronous
             // store API here; higher-level SASL negotiation already runs on the thread-pool and is not on a hot path.
             try
             {
                 using CancellationTokenSource cancellationSource = new();
-                Task<MySqlUserRecord?> task = this._recordStore.TryGetUserAsync(username, cancellationSource.Token);
+                Task<MySqlUserRecord?> task = _recordStore.TryGetUserAsync(username, cancellationSource.Token);
                 MySqlUserRecord? record = task.GetAwaiter().GetResult();
                 if (record is null)
                 {
-                    MySqlCramMd5CredentialStoreLog.CramLookupUserNotFound(this._logger, username);
+                    CramLookupUserNotFound(_logger, username);
                     secret = ReadOnlyMemory<byte>.Empty;
                     return false;
                 }
 
                 if (!record.IsEnabled)
                 {
-                    MySqlCramMd5CredentialStoreLog.CramLookupAccountDisabled(this._logger, username);
+                    CramLookupAccountDisabled(_logger, username);
                     secret = ReadOnlyMemory<byte>.Empty;
                     return false;
                 }
 
                 if (!record.AllowAuthPlain)
                 {
-                    MySqlCramMd5CredentialStoreLog.CramLookupNotPermitted(this._logger, username);
+                    CramLookupNotPermitted(_logger, username);
                     secret = ReadOnlyMemory<byte>.Empty;
                     return false;
                 }
 
                 byte[] bytes = Encoding.UTF8.GetBytes(record.AccountPassword);
                 secret = new ReadOnlyMemory<byte>(bytes);
-                MySqlCramMd5CredentialStoreLog.CramLookupSucceeded(this._logger, username);
+                CramLookupSucceeded(_logger, username);
                 return true;
             }
             catch (Exception ex)
             {
-                MySqlCramMd5CredentialStoreLog.CramLookupFailed(this._logger, ex, username);
+                CramLookupFailed(_logger, ex, username);
                 secret = ReadOnlyMemory<byte>.Empty;
                 return false;
             }

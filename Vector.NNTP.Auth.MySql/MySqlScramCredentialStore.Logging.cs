@@ -9,7 +9,7 @@ namespace Vector.NNTP.Auth.MySql
     /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> helpers for <see cref="MySqlScramCredentialStore"/>.
     /// </summary>
-    internal static partial class MySqlScramCredentialStoreLog
+    public sealed partial class MySqlScramCredentialStore
     {
         /// <summary>
         /// Logs the start of a SCRAM credential lookup.
@@ -20,7 +20,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 320,
             Level = LogLevel.Debug,
             Message = "MySQL SASL SCRAM-SHA-256 credential lookup started for user '{Username}'")]
-        public static partial void ScramLookupStarted(ILogger logger, string username);
+        private static partial void ScramLookupStarted(ILogger logger, string username);
 
         /// <summary>
         /// Logs that no record was found for a SCRAM credential lookup.
@@ -31,7 +31,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 321,
             Level = LogLevel.Debug,
             Message = "MySQL SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': user not found")]
-        public static partial void ScramLookupUserNotFound(ILogger logger, string username);
+        private static partial void ScramLookupUserNotFound(ILogger logger, string username);
 
         /// <summary>
         /// Logs that the account is disabled during a SCRAM credential lookup.
@@ -42,7 +42,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 322,
             Level = LogLevel.Warning,
             Message = "MySQL SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': account disabled")]
-        public static partial void ScramLookupAccountDisabled(ILogger logger, string username);
+        private static partial void ScramLookupAccountDisabled(ILogger logger, string username);
 
         /// <summary>
         /// Logs that SCRAM is not permitted for the account.
@@ -53,7 +53,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 323,
             Level = LogLevel.Debug,
             Message = "MySQL SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': SCRAM-SHA-256 not permitted")]
-        public static partial void ScramLookupNotPermitted(ILogger logger, string username);
+        private static partial void ScramLookupNotPermitted(ILogger logger, string username);
 
         /// <summary>
         /// Logs that SCRAM stored-key material is missing.
@@ -64,7 +64,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 324,
             Level = LogLevel.Warning,
             Message = "MySQL SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': SCRAM material missing")]
-        public static partial void ScramLookupMaterialMissing(ILogger logger, string username);
+        private static partial void ScramLookupMaterialMissing(ILogger logger, string username);
 
         /// <summary>
         /// Logs that a SCRAM credential lookup succeeded.
@@ -76,7 +76,7 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 325,
             Level = LogLevel.Debug,
             Message = "MySQL SASL SCRAM-SHA-256 credential lookup succeeded for user '{Username}' (Iterations={Iterations})")]
-        public static partial void ScramLookupSucceeded(ILogger logger, string username, int iterations);
+        private static partial void ScramLookupSucceeded(ILogger logger, string username, int iterations);
 
         /// <summary>
         /// Logs that a SCRAM credential lookup failed due to an exception.
@@ -88,6 +88,6 @@ namespace Vector.NNTP.Auth.MySql
             EventId = 326,
             Level = LogLevel.Error,
             Message = "MySQL SASL SCRAM-SHA-256 credential lookup failed for user '{Username}' due to backend error")]
-        public static partial void ScramLookupFailed(ILogger logger, Exception ex, string username);
+        private static partial void ScramLookupFailed(ILogger logger, Exception ex, string username);
     }
 }

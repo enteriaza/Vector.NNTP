@@ -79,13 +79,13 @@ namespace Vector.NNTP.Auth.MySql
         {
             ArgumentException.ThrowIfNullOrEmpty(accountName);
 
-            using MySqlConnection connection = new(this._connectionString);
+            using MySqlConnection connection = new(_connectionString);
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
             using MySqlCommand command = connection.CreateCommand();
             command.CommandType = CommandType.Text;
             command.CommandText = UserLookupSql;
-            command.CommandTimeout = this._commandTimeoutSeconds;
+            command.CommandTimeout = _commandTimeoutSeconds;
             _ = command.Parameters.AddWithValue("@account_name", accountName);
 
             using MySqlDataReader reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken).ConfigureAwait(false);
@@ -141,15 +141,12 @@ namespace Vector.NNTP.Auth.MySql
         {
             MySqlConnectionStringBuilder builder = new(connectionString);
 
-            if (builder.TryGetValue("DefaultCommandTimeout", out object? value) &&
+            return builder.TryGetValue("DefaultCommandTimeout", out object? value) &&
                 value is not null &&
                 int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds) &&
-                seconds > 0)
-            {
-                return seconds;
-            }
-
-            return 5;
+                seconds > 0
+                ? seconds
+                : 5;
         }
 
         /// <summary>

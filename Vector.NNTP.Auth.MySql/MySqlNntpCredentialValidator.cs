@@ -35,7 +35,7 @@ namespace Vector.NNTP.Auth.MySql
     /// <param name="recordStore">Backing user record store.</param>
     /// <param name="accountKeyNormalizer">Account key normalizer for policy construction.</param>
     /// <param name="logger">Logger for backend/auth failures.</param>
-    public sealed class MySqlNntpCredentialValidator(
+    public sealed partial class MySqlNntpCredentialValidator(
         INntpUserRecordStore recordStore,
         IAccountKeyNormalizer accountKeyNormalizer,
         ILogger<MySqlNntpCredentialValidator> logger) : INntpCredentialValidator, INntpSaslAccountAuthenticator
@@ -79,12 +79,9 @@ namespace Vector.NNTP.Auth.MySql
 
             bool isScram = string.Equals(mechanism, NntpAuthMechanisms.SaslScramSha256, StringComparison.Ordinal);
             bool isCram = string.Equals(mechanism, NntpAuthMechanisms.SaslCramMd5, StringComparison.Ordinal);
-            if (!isScram && !isCram)
-            {
-                throw new ArgumentException($"Unsupported SASL completion mechanism '{mechanism}'.", nameof(mechanism));
-            }
-
-            return await FinalizeAuthenticationAsync(
+            return !isScram && !isCram
+                ? throw new ArgumentException($"Unsupported SASL completion mechanism '{mechanism}'.", nameof(mechanism))
+                : await FinalizeAuthenticationAsync(
                 mechanism,
                 username,
                 clientIp,
@@ -118,35 +115,35 @@ namespace Vector.NNTP.Auth.MySql
             }
 
             string clientIpText = clientIp.ToString();
-            MySqlNntpCredentialValidatorLog.AuthenticationFinalizing(this._logger, mechanism, username, clientIpText, isTls);
+            AuthenticationFinalizing(_logger, mechanism, username, clientIpText, isTls);
 
             try
             {
-                MySqlUserRecord? record = await this._recordStore
+                MySqlUserRecord? record = await _recordStore
                     .TryGetUserAsync(username, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (record is null)
                 {
-                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedUserNotFound(this._logger, mechanism, username, clientIpText);
+                    AuthenticationRejectedUserNotFound(_logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!record.IsEnabled)
                 {
-                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedAccountDisabled(this._logger, mechanism, username, clientIpText);
+                    AuthenticationRejectedAccountDisabled(_logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!record.AllowAuthPlain)
                 {
-                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedInvalidCredentials(this._logger, mechanism, username, clientIpText);
+                    AuthenticationRejectedInvalidCredentials(_logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!PasswordEquals(record.AccountPassword, password))
                 {
-                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedInvalidCredentials(this._logger, mechanism, username, clientIpText);
+                    AuthenticationRejectedInvalidCredentials(_logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
@@ -158,7 +155,7 @@ namespace Vector.NNTP.Auth.MySql
             }
             catch (Exception ex)
             {
-                MySqlNntpCredentialValidatorLog.AuthenticationBackendFailed(this._logger, ex, mechanism, username);
+                AuthenticationBackendFailed(_logger, ex, mechanism, username);
                 return NntpAuthResult.TransientFailure();
             }
         }
@@ -231,7 +228,7 @@ namespace Vector.NNTP.Auth.MySql
                 record.SessionLimit,
                 record.SrcIpLimit,
                 record.CustomerId);
-            return NntpSessionPolicyFactory.Create(limits, allowPosting: true, this._accountKeyNormalizer);
+            return NntpSessionPolicyFactory.Create(limits, allowPosting: true, _accountKeyNormalizer);
         }
 
         /// <summary>
@@ -253,29 +250,29 @@ namespace Vector.NNTP.Auth.MySql
             CancellationToken cancellationToken)
         {
             string clientIpText = clientIp.ToString();
-            MySqlNntpCredentialValidatorLog.AuthenticationFinalizing(this._logger, mechanism, username, clientIpText, isTls);
+            AuthenticationFinalizing(_logger, mechanism, username, clientIpText, isTls);
 
             try
             {
-                MySqlUserRecord? record = await this._recordStore
+                MySqlUserRecord? record = await _recordStore
                     .TryGetUserAsync(username, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (record is null)
                 {
-                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedUserNotFound(this._logger, mechanism, username, clientIpText);
+                    AuthenticationRejectedUserNotFound(_logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!record.IsEnabled)
                 {
-                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedAccountDisabled(this._logger, mechanism, username, clientIpText);
+                    AuthenticationRejectedAccountDisabled(_logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!isMechanismPermitted(record))
                 {
-                    MySqlNntpCredentialValidatorLog.AuthenticationRejectedInvalidCredentials(this._logger, mechanism, username, clientIpText);
+                    AuthenticationRejectedInvalidCredentials(_logger, mechanism, username, clientIpText);
                     return NntpAuthResult.InvalidCredentials();
                 }
 
@@ -287,7 +284,7 @@ namespace Vector.NNTP.Auth.MySql
             }
             catch (Exception ex)
             {
-                MySqlNntpCredentialValidatorLog.AuthenticationBackendFailed(this._logger, ex, mechanism, username);
+                AuthenticationBackendFailed(_logger, ex, mechanism, username);
                 return NntpAuthResult.TransientFailure();
             }
         }
@@ -304,8 +301,8 @@ namespace Vector.NNTP.Auth.MySql
             NntpSessionPolicy policy = CreatePolicy(record);
             string clientIpText = clientIp.ToString();
             char accountTypeChar = policy.AccountType == NntpAccountType.RateLimited ? 'R' : 'B';
-            MySqlNntpCredentialValidatorLog.AuthenticationSucceeded(
-                this._logger,
+            AuthenticationSucceeded(
+                _logger,
                 mechanism,
                 policy.Username,
                 clientIpText,
