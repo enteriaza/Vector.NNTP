@@ -41,6 +41,8 @@
 //   (em-dash, arrows, etc.) are replaced with their ASCII equivalents (--,  ->, etc.).
 
 using Certes.Acme.Resource;
+using Vector.NNTP.Encryption.Acme;
+using Vector.NNTP.Encryption.Dns;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
@@ -117,7 +119,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// Logs that a DNS TXT record is being created for an ACME challenge.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="ProcessDns01ChallengeAsync"/> -- before calling
+        /// <para><b>Caller:</b> <see cref="RequestCertificateAsync"/> -- before calling
         /// <see cref="CreateCloudflareTxtRecordAsync"/>.  The <c>{Value}</c> parameter is the base64url-encoded ACME
         /// challenge digest -- a transient, one-use hash, not a secret.</para>
         /// </remarks>
@@ -129,7 +131,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// Logs that no authoritative DNS client is available and a fixed delay will be used for DNS propagation.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="ProcessDns01ChallengeAsync"/> -- when
+        /// <para><b>Caller:</b> <see cref="RequestCertificateAsync"/> -- when
         /// <see cref="CreateAuthoritativeDnsClientAsync"/> returned <see langword="null"/>.  Guarded by
         /// <c>logger.IsEnabled(LogLevel.Debug)</c>.</para>
         /// </remarks>
@@ -141,7 +143,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// Logs that a DNS-01 challenge has been successfully validated for a domain.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="ProcessDns01ChallengeAsync"/> -- after <see cref="ValidateChallengeAsync"/>
+        /// <para><b>Caller:</b> <see cref="RequestCertificateAsync"/> -- after <see cref="ValidateChallengeAsync"/>
         /// returns successfully (challenge reached <see cref="ChallengeStatus.Valid"/>).</para>
         /// </remarks>
         [LoggerMessage(EventId = 212, Level = LogLevel.Information,
@@ -246,7 +248,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="CreateAuthoritativeDnsClientAsync"/> -- on both the fast path (lock-free
-        /// <see cref="Volatile.Read(ref bool)"/> check) and the slow path (inner double-check after
+        /// <see cref="M:System.Threading.Volatile.Read(System.Boolean@)"/> check) and the slow path (inner double-check after
         /// semaphore acquisition).  Guarded by <c>logger.IsEnabled(LogLevel.Debug)</c>.</para>
         /// </remarks>
         [LoggerMessage(EventId = 230, Level = LogLevel.Debug,
@@ -271,7 +273,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="CreateAuthoritativeDnsClientAsync"/> -- after
         /// <see cref="ResolveAuthoritativeNameserversAsync"/> returns a non-empty array, before caching the new
-        /// <see cref="AuthoritativeDnsClient"/>.  The <c>{Servers}</c> parameter is a comma-delimited
+        /// <see cref="LegacyAuthoritativeDnsClient"/>.  The <c>{Servers}</c> parameter is a comma-delimited
         /// <see cref="string.Join(string, IEnumerable{string})"/> of IP addresses.</para>
         /// </remarks>
         [LoggerMessage(EventId = 232, Level = LogLevel.Information,
@@ -331,7 +333,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="WaitForTxtRecordAsync"/> -- in the per-iteration <c>catch</c> block when
-        /// <see cref="AuthoritativeDnsClient.QueryTxtAsync"/> throws.  Guarded by
+        /// <see cref="LegacyAuthoritativeDnsClient.QueryTxtAsync(string, CancellationToken)"/> throws.  Guarded by
         /// <c>logger.IsEnabled(LogLevel.Debug)</c>.  The original exception is passed for diagnostics.</para>
         /// </remarks>
         [LoggerMessage(EventId = 237, Level = LogLevel.Debug,

@@ -16,7 +16,6 @@ namespace Vector.NNTP.Encryption.Configuration
     /// <remarks>
     /// <para>When <see cref="Enabled"/> is <see langword="false"/>, the certificate renewal hosted service exits
     /// immediately and no ACME or filesystem work is performed.</para>
-    ///
     /// <para>Enhancement properties (DNS quorum, clock skew, transient retry, jitter, cluster sync) are consumed by
     /// <see cref="Certificates.Acme.AcmeCertificateProvider"/> and <see cref="Certificates.CertificateRenewalService"/>.</para>
     /// </remarks>

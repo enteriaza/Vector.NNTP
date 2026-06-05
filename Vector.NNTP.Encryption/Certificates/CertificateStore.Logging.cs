@@ -6,7 +6,7 @@
 //
 // Uses the [LoggerMessage] source generator pattern mandated by CONTRIBUTING.md for compile-time validation,
 // zero-allocation logging, and consistent structure.  The primary constructor's `logger` parameter is assigned to the
-// `_logger` field in CertificateStore.cs, which the source generator uses for dispatch.
+// primary constructor `logger` parameter in CertificateStore.cs, which the source generator uses for dispatch.
 //
 // Performance:
 //   Source-generated logging methods avoid per-call string formatting, value-type boxing, and params object[] allocation.
@@ -36,6 +36,9 @@
 //   No method logs private key material, PFX bytes, or ACME account key content.  Thumbprints are SHA-1 hashes of
 //   the public certificate — not sensitive.  File paths logged are the well-known certs/ directory locations.
 
+using System.Security.Cryptography.X509Certificates;
+using Vector.NNTP.Utilities.IO;
+
 namespace Vector.NNTP.Encryption.Certificates
 {
 
@@ -49,7 +52,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="EnsureCertsDirectory"/> — after
-        /// <see cref="Utilities.FileIOUtilities.TrySetSecureDirectoryPermissions"/> returns a non-null exception.</para>
+        /// <see cref="FileIOUtilities.TrySetSecureDirectoryPermissions(string)"/> returns a non-null exception.</para>
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Debug"/> because the failure is non-actionable in most
         /// deployments (filesystem may not support Unix modes).</para>
         /// </remarks>
@@ -61,7 +64,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// Logs the resolved certificate directory path at startup.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="EnsureCertsDirectory"/> — after <see cref="Directory.CreateDirectory"/> and
+        /// <para><b>Caller:</b> <see cref="EnsureCertsDirectory"/> — after <see cref="Directory.CreateDirectory(string)"/> and
         /// the optional permission call complete.</para>
         /// </remarks>
         [LoggerMessage(EventId = 301, Level = LogLevel.Debug,
@@ -73,8 +76,8 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="DisposeCertificate"/> — in the <c>catch (Exception)</c> block after
-        /// <see cref="System.Security.Cryptography.X509Certificates.X509Certificate2.GetECDsaPrivateKey"/> or
-        /// <see cref="System.Security.Cryptography.X509Certificates.X509Certificate2.GetRSAPrivateKey"/> throws during
+        /// <see cref="ECDsaCertificateExtensions.GetECDsaPrivateKey(X509Certificate2)"/> or
+        /// <see cref="RSACertificateExtensions.GetRSAPrivateKey(X509Certificate2)"/> throws during
         /// key handle retrieval or disposal.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Debug"/> because the most common cause is the expected
@@ -156,7 +159,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="SaveCertificateAsync"/> — after
-        /// <see cref="Utilities.FileIOUtilities.AtomicWriteAsync"/> completes.</para>
+        /// <see cref="FileIOUtilities.AtomicWriteAsync"/> completes.</para>
         /// </remarks>
         [LoggerMessage(EventId = 309, Level = LogLevel.Information,
             Message = "Certificates: Certificate saved to {Path}")]
@@ -167,7 +170,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="SaveAccountKeyAsync"/> — after
-        /// <see cref="Utilities.FileIOUtilities.AtomicWriteAsync"/> completes.</para>
+        /// <see cref="FileIOUtilities.AtomicWriteAsync"/> completes.</para>
         /// <para><b>Security:</b> Only the file path is logged — the PEM key content is never included.</para>
         /// </remarks>
         [LoggerMessage(EventId = 310, Level = LogLevel.Information,
@@ -179,7 +182,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="SaveCertificateKeyAsync"/> — after
-        /// <see cref="Utilities.FileIOUtilities.AtomicWriteAsync"/> completes.</para>
+        /// <see cref="FileIOUtilities.AtomicWriteAsync"/> completes.</para>
         /// <para><b>Security:</b> Only the file path is logged — the PEM key content is never included.</para>
         /// </remarks>
         [LoggerMessage(EventId = 311, Level = LogLevel.Information,
@@ -190,7 +193,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// Logs that a resilient file read failed with an unexpected I/O error.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="Utilities.FileIOUtilities.TryReadFileAsync{T}"/> error callback — invoked
+        /// <para><b>Caller:</b> <see cref="FileIOUtilities.TryReadFileAsync{T}"/> error callback — invoked
         /// for exceptions not caught by the preceding specific handlers (<see cref="FileNotFoundException"/>,
         /// <see cref="DirectoryNotFoundException"/>, <see cref="OperationCanceledException"/>).</para>
         /// <para><b>Parameters:</b> <c>{Description}</c> identifies the file type (e.g., "ACME account key",
@@ -206,7 +209,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// Logs that directory creation or validation failed.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="EnsureCertsDirectory"/> — when <see cref="Directory.CreateDirectory"/>
+        /// <para><b>Caller:</b> <see cref="EnsureCertsDirectory"/> — when <see cref="Directory.CreateDirectory(string)"/>
         /// throws any of the documented exceptions (permission denied, invalid path, path too long, parent not found,
         /// unsupported format, or I/O error).</para>
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Error"/> because directory creation failure is fatal to

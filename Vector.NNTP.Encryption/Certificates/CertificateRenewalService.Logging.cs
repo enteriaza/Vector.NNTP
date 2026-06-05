@@ -49,6 +49,7 @@
 //   Fully compatible with Linux and Windows (ARM is not required).  [LoggerMessage] source-generated methods use only
 //   BCL logging abstractions.  No platform-specific APIs.
 
+using System.Security.Cryptography.X509Certificates;
 using Vector.NNTP.Encryption.Configuration;
 
 namespace Vector.NNTP.Encryption.Certificates
@@ -306,12 +307,12 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="CleanupCngKeyImmediately"/> — in the <c>catch (Exception)</c> block after
-        /// <see cref="System.Security.Cryptography.X509Certificates.X509Certificate2.GetECDsaPrivateKey"/> or
-        /// <see cref="System.Security.Cryptography.X509Certificates.X509Certificate2.GetRSAPrivateKey"/> throws during
+        /// <see cref="ECDsaCertificateExtensions.GetECDsaPrivateKey(X509Certificate2)"/> or
+        /// <see cref="RSACertificateExtensions.GetRSAPrivateKey(X509Certificate2)"/> throws during
         /// key handle retrieval or disposal.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Debug"/> because the most common cause is the expected
-        /// double-cleanup race: <see cref="Nntp.NntpListener.OnCertificateChanged"/> may call
+        /// double-cleanup race: <c>NntpSocketAcceptor.OnCertificateChanged</c> may call
         /// <see cref="CertificateStore.DeferDisposal"/> on the same certificate, and if its deferred disposal fires
         /// first, the CNG key is already deleted.  The subsequent <c>GetECDsaPrivateKey()</c> call here throws
         /// <see cref="System.Security.Cryptography.CryptographicException"/> ("The system cannot find the file

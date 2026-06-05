@@ -59,6 +59,7 @@ using Certes.Acme.Resource;
 using Vector.NNTP.Encryption.Acme;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.Dns;
+using Vector.NNTP.Utilities.Disposal;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 
@@ -109,7 +110,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
     /// </list>
     ///
     /// <para><b>Authoritative DNS polling:</b> After creating a TXT record, the service polls the zone's authoritative
-    /// nameservers directly (bypassing recursive resolvers and their caches) using <see cref="AuthoritativeDnsClient"/>
+    /// nameservers directly (bypassing recursive resolvers and their caches) using <see cref="LegacyAuthoritativeDnsClient"/>
     /// -- a minimal UDP DNS client that replaces the DnsClient NuGet package.  This reduces DNS propagation wait time from
     /// a fixed 20--60 s to typically 2--5 s.  If authoritative nameservers cannot be resolved, a fixed
     /// <see cref="DnsFallbackDelaySeconds"/> delay is used as a safe fallback.</para>
@@ -297,7 +298,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// occurs during the preceding <see langword="await"/> propagates promptly rather than initiating a new outbound
         /// ACME request.  If Certes' underlying <see cref="HttpClient"/> hangs, the default 100-second
         /// <see cref="HttpClient.Timeout"/> will surface as an exception in the caller's retry loop.  The same pattern
-        /// is applied in <see cref="LoadOrCreateAccountAsync"/>, <see cref="ProcessDns01ChallengeAsync"/>, and
+        /// is applied in <see cref="LoadOrCreateAccountAsync"/>, <see cref="CreateCloudflareTxtRecordAsync"/>, and
         /// <see cref="ValidateChallengeAsync"/>.</para>
         ///
         /// <para><b>TXT record cleanup:</b> All <c>_acme-challenge</c> TXT records created during the flow are cleaned up
@@ -309,8 +310,8 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// fails.</para>
         ///
         /// <para><b>Exception propagation:</b> Exceptions from <see cref="FinaliseOrderAsync"/> (order polling timeout,
-        /// invalid order status, PFX construction failure) and <see cref="ProcessDns01ChallengeAsync"/> (Cloudflare API
-        /// failure, challenge rejection) propagate to the caller after TXT record cleanup completes in the
+        /// invalid order status, PFX construction failure), <see cref="CreateCloudflareTxtRecordAsync"/> (Cloudflare API
+        /// failure), and <see cref="ValidateChallengeAsync"/> (challenge rejection) propagate to the caller after TXT record cleanup completes in the
         /// <see langword="finally"/> block.  The caller (<see cref="CertificateRenewalService.CheckAndRenewAsync"/>)
         /// catches and retries with exponential back-off.</para>
         /// </remarks>
@@ -321,8 +322,8 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <exception cref="OperationCanceledException">Thrown when <paramref name="ct"/> is cancelled (host shutdown)
         /// -- either from the explicit <see cref="CancellationToken.ThrowIfCancellationRequested"/> guards before Certes
         /// calls, or from cancellation-aware downstream methods (<see cref="LoadOrCreateAccountAsync"/>,
-        /// <see cref="CreateAuthoritativeDnsClientAsync"/>, <see cref="ProcessDns01ChallengeAsync"/>,
-        /// <see cref="FinaliseOrderAsync"/>).</exception>
+        /// <see cref="IDnsTxtPropagationProbe.WaitForTxtRecordsAsync"/>, <see cref="CreateCloudflareTxtRecordAsync"/>,
+        /// <see cref="ValidateChallengeAsync"/>, <see cref="FinaliseOrderAsync"/>).</exception>
         /// <exception cref="AcmeRequestException">Thrown when Let's Encrypt rejects the ACME order creation (e.g.
         /// invalid domain, rate limit exceeded).  Propagates from <c>acme.NewOrder()</c>.</exception>
         /// <exception cref="InvalidOperationException">Thrown when a DNS-01 challenge is rejected by Let's Encrypt

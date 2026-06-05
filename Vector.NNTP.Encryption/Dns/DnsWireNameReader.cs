@@ -13,13 +13,25 @@ namespace Vector.NNTP.Encryption.Dns
     /// </summary>
     internal static class DnsWireNameReader
     {
+        /// <summary>
+        /// The maximum number of compression pointer hops.
+        /// </summary>
         private const int MaxPointerHops = 128;
+
+        /// <summary>
+        /// The maximum length of the expanded name in bytes.
+        /// </summary>
         private const int MaxExpandedNameLengthBytes = 255;
 
         /// <summary>
         /// Reads a domain name starting at <paramref name="offset"/>; updates <paramref name="offset"/> to the
         /// first byte after the name encoding (after the root label or compression jump return).
         /// </summary>
+        /// <param name="packet">The full DNS response buffer.</param>
+        /// <param name="offset">The current read position; advanced past the name on return.</param>
+        /// <param name="name">The name read from the packet.</param>
+        /// <returns><see langword="true"/> if the name was successfully read; <see langword="false"/> if the buffer is
+        /// too short or the name is malformed.</returns>
         public static bool TryReadDomainName(ReadOnlySpan<byte> packet, ref int offset, out string name)
         {
             name = string.Empty;

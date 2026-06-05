@@ -13,11 +13,34 @@ namespace Vector.NNTP.Encryption.Dns
     /// </summary>
     internal static class DnsWireQueryBuilder
     {
+        /// <summary>
+        /// The DNS class for IN.
+        /// </summary>
         internal const ushort DnsClassIn = 1;
+
+        /// <summary>
+        /// The size of the DNS header.
+        /// </summary>
         private const int DnsHeaderSize = 12;
+
+        /// <summary>
+        /// The maximum length of the DNS query name.
+        /// </summary>
         private const int MaxQnameLength = 255;
+
+        /// <summary>
+        /// The maximum length of a DNS label.
+        /// </summary>
         private const int MaxLabelLength = 63;
+
+        /// <summary>
+        /// The size of the question suffix.
+        /// </summary>
         private const int QuestionSuffixSize = 4;
+
+        /// <summary>
+        /// The maximum size of the DNS query packet.
+        /// </summary>
         private const int MaxStackAllocQuerySize = DnsHeaderSize + MaxQnameLength + 4;
 
         /// <summary>
@@ -27,6 +50,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// <param name="qtype">DNS query type (e.g. TXT, NS, A).</param>
         /// <param name="queryId">Random query identifier echoed in the response.</param>
         /// <param name="recursionDesired">When true, sets the RD bit for recursive resolvers; false for authoritative targets.</param>
+        /// <returns>The DNS query packet.</returns>
         public static byte[] Build(string name, ushort qtype, out ushort queryId, bool recursionDesired = false)
         {
             ArgumentException.ThrowIfNullOrEmpty(name);

@@ -73,7 +73,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <para><b>Cancellation guard:</b> <see cref="IChallengeContext.Validate"/> does not accept a
         /// <see cref="CancellationToken"/>.  A <see cref="CancellationToken.ThrowIfCancellationRequested"/> call before
         /// <c>Validate()</c> avoids initiating an outbound ACME request when the host is already shutting down.
-        /// Similarly, <see cref="IChallengeContext.Resource"/> lacks cancellation support -- each poll iteration checks
+        /// Similarly, <c>IChallengeContext.Resource()</c> lacks cancellation support -- each poll iteration checks
         /// <paramref name="ct"/> via the <see cref="Task.Delay(TimeSpan, CancellationToken)"/> call between fetches.</para>
         ///
         /// <para><b>Poll strategy:</b> Polls at <see cref="ChallengeValidationPollInterval"/> intervals for up to
@@ -82,7 +82,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <c>CheckTerminalStatus</c> local function, which returns on success or throws on failure.</para>
         ///
         /// <para><b>Final check after last fetch:</b> After the loop exhausts all attempts, a final call to
-        /// <c>CheckTerminalStatus</c> ensures a late status transition on the last <see cref="IChallengeContext.Resource"/>
+        /// <c>CheckTerminalStatus</c> ensures a late status transition on the last <c>IChallengeContext.Resource()</c>
         /// fetch is not missed and reported as a spurious timeout.</para>
         ///
         /// <para><b>Error diagnostics:</b> When the challenge transitions to <see cref="ChallengeStatus.Invalid"/>, both

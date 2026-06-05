@@ -44,6 +44,11 @@ namespace Vector.NNTP.Encryption.Cluster
             return true;
         }
 
+        /// <summary>
+        /// Normalizes a domain name.
+        /// </summary>
+        /// <param name="value">The domain name to normalize.</param>
+        /// <returns>The normalized domain name.</returns>
         private static string NormalizeDomain(string? value)
         {
             return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().TrimEnd('.');

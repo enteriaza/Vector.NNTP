@@ -17,16 +17,43 @@ namespace Vector.NNTP.Encryption.Dns
     /// </summary>
     internal static class AuthoritativeDnsWireClient
     {
+        /// <summary>
+        /// The receive timeout in milliseconds.
+        /// </summary>
         private const int ReceiveTimeoutMs = 5_000;
+
+        /// <summary>
+        /// The size of the DNS header.
+        /// </summary>
         private const int DnsHeaderSize = 12;
+
+        /// <summary>
+        /// The size of the fixed fields for a resource record.
+        /// </summary>
         private const int RrFixedFieldsSize = 10;
+
+        /// <summary>
+        /// The maximum number of compression pointer hops.
+        /// </summary>
         private const int MaxCompressionPointerHops = 128;
+
+        /// <summary>
+        /// The size of the question suffix.
+        /// </summary>
         private const int QuestionSuffixSize = 4;
+
+        /// <summary>
+        /// The DNS flag for truncated responses.
+        /// </summary>
         private const ushort DnsFlagTruncated = 0x0200;
 
         /// <summary>
         /// Queries TXT for <paramref name="recordName"/> at <paramref name="nameserver"/> using UDP, then TCP if truncated or empty answers.
         /// </summary>
+        /// <param name="nameserver">The nameserver to query.</param>
+        /// <param name="recordName">The name of the record to query.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The list of TXT records.</returns>
         internal static async Task<List<string>> QueryTxtAsync(IPAddress nameserver, string recordName, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(nameserver);
@@ -49,6 +76,12 @@ namespace Vector.NNTP.Encryption.Dns
             return results;
         }
 
+        /// <summary>
+        /// Determines if the TXT query should be retried over TCP.
+        /// </summary>
+        /// <param name="udpResponse">The UDP response.</param>
+        /// <param name="parsedTxt">The parsed TXT records.</param>
+        /// <returns><see langword="true"/> if the TXT query should be retried over TCP; otherwise <see langword="false"/>.</returns>
         private static bool ShouldRetryTxtOverTcp(byte[] udpResponse, List<string> parsedTxt)
         {
             if (udpResponse.Length < DnsHeaderSize)
@@ -61,6 +94,13 @@ namespace Vector.NNTP.Encryption.Dns
             return truncated || parsedTxt.Count == 0;
         }
 
+        /// <summary>
+        /// Tries to send a UDP query to the nameserver.
+        /// </summary>
+        /// <param name="nameserver">The nameserver to query.</param>
+        /// <param name="queryPacket">The query packet to send.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The response from the nameserver; <see langword="null"/> if the query failed.</returns>
         private static async Task<byte[]?> TryUdpQueryAsync(IPAddress nameserver, byte[] queryPacket, CancellationToken cancellationToken)
         {
             using UdpClient udp = new(nameserver.AddressFamily);
@@ -87,6 +127,13 @@ namespace Vector.NNTP.Encryption.Dns
             }
         }
 
+        /// <summary>
+        /// Tries to send a TCP query to the nameserver.
+        /// </summary>
+        /// <param name="nameserver">The nameserver to query.</param>
+        /// <param name="queryPacket">The query packet to send.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The response from the nameserver; <see langword="null"/> if the query failed.</returns>
         private static async Task<byte[]?> TryTcpQueryAsync(
             IPAddress nameserver,
             byte[] queryPacket,
@@ -140,6 +187,9 @@ namespace Vector.NNTP.Encryption.Dns
         /// <summary>
         /// Parses TXT answers from a response (shared with recursive fallback path).
         /// </summary>
+        /// <param name="buffer">The response buffer.</param>
+        /// <param name="expectedId">The expected ID of the response.</param>
+        /// <returns>The list of TXT records.</returns>
         internal static List<string> ParseTxtResponse(byte[] buffer, ushort expectedId)
         {
             List<string> results = [];
@@ -219,6 +269,13 @@ namespace Vector.NNTP.Encryption.Dns
             return results;
         }
 
+        /// <summary>
+        /// Parses the TXT RDATA from a response.
+        /// </summary>
+        /// <param name="span">The response buffer.</param>
+        /// <param name="offset">The current offset in the response buffer.</param>
+        /// <param name="rdLength">The length of the RDATA.</param>
+        /// <returns>The TXT record; <see langword="null"/> if the RDATA is malformed.</returns>
         private static string? ParseTxtRdata(ReadOnlySpan<byte> span, ref int offset, ushort rdLength)
         {
             int rdEnd = offset + rdLength;
@@ -267,6 +324,12 @@ namespace Vector.NNTP.Encryption.Dns
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Tries to skip a name in a response.
+        /// </summary>
+        /// <param name="span">The response buffer.</param>
+        /// <param name="offset">The current offset in the response buffer.</param>
+        /// <returns><see langword="true"/> if the name was skipped; otherwise <see langword="false"/>.</returns>
         private static bool TrySkipName(ReadOnlySpan<byte> span, ref int offset)
         {
             int hops = 0;

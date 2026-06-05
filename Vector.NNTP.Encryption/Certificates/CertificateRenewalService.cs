@@ -46,6 +46,7 @@ using Vector.NNTP.Encryption.Cluster;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.Dns;
 using Vector.NNTP.Utilities.Disposal;
+using Vector.NNTP.Utilities.Retry;
 
 namespace Vector.NNTP.Encryption.Certificates
 {
@@ -96,7 +97,7 @@ namespace Vector.NNTP.Encryption.Certificates
     ///
     /// <para><b>Thread safety:</b> The current certificate is swapped atomically via
     /// <see cref="Interlocked.Exchange{T}(ref T, T)"/>.  <c>NntpListener</c> reads it via
-    /// <see cref="GetCurrentCertificate"/> which uses <see cref="Volatile.Read{T}(ref T)"/> for cross-thread visibility.
+    /// <see cref="GetCurrentCertificate"/> which uses <see cref="M:System.Threading.Volatile.Read``1(``0@)"/> for cross-thread visibility.
     /// The <see cref="CertificateChanged"/> event is invoked with per-subscriber exception isolation so a faulting
     /// subscriber cannot break the renewal pipeline.</para>
     ///
@@ -116,7 +117,7 @@ namespace Vector.NNTP.Encryption.Certificates
     /// <see cref="Task.Delay(TimeSpan, CancellationToken)"/> linked to <see cref="_stoppingToken"/> so timers are
     /// cancelled cleanly during shutdown.  All certificate disposal goes through
     /// <see cref="CertificateStore.DisposeCertificate"/> which explicitly deletes the persisted CNG key on Windows before
-    /// calling <see cref="X509Certificate2.Dispose"/>, preventing orphaned keys from accumulating in
+    /// calling <see cref="IDisposable.Dispose"/>, preventing orphaned keys from accumulating in
     /// <c>%APPDATA%\Microsoft\Crypto\Keys</c>.  <see cref="Dispose"/> atomically nulls and disposes the current
     /// certificate immediately for final cleanup.</para>
     ///
@@ -158,10 +159,10 @@ namespace Vector.NNTP.Encryption.Certificates
         /// each consecutive failure up to <see cref="StartupRetryMaxDelayMs"/>.
         /// </summary>
         /// <remarks>
-        /// <para><b>Overflow safety:</b> Delegated to <see cref="NetworkUtilities.CalculateBackOff"/> which casts the base
+        /// <para><b>Overflow safety:</b> Delegated to <see cref="RetryUtilities.CalculateBackOff(int, int, int, int)"/> which casts the base
         /// delay to <see cref="long"/> before left-shifting, then caps via <see cref="Math.Min(long, long)"/> against
         /// <see cref="StartupRetryMaxDelayMs"/>.  The <c>MaxBackOffShift</c> (30) internal cap in
-        /// <see cref="NetworkUtilities"/> prevents integer overflow for any <see cref="int"/>-range base delay.</para>
+        /// <c>RetryUtilities</c> prevents integer overflow for any <see cref="int"/>-range base delay.</para>
         /// </remarks>
         private const int StartupRetryBaseDelayMs = 30_000;
 
@@ -212,7 +213,7 @@ namespace Vector.NNTP.Encryption.Certificates
 
         /// <summary>
         /// The currently active TLS certificate.  Swapped atomically via <see cref="Interlocked.Exchange{T}(ref T, T)"/>
-        /// in <see cref="ActivateCertificate"/> and read via <see cref="Volatile.Read{T}(ref T)"/> in
+        /// in <see cref="ActivateCertificate"/> and read via <see cref="M:System.Threading.Volatile.Read``1(``0@)"/> in
         /// <see cref="GetCurrentCertificate"/>.  <see langword="null"/> when no certificate has been provisioned yet
         /// (first startup, before the ACME round-trip or cached PFX load completes).
         /// </summary>
@@ -252,10 +253,10 @@ namespace Vector.NNTP.Encryption.Certificates
         /// for concurrent access from <c>NntpListener</c> and internal validity-check methods.
         /// </summary>
         /// <remarks>
-        /// <para>Uses <see cref="Volatile.Read{T}(ref T)"/> to guarantee that the value written by
+        /// <para>Uses <see cref="M:System.Threading.Volatile.Read``1(``0@)"/> to guarantee that the value written by
         /// <see cref="ActivateCertificate"/> (via <see cref="Interlocked.Exchange{T}(ref T, T)"/>) on one thread is
         /// visible to reader threads -- the acquire fence prevents the CPU or compiler from reordering subsequent reads
-        /// before this one.  Reference reads are atomic on all .NET platforms, so <see cref="Volatile.Read{T}(ref T)"/>
+        /// before this one.  Reference reads are atomic on all .NET platforms, so <see cref="M:System.Threading.Volatile.Read``1(``0@)"/>
         /// adds only the memory-ordering guarantee.</para>
         /// </remarks>
         public X509Certificate2? GetCurrentCertificate()
@@ -322,7 +323,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///   <item><description>Call <c>base.Dispose()</c> -- disposes the <see cref="BackgroundService"/>
         ///     timer.</description></item>
         ///   <item><description>Call <see cref="GC.SuppressFinalize(object)"/> -- prevents the GC from scheduling a
-        ///     finalizer call for this object, matching the pattern used by <see cref="Nntp.NntpListener.Dispose"/>
+        ///     finalizer call for this object, matching the pattern used by <c>NntpSocketAcceptor.Dispose</c>
         ///     and the standard <see cref="IDisposable"/> best practice.</description></item>
         /// </list>
         ///

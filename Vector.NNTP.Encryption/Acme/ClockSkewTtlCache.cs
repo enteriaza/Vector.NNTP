@@ -9,8 +9,19 @@ namespace Vector.NNTP.Encryption.Acme
     /// </summary>
     internal static class ClockSkewTtlCache
     {
+        /// <summary>
+        /// The gate object used to synchronize access to the cache.
+        /// </summary>
         private static readonly object Gate = new();
+
+        /// <summary>
+        /// The UTC timestamp of the last successful skew check.
+        /// </summary>
         private static DateTimeOffset? _lastSuccessUtc;
+
+        /// <summary>
+        /// The directory URI of the last successful skew check.
+        /// </summary>
         private static string? _lastDirectoryUri;
 
         /// <summary>

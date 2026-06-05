@@ -24,12 +24,24 @@ namespace Vector.NNTP.Encryption.Dns
     /// <param name="logger">Logger.</param>
     public sealed partial class AuthoritativeDnsTxtPropagationProbe(ILogger<AuthoritativeDnsTxtPropagationProbe> logger) : IDnsTxtPropagationProbe
     {
+        /// <summary>
+        /// The maximum number of parallel name servers to check.
+        /// </summary>
         private const int QuorumParallelism = 8;
-        private readonly ILogger<AuthoritativeDnsTxtPropagationProbe> _logger = logger;
+
+        /// <summary>
+        /// The cache of authoritative NS addresses by zone.
+        /// </summary>
         private readonly ConcurrentDictionary<string, (IReadOnlyList<IPAddress> Ips, DateTimeOffset ExpiresUtc)> _authoritativeNsByZone =
             new(StringComparer.OrdinalIgnoreCase);
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Waits for the TXT records to reach quorum.
+        /// </summary>
+        /// <param name="records">The records to check.</param>
+        /// <param name="options">The options.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the TXT records reach quorum.</returns>
         public async Task WaitForTxtRecordsAsync(
             IReadOnlyList<(string RecordName, string ExpectedTxt)> records,
             LetsEncryptOptions options,
@@ -97,6 +109,15 @@ namespace Vector.NNTP.Encryption.Dns
                 $"DNS TXT propagation did not reach quorum ({quorum:P0}) for all records within {budget}.");
         }
 
+        /// <summary>
+        /// Checks if the quorum of name servers shows the expected TXT record.
+        /// </summary>
+        /// <param name="recordName">The name of the record to check.</param>
+        /// <param name="expectedTxt">The expected TXT record.</param>
+        /// <param name="nameServers">The name servers to check.</param>
+        /// <param name="quorumRatio">The quorum ratio.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns><see langword="true"/> if the quorum of name servers shows the expected TXT record; otherwise <see langword="false"/>.</returns>
         private static async Task<bool> QuorumShowsTxtAsync(
             string recordName,
             string expectedTxt,
@@ -147,6 +168,12 @@ namespace Vector.NNTP.Encryption.Dns
             return ok >= required;
         }
 
+        /// <summary>
+        /// Checks if the list of TXT records contains the expected TXT record.
+        /// </summary>
+        /// <param name="txts">The list of TXT records.</param>
+        /// <param name="expectedTxt">The expected TXT record.</param>
+        /// <returns><see langword="true"/> if the list of TXT records contains the expected TXT record; otherwise <see langword="false"/>.</returns>
         private static bool TxtListContains(IReadOnlyList<string> txts, string expectedTxt)
         {
             foreach (string? part in txts)

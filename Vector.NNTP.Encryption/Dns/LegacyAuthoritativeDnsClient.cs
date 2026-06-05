@@ -88,6 +88,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Vector.NNTP.Encryption.Certificates.Acme;
 using Vector.NNTP.Utilities.Encoding;
 
 namespace Vector.NNTP.Encryption.Dns
@@ -95,7 +96,7 @@ namespace Vector.NNTP.Encryption.Dns
 
     /// <summary>
     /// Legacy UDP-only DNS client retained for the optional Cloudflare NS fallback path in
-    /// <see cref="Certificates.Acme.AcmeCertificateProvider"/>.
+    /// <see cref="AcmeCertificateProvider"/>.
     /// </summary>
     /// <remarks>
     /// <para><b>Wire protocol:</b> Constructs a standards-compliant DNS query packet (RFC 1035 §4) with a single TXT
@@ -260,7 +261,8 @@ namespace Vector.NNTP.Encryption.Dns
         /// recursion, QDCOUNT=1) followed by the QNAME (label-encoded hostname), QTYPE=TXT (16), QCLASS=IN (1).
         /// The packet is built on the stack when the total size is ≤ <see cref="MaxStackAllocQuerySize"/> (271 bytes),
         /// which covers all valid single-question DNS queries.  The stack buffer is copied to a heap <c>byte[]</c> for
-        /// <see cref="UdpClient.SendAsync"/> which requires a <c>ReadOnlyMemory{byte}</c>.</para>
+        /// <see cref="M:System.Net.Sockets.UdpClient.SendAsync(System.ReadOnlyMemory{System.Byte},System.Net.IPEndPoint,System.Threading.CancellationToken)"/>
+        /// which accepts the query as <c>ReadOnlyMemory{byte}</c>.</para>
         ///
         /// <para><b>Response parsing:</b> Skips the header and question section, then iterates the answer RRs.  For each
         /// RR with type TXT and class IN, the RDATA is parsed as a sequence of character-strings (RFC 1035 §3.3.14:
@@ -277,7 +279,8 @@ namespace Vector.NNTP.Encryption.Dns
         /// If the caller's token fires (host shutdown), the <see cref="OperationCanceledException"/> propagates
         /// normally.</para>
         ///
-        /// <para><b>Socket exception handling:</b> <see cref="SocketException"/> from <see cref="UdpClient.SendAsync"/> or
+        /// <para><b>Socket exception handling:</b> <see cref="SocketException"/> from
+        /// <see cref="M:System.Net.Sockets.UdpClient.SendAsync(System.ReadOnlyMemory{System.Byte},System.Net.IPEndPoint,System.Threading.CancellationToken)"/> or
         /// <see cref="UdpClient.ReceiveAsync(CancellationToken)"/> (e.g. ICMP port-unreachable translated to connection
         /// reset, network-unreachable) is caught and returns an empty list.  The caller's poll loop will retry on the next
         /// interval, potentially selecting a different nameserver.  <see cref="ObjectDisposedException"/> is also caught
@@ -365,8 +368,9 @@ namespace Vector.NNTP.Encryption.Dns
         ///
         /// <para><b>Stack allocation:</b> The query packet is assembled on the stack via <c>stackalloc</c> when the total
         /// size fits within <see cref="MaxStackAllocQuerySize"/> (271 bytes -- always true for valid DNS names).  The
-        /// assembled packet is then copied to a heap <c>byte[]</c> because <see cref="UdpClient.SendAsync"/> requires a
-        /// <see cref="ReadOnlyMemory{T}"/>.  The <c>stackalloc</c> avoids a separate heap allocation for the working
+        /// assembled packet is then copied to a heap <c>byte[]</c> because
+        /// <see cref="M:System.Net.Sockets.UdpClient.SendAsync(System.ReadOnlyMemory{System.Byte},System.Net.IPEndPoint,System.Threading.CancellationToken)"/>
+        /// accepts the datagram as <see cref="ReadOnlyMemory{T}"/>.  The <c>stackalloc</c> avoids a separate heap allocation for the working
         /// buffer during packet assembly.</para>
         /// </remarks>
         /// <param name="name">The fully-qualified DNS name to query.</param>

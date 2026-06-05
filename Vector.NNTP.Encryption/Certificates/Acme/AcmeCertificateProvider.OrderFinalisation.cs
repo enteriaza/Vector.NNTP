@@ -42,7 +42,11 @@ using Vector.NNTP.Encryption.Acme;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
-
+    /// <summary>
+    /// Order finalisation: waits for the order to reach 'ready' status, loads or generates the certificate private key,
+    /// generates the CSR, submits the finalize request, waits for the certificate to be issued, downloads the certificate
+    /// chain, builds a PFX, and persists it to disk.
+    /// </summary>
     internal sealed partial class AcmeCertificateProvider
     {
         #region Private Methods -- Order Finalisation
@@ -168,7 +172,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// the exception message via its <see cref="object.ToString"/> representation for diagnostic context.</para>
         ///
         /// <para><b>Final check after last poll:</b> After the loop exhausts <see cref="OrderPollMaxAttempts"/>, one final
-        /// <see cref="IOrderContext.Resource"/> fetch is performed.  This avoids a spurious timeout when the server
+        /// <c>IOrderContext.Resource()</c> fetch is performed.  This avoids a spurious timeout when the server
         /// transitions the order during the last <see cref="OrderPollInterval"/> delay.</para>
         ///
         /// <para><b>Nullable <see cref="OrderStatus"/>:</b> The Certes library models <c>Order.Status</c> as
@@ -183,7 +187,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <see cref="OrderPollMaxAttempts"/> redundant <see cref="string.Join{T}(string?, IEnumerable{T})"/>
         /// allocations.</para>
         ///
-        /// <para><b>Cancellation coverage:</b> The Certes <see cref="IOrderContext.Resource"/> method does not accept a
+        /// <para><b>Cancellation coverage:</b> The Certes <c>IOrderContext.Resource()</c> method does not accept a
         /// <see cref="CancellationToken"/>.  The <see cref="Task.Delay(TimeSpan, CancellationToken)"/> call at the end
         /// of each iteration provides the cancellation check point.  If <c>Resource()</c> hangs, the underlying
         /// <see cref="HttpClient.Timeout"/> (Certes default: 100 s) will eventually surface as an exception.</para>

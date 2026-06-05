@@ -64,10 +64,14 @@
 //   delegates to CertificateStore.DisposeCertificate.
 
 using System.Security.Cryptography.X509Certificates;
+using Vector.NNTP.Encryption.Configuration;
 
 namespace Vector.NNTP.Encryption.Certificates
 {
 
+    /// <summary>
+    /// Certificate state management: atomic swap, validity checks, deferred disposal of superseded certificates.
+    /// </summary>
     internal sealed partial class CertificateRenewalService
     {
         #region Internal Methods — Certificate State
@@ -84,7 +88,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// leaking the <see cref="X509Certificate2"/> and (on Windows) its persisted CNG key.  The caller's
         /// <c>try/finally</c> guard disposes the certificate when this exception is thrown, preventing the leak.</para>
         ///
-        /// <para><b>Null-argument guard:</b> <see cref="ArgumentNullException.ThrowIfNull"/> validates
+        /// <para><b>Null-argument guard:</b> <see cref="M:System.ArgumentNullException.ThrowIfNull(System.Object,System.String)"/> validates
         /// <paramref name="cert"/> before any state mutation.  A <see langword="null"/> certificate would cause
         /// <see cref="NullReferenceException"/> on the <c>cert.Thumbprint</c> access and leave
         /// <see cref="_currentCertificate"/> as <see langword="null"/> — indistinguishable from "no certificate provisioned
@@ -150,7 +154,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// all threads.</para>
         ///
         /// <para><b>TOCTOU note on the disposed check:</b> There is a theoretical window between the
-        /// <see cref="Volatile.Read(ref int)"/> of <see cref="_disposed"/> and the
+        /// <see cref="M:System.Threading.Volatile.Read(System.Int32@)"/> of <see cref="_disposed"/> and the
         /// <see cref="Interlocked.Exchange{T}(ref T, T)"/> where <see cref="Dispose"/> could interleave.  In that
         /// scenario the certificate is stored, then <see cref="Dispose"/> nulls and disposes it immediately — the
         /// <see cref="DeferCertificateDisposal"/> call in this method would subsequently schedule disposal of the
@@ -186,7 +190,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         /// <remarks>
         /// <para><b>Single read — TOCTOU prevention:</b> The certificate reference is read once via
-        /// <see cref="Volatile.Read{T}(ref T)"/> and all subsequent property accesses
+        /// <see cref="M:System.Threading.Volatile.Read``1(``0@)"/> and all subsequent property accesses
         /// (<see cref="X509Certificate2.NotAfter"/>) operate on the captured local.  This avoids a TOCTOU race where
         /// <see cref="ActivateCertificate"/> swaps the certificate between the null check and the <c>NotAfter</c> read —
         /// which would cause a <see cref="NullReferenceException"/> if the new value were <see langword="null"/> (not
@@ -240,7 +244,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// uses <see cref="IsCertificateValidBeyondThreshold"/>) handles proactive renewal before expiry.</para>
         ///
         /// <para><b>Single read — TOCTOU prevention:</b> Same pattern as <see cref="IsCertificateValidBeyondThreshold"/>
-        /// — the certificate reference is captured once via <see cref="Volatile.Read{T}(ref T)"/> and both the null check
+        /// — the certificate reference is captured once via <see cref="M:System.Threading.Volatile.Read``1(``0@)"/> and both the null check
         /// and <see cref="X509Certificate2.NotAfter"/> comparison operate on the captured local.  This prevents a race
         /// where <see cref="ActivateCertificate"/> swaps the certificate between the two checks.</para>
         ///
@@ -292,10 +296,10 @@ namespace Vector.NNTP.Encryption.Certificates
         ///
         /// <para><b>Current subscribers:</b></para>
         /// <list type="bullet">
-        ///   <item><description><see cref="Nntp.NntpListener.OnCertificateChanged"/> — atomically swaps
+        ///   <item><description><c>NntpSocketAcceptor.OnCertificateChanged</c> — atomically swaps
         ///     <c>_tlsCertificate</c> and, on first arrival, late-binds the NNTPS listening
         ///     socket.</description></item>
-        ///   <item><description><see cref="Nntp.Cache.PeerFetchListener.OnCertificateChanged"/> — atomically swaps
+        ///   <item><description><c>PeerFetchListener.OnCertificateChanged</c> — atomically swaps
         ///     <c>_tlsCertificate</c> and, on first arrival, builds <see cref="System.Net.Security.SslServerAuthenticationOptions"/>
         ///     and signals the startup gate.</description></item>
         /// </list>
@@ -346,8 +350,8 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <see cref="X509Certificate2(byte[], string?, X509KeyStorageFlags)"/>.</para>
         ///
         /// <para><b>Mechanism:</b> Uses the same approach as <see cref="CertificateStore.DisposeCertificate"/>: calls
-        /// <see cref="X509Certificate2.GetECDsaPrivateKey"/> to obtain a CNG key handle, then disposes it to trigger
-        /// CNG key deletion.  <see cref="X509Certificate2.GetRSAPrivateKey"/> is called as a fallback for forward
+        /// <see cref="ECDsaCertificateExtensions.GetECDsaPrivateKey(X509Certificate2)"/> to obtain a CNG key handle, then disposes it to trigger
+        /// CNG key deletion.  <see cref="RSACertificateExtensions.GetRSAPrivateKey(X509Certificate2)"/> is called as a fallback for forward
         /// compatibility with RSA keys.</para>
         ///
         /// <para><b>Linux:</b> On Linux, <see cref="X509KeyStorageFlags.EphemeralKeySet"/> keeps the key in memory only —
@@ -361,7 +365,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <see cref="LogCngKeyCleanupFailed"/>.  Failure does not affect certificate activation or the subsequent
         /// deferred disposal.  Common failure cause: the key was already deleted by a concurrent
         /// <see cref="CertificateStore.DisposeCertificate"/> call from
-        /// <see cref="Nntp.NntpListener.OnCertificateChanged"/> (the known double-dispose race documented in the
+        /// <c>NntpSocketAcceptor.OnCertificateChanged</c> (the known double-dispose race documented in the
         /// file-level comments).</para>
         ///
         /// <para><b>Interaction with <see cref="DeferCertificateDisposal"/>:</b> After this method deletes the CNG key,
@@ -369,7 +373,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// fires, <see cref="CertificateStore.DisposeCertificate"/> calls <c>GetECDsaPrivateKey()</c> on the same
         /// certificate — the CNG key file is already gone, so this throws <see cref="System.Security.Cryptography.CryptographicException"/>
         /// ("The system cannot find the file specified"), which is silently swallowed by the best-effort catch block.
-        /// <see cref="X509Certificate2.Dispose"/> is then called to release the in-memory handle.  This double-cleanup
+        /// <see cref="IDisposable.Dispose"/> is then called to release the in-memory handle.  This double-cleanup
         /// is harmless and expected.</para>
         /// </remarks>
         /// <param name="old">The superseded certificate whose CNG key should be deleted, or <see langword="null"/> if
@@ -403,7 +407,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         /// <remarks>
         /// <para><b>Why 5 minutes:</b> The longest possible TLS handshake timeout in this codebase is
-        /// <c>TlsHandshakeTimeoutMs</c> (15 seconds) in <see cref="Nntp.Session.NntpSession"/>.  Five minutes is 20×
+        /// <c>TlsHandshakeTimeoutMs</c> (15 seconds) in <c>Vector.NNTP.Sockets.Session.NntpSession</c>.  Five minutes is 20×
         /// this value, providing generous headroom for:</para>
         /// <list type="bullet">
         ///   <item><description>Handshakes that started just before the certificate swap — the
@@ -413,7 +417,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///   <item><description>Thread scheduling delays under extreme CPU load — a handshake that acquired the old
         ///     certificate reference but has not yet called into SslStream could be delayed by GC pauses or thread
         ///     starvation.</description></item>
-        ///   <item><description>Consistency with <see cref="Nntp.NntpListener.OnCertificateChanged"/> which uses the same
+        ///   <item><description>Consistency with <c>NntpSocketAcceptor.OnCertificateChanged</c> which uses the same
         ///     5-minute delay (<c>CertificateDisposalDelay</c>).</description></item>
         /// </list>
         ///
@@ -434,7 +438,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// superseded certificate's CNG key before this method is called, the deferred
         /// <see cref="CertificateStore.DisposeCertificate"/> call will attempt <c>GetECDsaPrivateKey()</c> on a certificate
         /// whose persisted key is already gone — throwing <see cref="System.Security.Cryptography.CryptographicException"/>
-        /// which is silently swallowed by the best-effort catch block.  <see cref="X509Certificate2.Dispose"/> is still
+        /// which is silently swallowed by the best-effort catch block.  <see cref="IDisposable.Dispose"/> is still
         /// called to release the in-memory handle.  This is the expected sequence.</para>
         ///
         /// <para><b>Sole ownership:</b> Only this method (and <see cref="Dispose"/> for final cleanup) may dispose

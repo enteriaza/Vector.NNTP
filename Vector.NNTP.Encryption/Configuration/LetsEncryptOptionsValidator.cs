@@ -12,7 +12,12 @@ namespace Vector.NNTP.Encryption.Configuration
     /// </summary>
     public sealed class LetsEncryptOptionsValidator : IValidateOptions<LetsEncryptOptions>
     {
-        /// <inheritdoc />
+        /// <summary>
+        /// Validates the <see cref="LetsEncryptOptions"/> when Let's Encrypt is enabled.
+        /// </summary>
+        /// <param name="name">The name of the options.</param>
+        /// <param name="options">The options to validate.</param>
+        /// <returns>The result of the validation.</returns>
         public ValidateOptionsResult Validate(string? name, LetsEncryptOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);

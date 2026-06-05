@@ -61,7 +61,7 @@ namespace Vector.NNTP.Encryption.Certificates
 
     /// <summary>
     /// Concrete request body for the Cloudflare <c>POST /zones/{zoneId}/dns_records</c> API, replacing the anonymous type
-    /// previously used in <see cref="AcmeCertificateProvider.CreateCloudflareTxtRecordAsync"/>.
+    /// previously used in <c>Acme.AcmeCertificateProvider.CreateCloudflareTxtRecordAsync</c>.
     /// </summary>
     /// <remarks>
     /// <para><b>Why a concrete type:</b> The System.Text.Json source generator cannot produce metadata for anonymous types.
@@ -70,7 +70,7 @@ namespace Vector.NNTP.Encryption.Certificates
     ///
     /// <para><b>Serialisation only:</b> This type is only serialised (via
     /// <see cref="System.Text.Json.JsonSerializer.Serialize{TValue}(TValue, System.Text.Json.JsonSerializerOptions?)"/>
-    /// in <see cref="AcmeCertificateProvider.CreateCloudflareTxtRecordAsync"/>), never deserialised from an inbound JSON
+    /// in <c>Acme.AcmeCertificateProvider.CreateCloudflareTxtRecordAsync</c>), never deserialised from an inbound JSON
     /// response.  Properties use <see langword="init"/> setters to enforce single-assignment semantics at construction time
     /// and prevent accidental mutation after the object initialiser completes.</para>
     ///

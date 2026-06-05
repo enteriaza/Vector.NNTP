@@ -86,6 +86,11 @@ namespace Vector.NNTP.Encryption.Cluster
             return ms.ToArray();
         }
 
+        /// <summary>
+        /// Writes a line to the memory stream.
+        /// </summary>
+        /// <param name="ms">The memory stream to write to.</param>
+        /// <param name="line">The line to write.</param>
         private static void WriteLine(MemoryStream ms, string line)
         {
             byte[] utf8 = Encoding.UTF8.GetBytes(line);

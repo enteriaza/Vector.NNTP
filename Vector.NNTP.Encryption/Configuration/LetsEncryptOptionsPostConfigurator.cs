@@ -17,10 +17,16 @@ namespace Vector.NNTP.Encryption.Configuration
         IHostEnvironment hostEnvironment,
         ILogger<LetsEncryptOptionsPostConfigurator> logger) : IPostConfigureOptions<LetsEncryptOptions>
     {
+        /// <summary>
+        /// The hosting environment.
+        /// </summary>
         private readonly IHostEnvironment _hostEnvironment = hostEnvironment ?? throw new ArgumentNullException(nameof(hostEnvironment));
-        private readonly ILogger<LetsEncryptOptionsPostConfigurator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Post configures the <see cref="LetsEncryptOptions"/>.
+        /// </summary>
+        /// <param name="name">The name of the options.</param>
+        /// <param name="options">The options to post configure.</param>
         public void PostConfigure(string? name, LetsEncryptOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);

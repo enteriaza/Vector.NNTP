@@ -141,7 +141,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///
         /// <para><b>Callers:</b></para>
         /// <list type="bullet">
-        ///   <item><description><see cref="AcmeCertificateProvider.FinaliseOrderAsync"/> — persists the newly-issued PFX
+        ///   <item><description><c>AcmeCertificateProvider.FinaliseOrderAsync</c> — persists the newly-issued PFX
         ///     after ACME order download.</description></item>
         ///   <item><description><c>CertificateClusterSync</c>.TryAdoptPeerCertificateAsync"/> — persists a peer's PFX
         ///     received via RabbitMQ broadcast.</description></item>
@@ -197,7 +197,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///
         /// <para><b>Callers:</b></para>
         /// <list type="bullet">
-        ///   <item><description><see cref="AcmeCertificateProvider.LoadOrCreateAccountAsync"/> — persists the account key
+        ///   <item><description><c>AcmeCertificateProvider.LoadOrCreateAccountAsync</c> — persists the account key
         ///     after creating a new ACME account.</description></item>
         ///   <item><description><c>CertificateClusterSync</c>.TryAdoptPeerCertificateAsync"/> — persists the leader's
         ///     account key received via broadcast.</description></item>
@@ -219,7 +219,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// the file does not exist or cannot be read.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="AcmeCertificateProvider.LoadOrCreateAccountAsync"/> — loads the existing
+        /// <para><b>Caller:</b> <c>AcmeCertificateProvider.LoadOrCreateAccountAsync</c> — loads the existing
         /// account key to reuse the ACME account.  If <see langword="null"/> is returned, the caller creates a new ACME
         /// account and persists the freshly generated key via <see cref="SaveAccountKeyAsync"/>.</para>
         ///
@@ -252,7 +252,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///
         /// <para><b>Callers:</b></para>
         /// <list type="bullet">
-        ///   <item><description><see cref="AcmeCertificateProvider.LoadOrCreateCertificateKeyAsync"/> — persists the
+        ///   <item><description><c>AcmeCertificateProvider.LoadOrCreateCertificateKeyAsync</c> — persists the
         ///     certificate key after generating a new ES256 key.</description></item>
         ///   <item><description><c>CertificateClusterSync</c>.TryAdoptPeerCertificateAsync"/> — persists the leader's
         ///     certificate key received via broadcast.</description></item>
@@ -274,7 +274,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// the file does not exist or cannot be read.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="AcmeCertificateProvider.LoadOrCreateCertificateKeyAsync"/> — loads the existing
+        /// <para><b>Caller:</b> <c>AcmeCertificateProvider.LoadOrCreateCertificateKeyAsync</c> — loads the existing
         /// certificate key to reuse across renewals.  If <see langword="null"/> is returned, the caller generates a new
         /// ES256 key and persists it via <see cref="SaveCertificateKeyAsync"/>.</para>
         ///

@@ -32,7 +32,7 @@ namespace Vector.NNTP.Encryption.Certificates
 
     /// <summary>
     /// Shared defaults and constants for the certificate subsystem.  Centralises values that would otherwise be duplicated
-    /// across <see cref="AcmeCertificateProvider"/> and <see cref="CertificateStore"/>.
+    /// across <see cref="Acme.AcmeCertificateProvider"/> and <see cref="CertificateStore"/>.
     /// </summary>
     /// <remarks>
     /// <para><b>Thread safety:</b> All members are <see langword="static"/> <see langword="readonly"/> and immutable after
@@ -69,7 +69,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <remarks>
         /// <para><b>Callers:</b></para>
         /// <list type="bullet">
-        ///   <item><description><see cref="AcmeCertificateProvider"/> — Cloudflare DNS API payloads (<c>POST
+        ///   <item><description><see cref="Acme.AcmeCertificateProvider"/> — Cloudflare DNS API payloads (<c>POST
         ///     /dns_records</c>).</description></item>
         /// </list>
         ///
@@ -143,7 +143,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <remarks>
         /// <para><b>Callers:</b></para>
         /// <list type="bullet">
-        ///   <item><description><see cref="AcmeCertificateProvider"/> — imports the newly-issued PFX after ACME order
+        ///   <item><description><see cref="Acme.AcmeCertificateProvider"/> — imports the newly-issued PFX after ACME order
         ///     download.</description></item>
         ///   <item><description><see cref="CertificateStore.TryLoadCachedCertificate"/> — loads the cached PFX from disk
         ///     at startup.</description></item>

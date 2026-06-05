@@ -16,7 +16,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// </summary>
         /// <param name="nameServerCount">Authoritative server count (0 allowed).</param>
         /// <param name="quorumRatio">Ratio in [0.5, 1.0].</param>
-        /// <returns>Required match count.</returns>
+        /// <returns>The required match count.</returns>
         public static int RequiredMatchCount(int nameServerCount, double quorumRatio)
         {
             if (nameServerCount <= 0)

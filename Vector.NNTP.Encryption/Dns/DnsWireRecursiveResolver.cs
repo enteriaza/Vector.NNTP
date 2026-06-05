@@ -17,13 +17,35 @@ namespace Vector.NNTP.Encryption.Dns
     /// </summary>
     internal static class DnsWireRecursiveResolver
     {
+        /// <summary>
+        /// The UDP timeout in milliseconds.
+        /// </summary>
         private const int UdpTimeoutMs = 5_000;
+
+        /// <summary>
+        /// The size of the DNS header.
+        /// </summary>
         private const int DnsHeaderSize = 12;
+
+        /// <summary>
+        /// The size of the question section.
+        /// </summary>
         private const int QuestionSuffixSize = 4;
+
+        /// <summary>
+        /// The maximum number of compression pointer hops.
+        /// </summary>
         private const int MaxCompressionPointerHops = 128;
 
+        /// <summary>
+        /// The recursive resolvers.
+        /// </summary>
         private static readonly IPAddress[] RecursiveResolvers = ResolveRecursiveResolvers();
 
+        /// <summary>
+        /// Resolves the recursive resolvers.
+        /// </summary>
+        /// <returns>The recursive resolvers.</returns>
         private static IPAddress[] ResolveRecursiveResolvers()
         {
             try
@@ -83,6 +105,9 @@ namespace Vector.NNTP.Encryption.Dns
         /// <summary>
         /// TXT lookup via recursive resolvers (RD=1), used when no authoritative NS list is available.
         /// </summary>
+        /// <param name="recordName">The name of the record to resolve.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The TXT records of the resolved record.</returns>
         public static async Task<List<string>> QueryTxtRecursiveAsync(string recordName, CancellationToken cancellationToken)
         {
             foreach (IPAddress resolver in RecursiveResolvers)
@@ -103,6 +128,9 @@ namespace Vector.NNTP.Encryption.Dns
         /// <summary>
         /// Resolves distinct authoritative nameserver IPs for the zone that serves <paramref name="recordFqdn"/> (no zone cache).
         /// </summary>
+        /// <param name="recordFqdn">The FQDN of the record to resolve.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The addresses of the authoritative NS servers.</returns>
         public static Task<IReadOnlyList<IPAddress>> ResolveAuthoritativeNameServerAddressesAsync(
             string recordFqdn,
             CancellationToken cancellationToken)
@@ -135,6 +163,11 @@ namespace Vector.NNTP.Encryption.Dns
         /// <summary>
         /// Resolves authoritative NS IPs and returns the zone label (delegation cut) used for the successful NS set.
         /// </summary>
+        /// <param name="recordFqdn">The FQDN of the record to resolve.</param>
+        /// <param name="zoneNsCache">The cache of zone NS addresses.</param>
+        /// <param name="zoneCacheTtl">The TTL for the cache entries.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The zone name and the addresses of the authoritative NS servers.</returns>
         public static async Task<(string ZoneName, IReadOnlyList<IPAddress> Addresses)> ResolveAuthoritativeZoneAndAddressesAsync(
             string recordFqdn,
             ConcurrentDictionary<string, (IReadOnlyList<IPAddress> Ips, DateTimeOffset ExpiresUtc)>? zoneNsCache,
@@ -211,6 +244,11 @@ namespace Vector.NNTP.Encryption.Dns
             return (string.Empty, Array.Empty<IPAddress>());
         }
 
+        /// <summary>
+        /// Adds a unique IP address to a list.
+        /// </summary>
+        /// <param name="list">The list to add the IP address to.</param>
+        /// <param name="ip">The IP address to add.</param>
         private static void AddUnique(List<IPAddress> list, IPAddress ip)
         {
             foreach (IPAddress existing in list)
@@ -232,6 +270,9 @@ namespace Vector.NNTP.Encryption.Dns
         /// <summary>
         /// Resolves an NS hostname: glue-equivalent via recursive wire A/AAAA, then OS stub resolver.
         /// </summary>
+        /// <param name="host">The hostname to resolve.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The IP addresses of the resolved hostname; <see langword="null"/> if the hostname was not resolved.</returns>
         private static async Task<IReadOnlyList<IPAddress>> ResolveNsHostnameViaWireThenOsAsync(string host, CancellationToken cancellationToken)
         {
             List<IPAddress> wire = [];
@@ -260,6 +301,12 @@ namespace Vector.NNTP.Encryption.Dns
             return await ResolveHostAddressesAsync(host, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Collects IPv4 answers from a DNS response.
+        /// </summary>
+        /// <param name="buffer">The full DNS response buffer.</param>
+        /// <param name="expectedId">The expected ID of the response.</param>
+        /// <param name="dest">The list to add the IP addresses to.</param>
         private static void CollectIpv4AnswersFromResponse(byte[] buffer, ushort expectedId, List<IPAddress> dest)
         {
             ReadOnlySpan<byte> span = buffer;
@@ -306,6 +353,12 @@ namespace Vector.NNTP.Encryption.Dns
             }
         }
 
+        /// <summary>
+        /// Collects IPv6 answers from a DNS response.
+        /// </summary>
+        /// <param name="buffer">The full DNS response buffer.</param>
+        /// <param name="expectedId">The expected ID of the response.</param>
+        /// <param name="dest">The list to add the IP addresses to.</param>
         private static void CollectIpv6AnswersFromResponse(byte[] buffer, ushort expectedId, List<IPAddress> dest)
         {
             ReadOnlySpan<byte> span = buffer;
@@ -355,6 +408,9 @@ namespace Vector.NNTP.Encryption.Dns
         /// <summary>
         /// Resolves a hostname via the OS stub resolver (last resort).
         /// </summary>
+        /// <param name="host">The hostname to resolve.</param>
+        /// <param name="ct">The cancellation token.</param>
+        /// <returns>The IP addresses of the resolved hostname; <see langword="null"/> if the hostname was not resolved.</returns>
         private static async Task<IReadOnlyList<IPAddress>> ResolveHostAddressesAsync(string host, CancellationToken ct)
         {
             try
@@ -386,6 +442,13 @@ namespace Vector.NNTP.Encryption.Dns
             }
         }
 
+        /// <summary>
+        /// Sends a UDP query to a resolver and returns the response.
+        /// </summary>
+        /// <param name="resolver">The IP address of the resolver to send the query to.</param>
+        /// <param name="query">The query to send.</param>
+        /// <param name="ct">The cancellation token.</param>
+        /// <returns>The response from the resolver; <see langword="null"/> if the query was not successful.</returns>
         private static async Task<byte[]?> SendUdpQueryAsync(IPAddress resolver, byte[] query, CancellationToken ct)
         {
             using UdpClient udp = new(resolver.AddressFamily);
@@ -412,6 +475,15 @@ namespace Vector.NNTP.Encryption.Dns
             }
         }
 
+        /// <summary>
+        /// Tries to parse an NS response.
+        /// </summary>
+        /// <param name="buffer">The full DNS response buffer.</param>
+        /// <param name="expectedId">The expected ID of the response.</param>
+        /// <param name="nsHostnames">The list of NS hostnames.</param>
+        /// <param name="glue">The dictionary of glue records.</param>
+        /// <returns><see langword="true"/> if the response was successfully parsed; <see langword="false"/> if the buffer is
+        /// too short, the hop limit is exceeded, or a reserved label type is encountered.</returns>
         private static bool TryParseNsResponse(
             byte[] buffer,
             ushort expectedId,
@@ -455,6 +527,14 @@ namespace Vector.NNTP.Encryption.Dns
             return true;
         }
 
+        /// <summary>
+        /// Processes a section of a DNS response.
+        /// </summary>
+        /// <param name="span">The full DNS response buffer.</param>
+        /// <param name="offset">Current read position; advanced past the section on return.</param>
+        /// <param name="count">Number of resource records to process.</param>
+        /// <param name="nsHostnames">The list of NS hostnames.</param>
+        /// <param name="glue">The dictionary of glue records.</param>
         private static void ProcessSection(
             ReadOnlySpan<byte> span,
             ref int offset,
@@ -500,6 +580,12 @@ namespace Vector.NNTP.Encryption.Dns
             }
         }
 
+        /// <summary>
+        /// Adds a glue record to the dictionary.
+        /// </summary>
+        /// <param name="glue">The dictionary to add the glue record to.</param>
+        /// <param name="owner">The owner name of the glue record.</param>
+        /// <param name="ip">The IP address of the glue record.</param>
         private static void AddGlue(Dictionary<string, List<IPAddress>> glue, string owner, IPAddress ip)
         {
             string key = NormalizeDnsName(owner);
@@ -520,6 +606,18 @@ namespace Vector.NNTP.Encryption.Dns
             list.Add(ip);
         }
 
+        /// <summary>
+        /// Consumes a DNS resource record from a packet.
+        /// </summary>
+        /// <param name="packet">The full DNS response buffer.</param>
+        /// <param name="offset">Current read position; advanced past the resource record on return.</param>
+        /// <param name="ownerName">The owner name of the resource record.</param>
+        /// <param name="rrType">The type of the resource record.</param>
+        /// <param name="rrClass">The class of the resource record.</param>
+        /// <param name="rdataStart">The start position of the resource record data.</param>
+        /// <param name="rdLength">The length of the resource record data.</param>
+        /// <returns><see langword="true"/> if the resource record was successfully consumed; <see langword="false"/> if the buffer is
+        /// too short, the hop limit is exceeded, or a reserved label type is encountered.</returns>
         private static bool TryConsumeResourceRecord(
             ReadOnlySpan<byte> packet,
             ref int offset,
@@ -558,6 +656,14 @@ namespace Vector.NNTP.Encryption.Dns
             return true;
         }
 
+        /// <summary>
+        /// Advances <paramref name="offset"/> past the question section of a DNS response.
+        /// </summary>
+        /// <param name="span">The full DNS response buffer.</param>
+        /// <param name="offset">Current read position; advanced past the question section on return.</param>
+        /// <param name="qdCount">Number of questions to skip.</param>
+        /// <returns><see langword="true"/> if the question section was successfully skipped; <see langword="false"/> if the buffer is
+        /// too short, the hop limit is exceeded, or a reserved label type is encountered.</returns>
         private static bool SkipQuestionSection(ReadOnlySpan<byte> span, ref int offset, ushort qdCount)
         {
             for (int q = 0; q < qdCount; q++)
@@ -578,6 +684,14 @@ namespace Vector.NNTP.Encryption.Dns
             return true;
         }
 
+        /// <summary>
+        /// Advances <paramref name="offset"/> past a DNS name in the wire format, handling both inline labels and
+        /// compression pointers (RFC 1035 §4.1.4).
+        /// </summary>
+        /// <param name="span">The full DNS response buffer.</param>
+        /// <param name="offset">Current read position; advanced past the name on return.</param>
+        /// <returns><see langword="true"/> if the name was successfully skipped; <see langword="false"/> if the buffer is
+        /// too short, the hop limit is exceeded, or a reserved label type is encountered.</returns>
         private static bool TrySkipName(ReadOnlySpan<byte> span, ref int offset)
         {
             int hops = 0;

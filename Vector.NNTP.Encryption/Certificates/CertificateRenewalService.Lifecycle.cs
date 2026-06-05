@@ -83,7 +83,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///
         /// <para><b>Startup retry loop:</b> If no certificate is present after the cached load attempt, the service enters
         /// an exponential back-off retry loop that calls <see cref="CheckAndRenewAsync"/> until a certificate is obtained.
-        /// The back-off delay is computed by <see cref="NetworkUtilities.CalculateBackOff"/> with no jitter.  The attempt
+        /// The back-off delay is computed by <see cref="RetryUtilities.CalculateBackOff(int, int, int, int)"/> with no jitter.  The attempt
         /// counter is never reset because the loop exits as soon as <see cref="IsCertificatePresent"/> returns
         /// <see langword="true"/>; if <see cref="CheckAndRenewAsync"/> succeeds, the next loop iteration's condition check
         /// terminates the loop before the counter could be used again.</para>

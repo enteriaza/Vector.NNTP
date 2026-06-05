@@ -96,12 +96,6 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         private readonly string _certsDirectoryPath = certsDirectoryPath;
 
-        /// <summary>
-        /// Logger instance captured from the primary constructor for use by <c>[LoggerMessage]</c> source-generated
-        /// partial methods.
-        /// </summary>
-        private readonly ILogger _logger = logger;
-
         #endregion
 
         #region Properties
@@ -218,21 +212,21 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         /// <remarks>
         /// <para><b>Why explicit key deletion is needed:</b> When <see cref="X509KeyStorageFlags.PersistKeySet"/> is used
-        /// (required on Windows for SChannel TLS server authentication), <see cref="X509Certificate2.Dispose"/> releases
+        /// (required on Windows for SChannel TLS server authentication), <see cref="IDisposable.Dispose"/> releases
         /// the in-memory handle but does <em>not</em> delete the persisted CNG key from
         /// <c>%APPDATA%\Microsoft\Crypto\Keys</c>.  Without explicit deletion, every renewal cycle (~60 days) orphans a
         /// key file that is never cleaned up.</para>
         ///
-        /// <para><b>Mechanism:</b> Calling <see cref="X509Certificate2.GetECDsaPrivateKey"/> (or the RSA equivalent)
+        /// <para><b>Mechanism:</b> Calling <see cref="ECDsaCertificateExtensions.GetECDsaPrivateKey(X509Certificate2)"/> (or the RSA equivalent)
         /// returns an <see cref="AsymmetricAlgorithm"/> backed by a CNG key handle.  Disposing this handle triggers CNG
         /// key deletion when the key was opened from the persisted store.</para>
         ///
         /// <para><b>Algorithm detection:</b> The project uses ES256 (ECDSA P-256) keys via
-        /// <see cref="AcmeCertificateProvider"/>, so <see cref="X509Certificate2.GetECDsaPrivateKey"/> is tried first.
-        /// <see cref="X509Certificate2.GetRSAPrivateKey"/> is tried as a fallback for forward compatibility.</para>
+        /// <see cref="Acme.AcmeCertificateProvider"/>, so <see cref="ECDsaCertificateExtensions.GetECDsaPrivateKey(X509Certificate2)"/> is tried first.
+        /// <see cref="RSACertificateExtensions.GetRSAPrivateKey(X509Certificate2)"/> is tried as a fallback for forward compatibility.</para>
         ///
-        /// <para><b>Null return handling:</b> <see cref="X509Certificate2.GetECDsaPrivateKey"/> and
-        /// <see cref="X509Certificate2.GetRSAPrivateKey"/> return <see langword="null"/> (not throw) when the certificate
+        /// <para><b>Null return handling:</b> <see cref="ECDsaCertificateExtensions.GetECDsaPrivateKey(X509Certificate2)"/> and
+        /// <see cref="RSACertificateExtensions.GetRSAPrivateKey(X509Certificate2)"/> return <see langword="null"/> (not throw) when the certificate
         /// does not contain a private key of the requested algorithm type.  <c>using (null) { }</c> is a safe
         /// no-op.</para>
         ///
@@ -247,16 +241,16 @@ namespace Vector.NNTP.Encryption.Certificates
         ///
         /// <para><b>Known double-dispose:</b> During certificate rotation, both
         /// <see cref="CertificateRenewalService.ActivateCertificate"/> and
-        /// <see cref="Nntp.NntpListener.OnCertificateChanged"/> may schedule deferred disposal of the same certificate.
-        /// The second call's <see cref="X509Certificate2.GetECDsaPrivateKey"/> throws
+        /// <c>NntpSocketAcceptor.OnCertificateChanged</c> may schedule deferred disposal of the same certificate.
+        /// The second call's <see cref="ECDsaCertificateExtensions.GetECDsaPrivateKey(X509Certificate2)"/> throws
         /// <see cref="CryptographicException"/> on the already-disposed certificate — caught by the best-effort
-        /// <c>catch</c> block.  <see cref="X509Certificate2.Dispose"/> itself is idempotent on .NET 8.</para>
+        /// <c>catch</c> block.  <see cref="IDisposable.Dispose"/> itself is idempotent on .NET 8.</para>
         ///
         /// <para><b>Thread safety:</b> This is a <see langword="static"/> method with no shared mutable state — safe for
         /// concurrent calls from any thread.</para>
         ///
         /// <para><b>Cross-platform:</b> The <see cref="OperatingSystem.IsWindows"/> guard ensures CNG key cleanup is only
-        /// attempted on Windows.  On Linux, only the standard <see cref="X509Certificate2.Dispose"/> is called.</para>
+        /// attempted on Windows.  On Linux, only the standard <see cref="IDisposable.Dispose"/> is called.</para>
         ///
         /// <para><b>Callers:</b></para>
         /// <list type="bullet">
@@ -335,7 +329,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <list type="bullet">
         ///   <item><description><see cref="CertificateRenewalService.DeferCertificateDisposal"/> — superseded certificate
         ///     after <see cref="Interlocked.Exchange{T}"/>.</description></item>
-        ///   <item><description><see cref="Nntp.NntpListener.OnCertificateChanged"/> — the previous
+        ///   <item><description><c>NntpSocketAcceptor.OnCertificateChanged</c> — the previous
         ///     <c>_tlsCertificate</c> swapped out when the
         ///     <see cref="CertificateRenewalService.CertificateChanged"/> event fires.</description></item>
         /// </list>
