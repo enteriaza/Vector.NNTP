@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <!-- x64-only build surface: see .cursor/rules/x64-platform-only.mdc -->
+    <Platform>x64</Platform>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>
+

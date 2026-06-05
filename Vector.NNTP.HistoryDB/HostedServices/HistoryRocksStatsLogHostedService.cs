@@ -23,9 +23,24 @@ namespace Vector.NNTP.HistoryDB.HostedServices
     /// </remarks>
     internal sealed class HistoryRocksStatsLogHostedService : BackgroundService
     {
+        /// <summary>
+        /// The history database service.
+        /// </summary>
         private readonly HistoryDatabaseService _history;
+
+        /// <summary>
+        /// The rocks history store.
+        /// </summary>
         private readonly RocksHistoryStore _rocks;
+
+        /// <summary>
+        /// The history database options.
+        /// </summary>
         private readonly HistoryDbOptions _options;
+
+        /// <summary>
+        /// The logger.
+        /// </summary>
         private readonly ILogger<HistoryRocksStatsLogHostedService> _logger;
 
         /// <summary>
@@ -47,7 +62,12 @@ namespace Vector.NNTP.HistoryDB.HostedServices
             this._logger = logger;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Executes the hosted service.
+        /// </summary>
+        /// <param name="stoppingToken">The stopping token.</param>
+        /// <returns>A task that completes when the hosted service is executed.</returns>
+        /// <exception cref="OperationCanceledException">Thrown when the stopping token is canceled.</exception>    
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             HistoryRocksDbOptions rocks = this._options.RocksDb;
