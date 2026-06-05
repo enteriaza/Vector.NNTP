@@ -57,9 +57,7 @@ namespace Vector.NNTP.Auth.MySql
         /// <summary>
         /// MySQL connection string for the <c>nntpusers</c> table.
         /// </summary>
-        private readonly string _connectionString = string.IsNullOrWhiteSpace(connectionString)
-            ? throw new ArgumentException("Connection string is required.", nameof(connectionString))
-            : connectionString;
+        private readonly string _connectionString = ValidateConnectionString(connectionString);
 
         /// <summary>
         /// Cached command timeout in seconds, derived from the connection string.
@@ -130,6 +128,17 @@ namespace Vector.NNTP.Auth.MySql
                 srcIpLimit,
                 isEnabled,
                 customerId);
+        }
+
+        /// <summary>
+        /// Validates and returns a non-empty connection string for store construction.
+        /// </summary>
+        /// <param name="connectionString">MySQL connection string.</param>
+        /// <returns>The validated connection string.</returns>
+        private static string ValidateConnectionString(string connectionString)
+        {
+            MySqlAuthConnectionStringValidator.ValidateOrThrow(connectionString, nameof(connectionString));
+            return connectionString;
         }
 
         /// <summary>

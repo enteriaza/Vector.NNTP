@@ -26,6 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Vector.NNTP.Sockets\Vector.NNTP.Sockets.csproj" />
     <ProjectReference Include="..\Vector.NNTP.Session\Vector.NNTP.Session.csproj" />
+    <ProjectReference Include="..\Vector.NNTP.Utilities\Vector.NNTP.Utilities.csproj" />
   </ItemGroup>
 
 </Project>

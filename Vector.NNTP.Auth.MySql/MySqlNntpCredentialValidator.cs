@@ -11,6 +11,8 @@ using Vector.NNTP.Session.Accounts;
 using Vector.NNTP.Session.Coordination;
 using Vector.NNTP.Session.Policy;
 using Vector.NNTP.Sockets.Authentication;
+using Vector.NNTP.Utilities.Diagnostics;
+using Vector.NNTP.Utilities.Security;
 
 namespace Vector.NNTP.Auth.MySql
 {
@@ -114,7 +116,7 @@ namespace Vector.NNTP.Auth.MySql
                 return NntpAuthResult.InvalidCredentials();
             }
 
-            string clientIpText = clientIp.ToString();
+            string clientIpText = FormatClientIp(clientIp);
             AuthenticationFinalizing(_logger, mechanism, username, clientIpText, isTls);
 
             try
@@ -175,42 +177,59 @@ namespace Vector.NNTP.Auth.MySql
 
             byte[] storedBytes = Encoding.UTF8.GetBytes(storedPassword);
             byte[] suppliedBytes = Encoding.UTF8.GetBytes(suppliedPassword);
-            int storedLength = storedBytes.Length;
-            int suppliedLength = suppliedBytes.Length;
-            int maxLength = Math.Max(storedLength, suppliedLength);
-
-            const int StackallocThresholdBytes = 4096;
-
-            if (maxLength <= StackallocThresholdBytes)
-            {
-                Span<byte> left = stackalloc byte[maxLength];
-                Span<byte> right = stackalloc byte[maxLength];
-                left.Clear();
-                right.Clear();
-                storedBytes.CopyTo(left);
-                suppliedBytes.CopyTo(right);
-                bool equals = CryptographicOperations.FixedTimeEquals(left, right);
-                return equals && storedLength == suppliedLength;
-            }
-
-            byte[] leftArray = ArrayPool<byte>.Shared.Rent(maxLength);
-            byte[] rightArray = ArrayPool<byte>.Shared.Rent(maxLength);
             try
             {
-                Span<byte> left = leftArray.AsSpan(0, maxLength);
-                Span<byte> right = rightArray.AsSpan(0, maxLength);
-                left.Clear();
-                right.Clear();
-                storedBytes.CopyTo(left);
-                suppliedBytes.CopyTo(right);
-                bool equals = CryptographicOperations.FixedTimeEquals(left, right);
-                return equals && storedLength == suppliedLength;
+                int storedLength = storedBytes.Length;
+                int suppliedLength = suppliedBytes.Length;
+                int maxLength = Math.Max(storedLength, suppliedLength);
+
+                const int StackallocThresholdBytes = 4096;
+
+                if (maxLength <= StackallocThresholdBytes)
+                {
+                    Span<byte> left = stackalloc byte[maxLength];
+                    Span<byte> right = stackalloc byte[maxLength];
+                    left.Clear();
+                    right.Clear();
+                    storedBytes.CopyTo(left);
+                    suppliedBytes.CopyTo(right);
+                    bool equals = CryptographicOperations.FixedTimeEquals(left, right);
+                    return equals && storedLength == suppliedLength;
+                }
+
+                byte[] leftArray = ArrayPool<byte>.Shared.Rent(maxLength);
+                byte[] rightArray = ArrayPool<byte>.Shared.Rent(maxLength);
+                try
+                {
+                    Span<byte> left = leftArray.AsSpan(0, maxLength);
+                    Span<byte> right = rightArray.AsSpan(0, maxLength);
+                    left.Clear();
+                    right.Clear();
+                    storedBytes.CopyTo(left);
+                    suppliedBytes.CopyTo(right);
+                    bool equals = CryptographicOperations.FixedTimeEquals(left, right);
+                    return equals && storedLength == suppliedLength;
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(leftArray, clearArray: true);
+                    ArrayPool<byte>.Shared.Return(rightArray, clearArray: true);
+                }
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(leftArray, clearArray: true);
-                ArrayPool<byte>.Shared.Return(rightArray, clearArray: true);
+                SecureMemoryUtilities.ZeroBuffers(storedBytes, suppliedBytes);
             }
+        }
+
+        /// <summary>
+        /// Formats a client IP for structured authentication logs.
+        /// </summary>
+        /// <param name="clientIp">Client IP address.</param>
+        /// <returns>Normalised textual IP representation.</returns>
+        private static string FormatClientIp(IPAddress clientIp)
+        {
+            return FormattingUtilities.NormaliseAddress(clientIp).ToString();
         }
 
         /// <summary>
@@ -249,7 +268,7 @@ namespace Vector.NNTP.Auth.MySql
             Func<MySqlUserRecord, bool> isMechanismPermitted,
             CancellationToken cancellationToken)
         {
-            string clientIpText = clientIp.ToString();
+            string clientIpText = FormatClientIp(clientIp);
             AuthenticationFinalizing(_logger, mechanism, username, clientIpText, isTls);
 
             try
@@ -299,7 +318,7 @@ namespace Vector.NNTP.Auth.MySql
         private NntpAuthResult Succeed(string mechanism, MySqlUserRecord record, IPAddress clientIp)
         {
             NntpSessionPolicy policy = CreatePolicy(record);
-            string clientIpText = clientIp.ToString();
+            string clientIpText = FormatClientIp(clientIp);
             char accountTypeChar = policy.AccountType == NntpAccountType.RateLimited ? 'R' : 'B';
             AuthenticationSucceeded(
                 _logger,

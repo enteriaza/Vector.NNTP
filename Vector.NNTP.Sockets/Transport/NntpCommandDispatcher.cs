@@ -225,11 +225,6 @@ namespace Vector.NNTP.Sockets.Transport
         }
 
         /// <summary>
-        /// Redacts sensitive information from a command line.
-        /// </summary>
-        /// <param name="line">The command line to redact.</param>
-        /// <returns>The redacted command line.</returns>
-        /// <summary>
         /// Formats a command line for logging, redacting secrets and replacing non-text payloads with a summary.
         /// </summary>
         /// <param name="lineBytes">Command line bytes without CRLF.</param>

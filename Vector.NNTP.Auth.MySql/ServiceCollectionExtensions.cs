@@ -38,9 +38,12 @@ namespace Vector.NNTP.Auth.MySql
 
             string? connectionString = configuration.GetConnectionString("MainDB");
 
-            return string.IsNullOrWhiteSpace(connectionString)
-                ? throw new InvalidOperationException("Connection string 'MainDB' is required.")
-                : services.AddNntpMySqlAuth(connectionString);
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException("Connection string 'MainDB' is required.");
+            }
+
+            return services.AddNntpMySqlAuth(connectionString);
         }
 
         /// <summary>
@@ -65,10 +68,7 @@ namespace Vector.NNTP.Auth.MySql
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                throw new ArgumentException("Connection string is required.", nameof(connectionString));
-            }
+            MySqlAuthConnectionStringValidator.ValidateOrThrow(connectionString, nameof(connectionString));
 
             _ = services.RemoveAll<INntpCredentialValidator>();
             _ = services.RemoveAll<INntpSaslAccountAuthenticator>();
