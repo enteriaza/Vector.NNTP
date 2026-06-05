@@ -86,14 +86,13 @@ namespace Vector.NNTP.Utilities.IO
     ///
     /// <para><b>Exact-limit semantics:</b> The limit is treated as an <em>exclusive</em> upper bound.  A response
     /// that delivers exactly <c>maxBytes</c> bytes exhausts the allowance, and the <em>next</em> read attempt throws.
-    /// This is intentional -- the configured limit (<see cref="AcmeCertificateProvider.MaxCloudflareResponseBytes"/>
+    /// This is intentional -- the configured limit (<c>MaxCloudflareResponseBytes</c>
     /// = 1 MB) is ~200x the expected payload size (2-5 KB), so exact exhaustion indicates an oversized response, not
     /// a coincidental exact fit.  If the class is ever generalised to contexts where exact-size responses are
     /// legitimate, change the <c>remaining &lt;= 0</c> check to <c>remaining &lt; 0</c>.</para>
     ///
     /// <para><b>Read overrides:</b> <see cref="ReadAsync(Memory{byte}, CancellationToken)"/> is the primary override
-    /// because <see cref="System.Text.Json.JsonDocument.ParseAsync(Stream, System.Text.Json.JsonDocumentOptions?,
-    /// CancellationToken)"/> reads exclusively via the <see cref="Memory{T}"/>-based async overload on .NET 8.  The
+    /// because <see cref="M:System.Text.Json.JsonDocument.ParseAsync(System.IO.Stream,System.Text.Json.JsonDocumentOptions,System.Threading.CancellationToken)"/> reads exclusively via the <see cref="Memory{T}"/>-based async overload on .NET 8.  The
     /// legacy <see cref="ReadAsync(byte[], int, int, CancellationToken)"/>, synchronous
     /// <see cref="Read(Span{byte})"/>, and <see cref="Stream.Read(byte[], int, int)"/> overloads are also overridden
     /// for completeness -- a future consumer calling any of these would still be protected.</para>
@@ -101,8 +100,8 @@ namespace Vector.NNTP.Utilities.IO
     /// <para><b>CopyTo / CopyToAsync overrides:</b> Both <see cref="CopyTo(Stream, int)"/> and
     /// <see cref="CopyToAsync(Stream, int, CancellationToken)"/> are explicitly overridden to route through the
     /// clamped <see cref="Read(Span{byte})"/> and <see cref="ReadAsync(Memory{byte}, CancellationToken)"/> paths
-    /// respectively.  The base <see cref="Stream.CopyToAsync"/> allocates a <c>byte[]</c> on every call; the override
-    /// uses <see cref="ArrayPool{T}.Shared"/> for the temporary buffer and returns it in a <c>finally</c> block,
+    /// respectively.  The base <c>Stream.CopyToAsync(Stream, CancellationToken)</c> allocates a <c>byte[]</c> on every call; the override
+    /// uses <c>ArrayPool&lt;byte&gt;.Shared</c> for the temporary buffer and returns it in a <c>finally</c> block,
     /// eliminating per-call GC pressure.  Without these overrides, a caller using <c>CopyToAsync</c> would still be
     /// protected (the base implementation calls <em>this</em> stream's <c>ReadAsync</c>), but the temporary buffer
     /// allocation is unnecessary when the decorator can manage its own pooled buffer.</para>
@@ -121,15 +120,15 @@ namespace Vector.NNTP.Utilities.IO
     /// <para><b>Ownership:</b> This stream does <em>not</em> own the inner stream.  The caller is responsible for
     /// disposing the inner stream separately (typically via <c>await using</c> on the
     /// <see cref="HttpContent.ReadAsStreamAsync(CancellationToken)"/> result).  Both <see cref="Dispose(bool)"/> and
-    /// <see cref="DisposeAsync"/> set the <see cref="_disposed"/> flag to prevent reads after disposal but do not
+    /// <see cref="DisposeAsync"/> set the <c>_disposed</c> flag to prevent reads after disposal but do not
     /// dispose the inner stream.</para>
     ///
     /// <para><b>Disposed-state guard:</b> All read entry points (<see cref="ReadAsync(Memory{byte}, CancellationToken)"/>,
     /// <see cref="Read(Span{byte})"/>, <see cref="CopyTo(Stream, int)"/>,
-    /// <see cref="CopyToAsync(Stream, int, CancellationToken)"/>) check the <see cref="_disposed"/> flag before
+    /// <see cref="CopyToAsync(Stream, int, CancellationToken)"/>) check the <c>_disposed</c> flag before
     /// proceeding.  This provides a clear <see cref="ObjectDisposedException"/> rather than allowing reads to proceed
     /// on a logically-released wrapper -- consistent with the <c>_disposed</c> guard pattern used by
-    /// <see cref="CertificateRenewalService"/>.</para>
+    /// <c>CertificateRenewalService</c>.</para>
     ///
     /// <para><b>Logging:</b> An optional <see cref="ILogger"/> is accepted via the constructor.  When non-null, the
     /// limit-exceeded condition is logged at <see cref="LogLevel.Warning"/> with structured parameters before throwing,
@@ -152,9 +151,8 @@ namespace Vector.NNTP.Utilities.IO
     ///
     /// <para><b>Consumers:</b></para>
     /// <list type="bullet">
-    ///   <item><description><see cref="AcmeCertificateProvider"/> -- wraps Cloudflare API response streams before
-    ///     <see cref="System.Text.Json.JsonDocument.ParseAsync(Stream, System.Text.Json.JsonDocumentOptions?,
-    ///     CancellationToken)"/> in <c>SendCloudflareRequestAsync</c>.</description></item>
+    ///   <item><description><c>AcmeCertificateProvider</c> -- wraps Cloudflare API response streams before
+    ///     <see cref="M:System.Text.Json.JsonDocument.ParseAsync(System.IO.Stream,System.Text.Json.JsonDocumentOptions,System.Threading.CancellationToken)"/> in <c>SendCloudflareRequestAsync</c>.</description></item>
     /// </list>
     /// </remarks>
     public sealed partial class LengthLimitedReadStream : Stream
@@ -197,9 +195,9 @@ namespace Vector.NNTP.Utilities.IO
 
         /// <summary>
         /// Disposed-state flag.  Set to 1 by <see cref="Dispose(bool)"/> or <see cref="DisposeAsync"/> via
-        /// <see cref="Interlocked.Exchange(ref int, int)"/>.  All read entry points check this flag and throw
+        /// <see cref="M:System.Threading.Interlocked.Exchange(System.Int32@,System.Int32)"/>.  All read entry points check this flag and throw
         /// <see cref="ObjectDisposedException"/> if non-zero.  Follows the double-dispose guard pattern used by
-        /// <see cref="CertificateRenewalService._disposed"/>.
+        /// <c>CertificateRenewalService</c>.
         /// </summary>
         private int _disposed;
 
@@ -247,32 +245,39 @@ namespace Vector.NNTP.Utilities.IO
             _logger = logger ?? NullLogger.Instance;
         }
 
-        /// <inheritdoc />
-        /// <remarks>Delegates to the inner stream -- reflects the actual readability of the underlying response
-        /// stream rather than assuming <see langword="true"/>.  If the inner stream is disposed, this returns
-        /// <see langword="false"/>.</remarks>
+        /// <summary>
+        /// Gets a value indicating whether the stream supports reading.
+        /// </summary>
         public override bool CanRead => _inner.CanRead;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether the stream supports seeking.
+        /// </summary>
         /// <remarks>Always <see langword="false"/> -- HTTP response streams are forward-only.</remarks>
         public override bool CanSeek => false;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether the stream supports writing.
+        /// </summary>
         /// <remarks>Always <see langword="false"/> -- this is a read-only decorator.</remarks>
         public override bool CanWrite => false;
 
-        /// <inheritdoc />
-        /// <remarks>Delegates to the inner stream -- exposes the inner stream's timeout capability.  HTTP response
-        /// streams (<see cref="HttpResponseMessage"/>) may support read timeouts depending on the
-        /// underlying <see cref="SocketsHttpHandler"/> configuration.</remarks>
+        /// <summary>
+        /// Gets a value indicating whether the stream supports timeouts.
+        /// </summary>
+        /// <remarks>Delegates to the inner stream.</remarks>
         public override bool CanTimeout => _inner.CanTimeout;
 
-        /// <inheritdoc />
-        /// <exception cref="NotSupportedException">Always thrown -- length is unknown for chunked transfer-encoded
-        /// response streams.</exception>
+        /// <summary>
+        /// Gets the length of the stream.
+        /// </summary>
+        /// <remarks>Always throws <see cref="NotSupportedException"/> -- this is a read-only decorator.</remarks>
         public override long Length => throw new NotSupportedException();
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets or sets the position of the stream.
+        /// </summary>
+        /// <remarks>Always throws <see cref="NotSupportedException"/> -- this is a read-only decorator.</remarks>
         /// <exception cref="NotSupportedException">Always thrown -- HTTP response streams are forward-only.</exception>
         public override long Position
         {
@@ -280,22 +285,21 @@ namespace Vector.NNTP.Utilities.IO
             set => throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
-        /// <remarks>Delegates to the inner stream.  Only meaningful when <see cref="CanTimeout"/> is
-        /// <see langword="true"/>.</remarks>
-        /// <exception cref="InvalidOperationException">Thrown when the inner stream does not support
-        /// timeouts.</exception>
+        /// <summary>
+        /// Gets or sets the read timeout.
+        /// </summary>
+        /// <remarks>Delegates to the inner stream.</remarks>
         public override int ReadTimeout
         {
             get => _inner.ReadTimeout;
             set => _inner.ReadTimeout = value;
         }
 
-        /// <inheritdoc />
-        /// <remarks>Always throws -- this is a read-only decorator.  Overridden explicitly to provide a consistent
-        /// <see cref="NotSupportedException"/> rather than the base <see cref="Stream.WriteTimeout"/> which throws
-        /// <see cref="InvalidOperationException"/> with a less descriptive message.</remarks>
-        /// <exception cref="NotSupportedException">Always thrown -- write operations are not supported.</exception>
+        /// <summary>
+        /// Gets or sets the write timeout.
+        /// </summary>
+        /// <remarks>Always throws <see cref="NotSupportedException"/> -- this is a read-only decorator.</remarks>
+        /// <exception cref="NotSupportedException">Always thrown -- this is a read-only decorator.</exception>
         public override int WriteTimeout
         {
             get => throw new NotSupportedException();
@@ -307,8 +311,7 @@ namespace Vector.NNTP.Utilities.IO
         /// request to the remaining byte allowance before delegating to the inner stream.
         /// </summary>
         /// <remarks>
-        /// <para>This is the primary read path -- <see cref="System.Text.Json.JsonDocument.ParseAsync(Stream,
-        /// System.Text.Json.JsonDocumentOptions?, CancellationToken)"/> reads exclusively via this
+        /// <para>This is the primary read path -- <see cref="M:System.Text.Json.JsonDocument.ParseAsync(System.IO.Stream,System.Text.Json.JsonDocumentOptions,System.Threading.CancellationToken)"/> reads exclusively via this
         /// <see cref="Memory{T}"/>-based overload on .NET 8.</para>
         /// <para>The buffer is sliced to <c>min(buffer.Length, remaining)</c> before the inner read, guaranteeing
         /// zero bytes are delivered beyond the limit.</para>
@@ -373,8 +376,7 @@ namespace Vector.NNTP.Utilities.IO
         /// </summary>
         /// <remarks>
         /// <para>Synchronous fallback for consumers that do not use the async read path.  Not called by
-        /// <see cref="System.Text.Json.JsonDocument.ParseAsync(Stream, System.Text.Json.JsonDocumentOptions?,
-        /// CancellationToken)"/> on .NET 8, but overridden for completeness.</para>
+        /// <see cref="M:System.Text.Json.JsonDocument.ParseAsync(System.IO.Stream,System.Text.Json.JsonDocumentOptions,System.Threading.CancellationToken)"/> on .NET 8, but overridden for completeness.</para>
         /// </remarks>
         /// <param name="buffer">The region of memory to write the read bytes into.</param>
         /// <returns>The number of bytes read, or 0 if the inner stream reached end-of-stream within the
@@ -443,11 +445,11 @@ namespace Vector.NNTP.Utilities.IO
 
         /// <summary>
         /// Copies the remaining content of this stream to <paramref name="destination"/>, enforcing the byte limit on
-        /// every read operation, using a pooled buffer from <see cref="ArrayPool{T}.Shared"/>.
+        /// every read operation, using a pooled buffer from <c>ArrayPool&lt;byte&gt;.Shared</c>.
         /// </summary>
         /// <remarks>
         /// <para><b>Why override:</b> The base <see cref="Stream.CopyTo(Stream, int)"/> allocates a fresh
-        /// <c>byte[]</c> on every call.  This override rents from <see cref="ArrayPool{T}.Shared"/> and returns the
+        /// <c>byte[]</c> on every call.  This override rents from <c>ArrayPool&lt;byte&gt;.Shared</c> and returns the
         /// buffer in a <c>finally</c> block, eliminating per-call GC pressure.  All reads pass through
         /// <see cref="Read(Span{byte})"/> which enforces the pre-clamped byte limit.</para>
         ///
@@ -519,11 +521,11 @@ namespace Vector.NNTP.Utilities.IO
 
         /// <summary>
         /// Asynchronously copies the remaining content of this stream to <paramref name="destination"/>, enforcing the
-        /// byte limit on every read operation, using a pooled buffer from <see cref="ArrayPool{T}.Shared"/>.
+        /// byte limit on every read operation, using a pooled buffer from <c>ArrayPool&lt;byte&gt;.Shared</c>.
         /// </summary>
         /// <remarks>
         /// <para><b>Why override:</b> The base <see cref="Stream.CopyToAsync(Stream, int, CancellationToken)"/>
-        /// allocates a fresh <c>byte[]</c> on every call.  This override rents from <see cref="ArrayPool{T}.Shared"/>
+        /// allocates a fresh <c>byte[]</c> on every call.  This override rents from <c>ArrayPool&lt;byte&gt;.Shared</c>
         /// and returns the buffer in a <c>finally</c> block, eliminating per-call GC pressure.  All reads pass through
         /// <see cref="ReadAsync(Memory{byte}, CancellationToken)"/> which enforces the pre-clamped byte limit.</para>
         ///
@@ -585,8 +587,7 @@ namespace Vector.NNTP.Utilities.IO
         /// </summary>
         /// <remarks>
         /// <para><b>Why throw instead of returning 0 (end-of-stream):</b> Returning 0 would silently truncate an
-        /// oversized response -- <see cref="System.Text.Json.JsonDocument.ParseAsync(Stream,
-        /// System.Text.Json.JsonDocumentOptions?, CancellationToken)"/> would parse the incomplete JSON and either throw
+        /// oversized response -- <see cref="M:System.Text.Json.JsonDocument.ParseAsync(System.IO.Stream,System.Text.Json.JsonDocumentOptions,System.Threading.CancellationToken)"/> would parse the incomplete JSON and either throw
         /// a confusing <see cref="System.Text.Json.JsonException"/> ("unexpected end of JSON input") or return a partial
         /// document missing trailing fields.  Throwing <see cref="InvalidOperationException"/> with a clear diagnostic
         /// message is preferable -- the caller knows the response was too large, not malformed.</para>
@@ -594,7 +595,7 @@ namespace Vector.NNTP.Utilities.IO
         /// <para><b>Exact-size responses:</b> A response whose body is exactly <c>maxBytes</c> bytes will exhaust the
         /// allowance during the final read (which is clamped to the remaining bytes).  The <em>next</em> read attempt
         /// finds <c>remaining &lt;= 0</c> and enters this method.  Throwing is correct because the limit
-        /// (<see cref="AcmeCertificateProvider.MaxCloudflareResponseBytes"/> = 1 MB) is ~200x larger than any
+        /// (<c>MaxCloudflareResponseBytes</c> = 1 MB) is ~200x larger than any
         /// legitimate Cloudflare API response (2-5 KB) -- a response consuming the entire allowance is definitively
         /// oversized, not a coincidental exact fit.</para>
         ///
@@ -638,8 +639,8 @@ namespace Vector.NNTP.Utilities.IO
         /// method IL below the JIT inlining threshold.
         /// </summary>
         /// <remarks>
-        /// <para>Uses <see cref="Volatile.Read(ref int)"/> for a single atomic read of <see cref="_disposed"/>,
-        /// consistent with the guard pattern used by <see cref="CertificateRenewalService"/>.</para>
+        /// <para>Uses <see cref="M:System.Threading.Volatile.Read(System.Int32@)"/> for a single atomic read of <c>_disposed</c>,
+        /// consistent with the guard pattern used by <c>CertificateRenewalService</c>.</para>
         /// </remarks>
         private void ThrowIfDisposed()
         {
@@ -650,8 +651,8 @@ namespace Vector.NNTP.Utilities.IO
         /// Debug-only: asserts that no concurrent read is in progress.  In release builds, compiles to a no-op.
         /// </summary>
         /// <remarks>
-        /// Uses <see cref="Interlocked.Exchange(ref int, int)"/> to atomically set the guard and detect re-entrancy.
-        /// A <see cref="Interlocked.Exchange(ref int, int)"/>-based set with <see cref="Debug.Assert(bool, string?)"/>
+        /// Uses <see cref="M:System.Threading.Interlocked.Exchange(System.Int32@,System.Int32)"/> to atomically set the guard and detect re-entrancy.
+        /// An <see cref="M:System.Threading.Interlocked.Exchange(System.Int32@,System.Int32)"/>-based set with <see cref="Debug.Assert(bool, string?)"/>
         /// is sufficient for fail-fast assertion semantics.
         /// </remarks>
         [Conditional("DEBUG")]
@@ -674,85 +675,94 @@ namespace Vector.NNTP.Utilities.IO
 #endif
         }
 
-        /// <inheritdoc />
-        /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only
-        /// decorator.</exception>
+        /// <summary>
+        /// Throws <see cref="NotSupportedException"/> when write is attempted.
+        /// </summary>
+        /// <param name="buffer">The buffer to write.</param>
+        /// <param name="offset">The offset to write from.</param>
+        /// <param name="count">The number of bytes to write.</param>
+        /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only decorator.</exception>
         public override void Write(byte[] buffer, int offset, int count)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
-        /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only
-        /// decorator.</exception>
+        /// <summary>
+        /// Throws <see cref="NotSupportedException"/> when write is attempted.
+        /// </summary>
+        /// <param name="buffer">The buffer to write.</param>
+        /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only decorator.</exception>
         public override void Write(ReadOnlySpan<byte> buffer)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
-        /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only
-        /// decorator.</exception>
+        /// <summary>
+        /// Throws <see cref="NotSupportedException"/> when write is attempted.
+        /// </summary>
+        /// <param name="buffer">The buffer to write.</param>
+        /// <param name="offset">The offset to write from.</param>
+        /// <param name="count">The number of bytes to write.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only decorator.</exception>
         public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
-        /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only
-        /// decorator.</exception>
+        /// <summary>
+        /// Throws <see cref="NotSupportedException"/> when write is attempted.
+        /// </summary>
+        /// <param name="buffer">The buffer to write.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <exception cref="NotSupportedException">Always thrown -- write is not supported on a read-only decorator.</exception>
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
-        /// <exception cref="NotSupportedException">Always thrown -- HTTP response streams are forward-only.</exception>
+        /// <summary>
+        /// Throws <see cref="NotSupportedException"/> when seek is attempted.
+        /// </summary>
+        /// <param name="offset">The offset to seek to.</param>
+        /// <param name="origin">The origin of the seek.</param>
+        /// <exception cref="NotSupportedException">Always thrown -- seek is not supported on a read-only decorator.</exception>
         public override long Seek(long offset, SeekOrigin origin)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
-        /// <exception cref="NotSupportedException">Always thrown -- length mutation is not supported on a read-only
-        /// decorator.</exception>
+        /// <summary>
+        /// Throws <see cref="NotSupportedException"/> when set length is attempted.
+        /// </summary>
+        /// <param name="value">The new length.</param>
+        /// <exception cref="NotSupportedException">Always thrown -- set length is not supported on a read-only decorator.</exception>
         public override void SetLength(long value)
         {
             throw new NotSupportedException();
         }
 
-        /// <inheritdoc />
-        /// <remarks>No-op -- flushing a read-only stream has no effect.</remarks>
+        /// <summary>
+        /// Does nothing.
+        /// </summary>
         public override void Flush()
         {
         }
 
-        /// <inheritdoc />
-        /// <remarks>
-        /// Returns a completed <see cref="Task"/> directly when the cancellation token has not been requested,
-        /// avoiding the base <see cref="Stream.FlushAsync(CancellationToken)"/> implementation which calls
-        /// <see cref="Flush"/> via <see cref="Task.Factory.StartNew(Action, CancellationToken)"/> -- an unnecessary
-        /// thread-pool hop for a no-op operation.  Honours the <paramref name="cancellationToken"/> by returning a
-        /// cancelled task when cancellation has already been requested.
-        /// </remarks>
+        /// <summary>
+        /// Returns a completed task.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A completed task.</returns>
         public override Task FlushAsync(CancellationToken cancellationToken)
         {
             return cancellationToken.IsCancellationRequested ? Task.FromCanceled(cancellationToken) : Task.CompletedTask;
         }
 
-        /// <inheritdoc />
-        /// <remarks>
-        /// <para>Sets the <see cref="_disposed"/> flag via <see cref="Interlocked.Exchange(ref int, int)"/> to prevent
-        /// subsequent reads from proceeding.  Calls <see cref="Stream.Dispose(bool)">base.Dispose(disposing)</see> to
-        /// satisfy CA2215 and maintain the <see cref="Stream"/> disposal contract.  The base
-        /// <see cref="Stream.Dispose(bool)"/> implementation is an empty virtual method on .NET 8 -- calling it is a
-        /// zero-cost no-op that keeps the analyser happy without introducing any side effects.</para>
-        ///
-        /// <para>This stream does <em>not</em> own the inner stream.  The caller manages the inner stream's lifetime
-        /// via the outer <c>await using</c> on <see cref="HttpContent.ReadAsStreamAsync(CancellationToken)"/>.  The
-        /// <see cref="_disposed"/> flag prevents reads after disposal but no inner-stream cleanup is
-        /// performed.</para>
-        /// </remarks>
+        /// <summary>
+        /// Disposes the stream.
+        /// </summary>
+        /// <param name="disposing">Whether the stream is being disposed.</param>
         protected override void Dispose(bool disposing)
         {
             _ = Interlocked.Exchange(ref _disposed, 1);
@@ -761,21 +771,11 @@ namespace Vector.NNTP.Utilities.IO
             base.Dispose(disposing);
         }
 
-        /// <inheritdoc />
-        /// <remarks>
-        /// <para>Sets the <see cref="_disposed"/> flag and returns a completed <see cref="ValueTask"/>.  Overridden
-        /// explicitly to prevent the base <see cref="Stream.DisposeAsync"/> from executing its default implementation,
-        /// which calls <see cref="Stream.Close"/> -> <see cref="Dispose(bool)">Dispose(true)</see> ->
-        /// <see cref="GC.SuppressFinalize(object)"/>.  The <c>SuppressFinalize</c> is unnecessary because this class
-        /// is <see langword="sealed"/> and has no finalizer, and the <c>Close</c> -> <c>Dispose(true)</c> chain would
-        /// redundantly call <c>base.Dispose(true)</c> which we already handle in
-        /// <see cref="Dispose(bool)"/>.</para>
-        ///
-        /// <para>CA2215 is suppressed on this method because the base <see cref="Stream.DisposeAsync"/> triggers the
-        /// <c>Close</c> -> <c>SuppressFinalize</c> chain described above -- calling it would introduce unnecessary
-        /// overhead for a class that has no resources to release asynchronously.  The synchronous
-        /// <see cref="Dispose(bool)"/> override satisfies the disposal contract.</para>
-        /// </remarks>
+        /// <summary>
+        /// Disposes the stream asynchronously.
+        /// </summary>
+        /// <returns>A completed task.</returns>
+        /// <remarks>Sets the <c>_disposed</c> flag and returns a completed <see cref="ValueTask"/>.</remarks>
         public override ValueTask DisposeAsync()
         {
             return Interlocked.Exchange(ref _disposed, 1) != 0 ? default : base.DisposeAsync();

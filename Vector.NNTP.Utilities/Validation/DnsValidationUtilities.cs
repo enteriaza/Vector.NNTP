@@ -18,7 +18,7 @@ namespace Vector.NNTP.Utilities.Validation
     /// DNS resolution helpers for options validation.
     /// </summary>
     /// <remarks>
-    /// <para><b>Blocking:</b> Uses <see cref="System.Net.Dns.GetHostEntry(string)"/> for non-literal hosts. Invoke only from startup
+    /// <para><b>Blocking:</b> Uses <see cref="M:System.Net.Dns.GetHostEntry(System.String)"/> for non-literal hosts. Invoke only from startup
     /// validation, not hot paths.</para>
     ///
     /// <para><b>Exception policy:</b> <see cref="TryValidateHost"/> never throws for resolution failures; errors are returned via

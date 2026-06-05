@@ -19,7 +19,7 @@ namespace Vector.NNTP.Utilities.Internal
     /// <para><b>Performance:</b> HOT PATH — used from stream read entry points; throw path isolated via BCL
     /// <see cref="ObjectDisposedException.ThrowIf(bool, object?)"/>.</para>
     ///
-    /// <para><b>Thread safety:</b> Methods are stateless; callers must set <paramref name="disposedFlag"/> with
+    /// <para><b>Thread safety:</b> Methods are stateless; callers must set the <c>disposedFlag</c> field with
     /// <see cref="Interlocked"/> or <see cref="Volatile"/> writes.</para>
     /// </remarks>
     internal static class GuardUtilities

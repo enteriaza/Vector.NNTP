@@ -6,13 +6,18 @@
     <PlatformTarget>x64</PlatformTarget>
 
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!--
-      XML-doc generation remains enabled (GenerateDocumentationFile=true).
-      These NoWarn entries suppress specific XML-doc compiler diagnostics so they do not fail the build under TreatWarningsAsErrors:
-        - CS1591: missing XML comment (we require XML docs via StyleCop rules, not CS1591)
-        - CS1574/CS1580/CS1734: unresolved/mismatched <see cref="..."/> / <paramref> references
-        - CS0419: ambiguous cref reference resolution
-    -->
-    <NoWarn>$(NoWarn);CS1591;CS1574;CS0419;CS1580;CS1734</NoWarn>
+  
+    <MajorVersion>1</MajorVersion>
+    <MinorVersion>1</MinorVersion>
+    <BuildNumber>$([System.DateTime]::UtcNow.DayOfYear)</BuildNumber>
+    <RevisionNumber>$([System.Math]::Floor($([MSBuild]::Divide($([System.DateTime]::UtcNow.TimeOfDay.TotalSeconds), 2))))</RevisionNumber>
+
+    <!-- Generates versions like 1.1.86.32411 -->
+    <AssemblyVersion>$(MajorVersion).$(MinorVersion).$(BuildNumber).$(RevisionNumber)</AssemblyVersion>
+    <FileVersion>$(AssemblyVersion)</FileVersion>
+    <Version>$(AssemblyVersion)</Version>
+
+    <!-- Prevent Git commit hash from being appended to Product version -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>

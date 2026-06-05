@@ -33,9 +33,24 @@ namespace Vector.NNTP.Utilities.Parsing
         /// </summary>
         public const byte Tab = (byte)'\t';
 
+        /// <summary>
+        /// ASCII carriage return byte (0x0D).
+        /// </summary>
         private const byte CR = (byte)'\r';
+
+        /// <summary>
+        /// ASCII line feed byte (0x0A).
+        /// </summary>
         private const byte LF = (byte)'\n';
+
+        /// <summary>
+        /// ASCII digit 0 byte (0x30).
+        /// </summary>
         private const byte Digit0 = (byte)'0';
+
+        /// <summary>
+        /// ASCII digit 9 byte (0x39).
+        /// </summary>
         private const byte Digit9 = (byte)'9';
 
         /// <summary>

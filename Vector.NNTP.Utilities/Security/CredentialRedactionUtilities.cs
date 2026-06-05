@@ -13,9 +13,24 @@ namespace Vector.NNTP.Utilities.Security
     /// </summary>
     public static partial class CredentialRedactionUtilities
     {
+        /// <summary>
+        /// The minimum length of a token to be partially revealed.
+        /// </summary>
         private const int MinPartialRevealLength = 12;
+
+        /// <summary>
+        /// The prefix length of a token to be partially revealed.
+        /// </summary>
         private const int RevealPrefix = 4;
+
+        /// <summary>
+        /// The suffix length of a token to be partially revealed.
+        /// </summary>
         private const int RevealSuffix = 4;
+
+        /// <summary>
+        /// The placeholder string used to mask partially revealed tokens.
+        /// </summary>
         private const string MaskPlaceholder = "****";
 
         /// <summary>
@@ -66,12 +81,21 @@ namespace Vector.NNTP.Utilities.Security
             return RedactConnectionString(RedactPassword(value));
         }
 
+        /// <summary>
+        /// The regex pattern for redacting password segments in comma-delimited connection strings.
+        /// </summary>
         [GeneratedRegex(@"(?i)\bpassword\s*=\s*[^,]+", RegexOptions.CultureInvariant)]
         private static partial Regex PasswordCommaDelimitedRegex();
 
+        /// <summary>
+        /// The regex pattern for redacting password segments in semicolon-delimited connection strings.
+        /// </summary>
         [GeneratedRegex(@"(?i)(^|;)\s*Password\s*=\s*[^;]+", RegexOptions.CultureInvariant)]
         private static partial Regex PasswordSemicolonDelimitedRegex();
 
+        /// <summary>
+        /// The regex pattern for redacting password segments in semicolon-delimited connection strings.
+        /// </summary>
         [GeneratedRegex(@"(?i)(^|;)\s*Pwd\s*=\s*[^;]+", RegexOptions.CultureInvariant)]
         private static partial Regex PwdSemicolonDelimitedRegex();
     }

@@ -17,7 +17,7 @@ namespace Vector.NNTP.Utilities.Internal
     /// </summary>
     /// <remarks>
     /// <para><b>Performance:</b> HOT PATH — eliminates per-call <c>new byte[]</c> in
-    /// <see cref="Stream.CopyTo"/> overrides. Buffers are not cleared on return (callers overwrite via reads).</para>
+    /// <c>Stream.CopyTo(Stream, int)</c> overrides. Buffers are not cleared on return (callers overwrite via reads).</para>
     ///
     /// <para><b>Thread safety:</b> <see cref="ArrayPool{T}.Shared"/> is thread-safe.</para>
     /// </remarks>
