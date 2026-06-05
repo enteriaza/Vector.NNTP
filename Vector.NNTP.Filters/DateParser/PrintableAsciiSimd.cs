@@ -17,7 +17,7 @@ namespace Vector.NNTP.Filters.DateParser
     /// </summary>
     /// <remarks>
     /// <para><b>Usage:</b> Used by <see cref="NewsDateParser"/> quick-parse to reject obviously non-ASCII garbage before calling
-    /// <see cref="DateTimeOffset.TryParse(ReadOnlySpan{char}, IFormatProvider?, DateTimeStyles, out DateTimeOffset)"/>.</para>
+    /// <see cref="M:System.DateTimeOffset.TryParse(System.ReadOnlySpan{System.Char},System.IFormatProvider,System.Globalization.DateTimeStyles,System.DateTimeOffset@)"/>.</para>
     ///
     /// <para><b>Performance:</b> HOT PATH — Vector256/Vector128 where available; scalar tail for remainder.</para>
     /// </remarks>

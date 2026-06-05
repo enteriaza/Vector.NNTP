@@ -81,7 +81,10 @@ namespace Vector.NNTP.Filters.SpamAssassin
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Disposes the spamd wire session.
+        /// </summary>
+        /// <returns>A task that completes when the spamd wire session is disposed.</returns>
         public ValueTask DisposeAsync()
         {
             _stream.Dispose();

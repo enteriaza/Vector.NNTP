@@ -27,6 +27,10 @@ namespace Vector.NNTP.Filters.SpamAssassin
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is <see langword="null"/>.</exception>
     public sealed class SpamAssassin(SpamAssassinOptions options)
     {
+        /// <summary>
+        /// Validated spamd host, port, and timeout settings supplied at construction.
+        /// </summary>
+        /// <value>The spamd host, port, and timeout settings.</value>
         private readonly SpamAssassinOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
         /// <summary>
@@ -192,8 +196,11 @@ namespace Vector.NNTP.Filters.SpamAssassin
             using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_options.OperationTimeoutMilliseconds);
 
-            await using SpamdWireSession session = await SpamdWireSession.ConnectAsync(_options, timeoutCts.Token).ConfigureAwait(false);
-            return await session.ExecuteAsync(command, articleUtf8, extraRequestHeaders, timeoutCts.Token).ConfigureAwait(false);
+            SpamdWireSession session = await SpamdWireSession.ConnectAsync(_options, timeoutCts.Token).ConfigureAwait(false);
+            await using (session.ConfigureAwait(false))
+            {
+                return await session.ExecuteAsync(command, articleUtf8, extraRequestHeaders, timeoutCts.Token).ConfigureAwait(false);
+            }
         }
     }
 }
