@@ -631,6 +631,7 @@ namespace Vector.NNTP.Sockets.Authentication
         /// <param name="session">Active session.</param>
         private void ResetAuth(NntpSession session)
         {
+            this._saslAccountAuthenticator?.AbandonSaslExchange();
             session.State.AuthenticationState = Session.AuthenticationState.None;
             session.State.PendingAuthInfoUser = null;
             session.State.PendingSaslMechanism = null;

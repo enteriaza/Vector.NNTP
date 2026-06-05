@@ -5,6 +5,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Vector.NNTP.Session.Accounts;
 using Vector.NNTP.Sockets.Authentication;
 
 namespace Vector.NNTP.Auth.MySql
@@ -38,12 +40,9 @@ namespace Vector.NNTP.Auth.MySql
 
             string? connectionString = configuration.GetConnectionString("MainDB");
 
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                throw new InvalidOperationException("Connection string 'MainDB' is required.");
-            }
-
-            return services.AddNntpMySqlAuth(connectionString);
+            return string.IsNullOrWhiteSpace(connectionString)
+                ? throw new InvalidOperationException("Connection string 'MainDB' is required.")
+                : services.AddNntpMySqlAuth(connectionString);
         }
 
         /// <summary>
@@ -53,6 +52,12 @@ namespace Vector.NNTP.Auth.MySql
         /// <para>
         /// <b>Configuration:</b> The MySQL command timeouts and pooling policy are supplied through the connection string
         /// (for example <c>DefaultCommandTimeout</c>). There is no additional options section bound by this method.
+        /// </para>
+        /// <para>
+        /// <b>Registration:</b> <see cref="MySqlAuthOptions"/> is registered as a singleton with the validated connection
+        /// string, and <see cref="INntpUserRecordStore"/> is registered as
+        /// <c>AddSingleton&lt;INntpUserRecordStore, MySqlUserRecordStore&gt;</c> so the container constructs the store by
+        /// type rather than a factory delegate.
         /// </para>
         /// <para>
         /// <b>Integration:</b> Hosts should call this after <c>AddNntpSocketsReader</c> or <c>AddNntpSocketsTransit</c>.
@@ -68,19 +73,25 @@ namespace Vector.NNTP.Auth.MySql
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            MySqlAuthConnectionStringValidator.ValidateOrThrow(connectionString, nameof(connectionString));
-
             _ = services.RemoveAll<INntpCredentialValidator>();
             _ = services.RemoveAll<INntpSaslAccountAuthenticator>();
             _ = services.RemoveAll<ICramMd5CredentialStore>();
             _ = services.RemoveAll<IScramCredentialStore>();
 
-            _ = services.AddSingleton<INntpUserRecordStore>(_ => new MySqlUserRecordStore(connectionString));
-            _ = services.AddSingleton<MySqlNntpCredentialValidator>();
+            _ = services.AddSingleton(new MySqlAuthOptions(connectionString));
+            _ = services.AddSingleton<INntpUserRecordStore, MySqlUserRecordStore>();
+            _ = services.AddSingleton(static (IServiceProvider sp) => new MySqlNntpCredentialValidator(
+                sp.GetRequiredService<INntpUserRecordStore>(),
+                sp.GetRequiredService<IAccountKeyNormalizer>(),
+                sp.GetRequiredService<ILogger<MySqlNntpCredentialValidator>>()));
             _ = services.AddSingleton<INntpCredentialValidator>(static sp => sp.GetRequiredService<MySqlNntpCredentialValidator>());
             _ = services.AddSingleton<INntpSaslAccountAuthenticator>(static sp => sp.GetRequiredService<MySqlNntpCredentialValidator>());
-            _ = services.AddSingleton<ICramMd5CredentialStore, MySqlCramMd5CredentialStore>();
-            _ = services.AddSingleton<IScramCredentialStore, MySqlScramCredentialStore>();
+            _ = services.AddSingleton<ICramMd5CredentialStore>(static sp => new MySqlCramMd5CredentialStore(
+                sp.GetRequiredService<INntpUserRecordStore>(),
+                sp.GetRequiredService<ILogger<MySqlCramMd5CredentialStore>>()));
+            _ = services.AddSingleton<IScramCredentialStore>(static sp => new MySqlScramCredentialStore(
+                sp.GetRequiredService<INntpUserRecordStore>(),
+                sp.GetRequiredService<ILogger<MySqlScramCredentialStore>>()));
 
             return services;
         }

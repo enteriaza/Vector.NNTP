@@ -1,7 +1,7 @@
 // <copyright file="AcmeCertificateProvider.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-// AcmeCertificateProvider.cs — RequestCertificateAsync entry point, and IDisposable implementation.
+// AcmeCertificateProvider.cs — RequestCertificateAsync entry point.
 //
 // This class encapsulates all ACME protocol interactions with Let's Encrypt: account management, DNS-01 challenge
 // orchestration via Cloudflare, authoritative DNS polling, and order finalisation.  The implementation is split across
@@ -13,24 +13,20 @@
 //                                                        and challenge validation with Let's Encrypt.
 //   AcmeCertificateProvider.OrderFinalisation.cs      — Order readiness polling, CSR generation, PFX construction,
 //                                                        and certificate key management.
-//   AcmeCertificateProvider.CloudflareDns.cs          — Cloudflare REST API interactions: TXT record CRUD,
-//                                                        authoritative nameserver resolution, and DNS propagation
-//                                                        polling.
+//   AcmeCertificateProvider.CloudflareDns.cs          — Cloudflare REST API interactions: TXT record CRUD.
 //   AcmeCertificateProvider.Logging.cs                — [LoggerMessage] source-generated partial methods for all
 //                                                        structured log messages across all partial files.
 //
 // Lifecycle:
 //   Created by CertificateRenewalService.ExecuteAsync once options are validated and LetsEncryptOptions.Enabled is
-//   true.  The only mutable instance state is the cached authoritative nameserver IPs (resolved once on first renewal,
-//   reused across subsequent cycles to avoid a redundant Cloudflare GET /zones/{id} API call per renewal).
+//   true.
 //
 // Flow per call to RequestCertificateAsync:
 //   1. Load ACME account key from configuration (AccountKeyPem in appsettings.json)
-//   2. Resolve zone authoritative NS via Cloudflare GET /zones/{id} (cached after first call)
-//   3. Create ACME order for all DomainNames
-//   4. For each authorization:
+//   2. Create ACME order for all DomainNames
+//   3. For each authorization:
 //      a. Create _acme-challenge TXT record via Cloudflare API
-//      b. Poll authoritative NS until TXT visible (~2-5 s)
+//      b. Poll authoritative NS via IDnsTxtPropagationProbe until quorum (~2-5 s)
 //      c. Validate challenge with Let's Encrypt
 //   5. Finalise order with ES256 CSR -> PFX -> disk
 //   6. Cleanup all TXT records (best-effort, uncancellable)
@@ -59,7 +55,6 @@ using Certes.Acme.Resource;
 using Vector.NNTP.Encryption.Acme;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.Dns;
-using Vector.NNTP.Utilities.Disposal;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 
@@ -82,26 +77,23 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
     ///   <item><description><c>AcmeCertificateProvider.OrderFinalisation.cs</c> -- order readiness polling, CSR generation,
     ///     PFX construction from the ACME certificate chain, and certificate key management.</description></item>
     ///   <item><description><c>AcmeCertificateProvider.CloudflareDns.cs</c> -- Cloudflare REST API interactions for TXT
-    ///     record CRUD, authoritative nameserver resolution, and DNS propagation polling.</description></item>
+    ///     record CRUD.</description></item>
     ///   <item><description><c>AcmeCertificateProvider.Logging.cs</c> -- <see cref="LoggerMessageAttribute"/>
     ///     source-generated partial methods for all structured log messages across all partial files.</description></item>
     /// </list>
     ///
     /// <para><b>Lifecycle:</b> Created by <see cref="CertificateRenewalService.ExecuteAsync"/> once options are validated
     /// and <see cref="LetsEncryptOptions.Enabled"/> is <see langword="true"/>.  Stateless between calls to
-    /// <see cref="RequestCertificateAsync"/> -- no mutable instance state is carried across renewal cycles except the
-    /// cached authoritative DNS client.</para>
+    /// <see cref="RequestCertificateAsync"/>.</para>
     ///
     /// <para><b>ACME flow (DNS-01):</b></para>
     /// <list type="number">
     ///   <item><description>Load the ACME account key from <see cref="LetsEncryptOptions.AccountKeyPem"/> (configuration)
     ///     and verify or register the account with the ACME server.</description></item>
-    ///   <item><description>Resolve the zone's authoritative nameservers via the Cloudflare <c>GET /zones/{id}</c> API,
-    ///     then resolve each NS hostname to IP addresses for direct polling.</description></item>
     ///   <item><description>Create a new ACME order for all <see cref="LetsEncryptOptions.DomainNames"/>.</description></item>
     ///   <item><description>For each authorisation, create a <c>_acme-challenge</c> TXT record via the Cloudflare API,
-    ///     poll the authoritative nameservers until the record is visible (typically 2--5 s), then tell Let's Encrypt to
-    ///     validate.</description></item>
+    ///     poll authoritative nameservers via <see cref="IDnsTxtPropagationProbe"/> until quorum is reached (typically
+    ///     2--5 s), then tell Let's Encrypt to validate.</description></item>
     ///   <item><description>Finalise the order with a CSR signed by a persisted ES256 certificate key (stable fingerprint
     ///     across renewals).</description></item>
     ///   <item><description>Save the PFX to disk via <see cref="CertificateStore"/>.</description></item>
@@ -109,11 +101,9 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
     ///     <see cref="CleanupTxtRecordsAsync"/>).</description></item>
     /// </list>
     ///
-    /// <para><b>Authoritative DNS polling:</b> After creating a TXT record, the service polls the zone's authoritative
-    /// nameservers directly (bypassing recursive resolvers and their caches) using <see cref="LegacyAuthoritativeDnsClient"/>
-    /// -- a minimal UDP DNS client that replaces the DnsClient NuGet package.  This reduces DNS propagation wait time from
-    /// a fixed 20--60 s to typically 2--5 s.  If authoritative nameservers cannot be resolved, a fixed
-    /// <see cref="DnsFallbackDelaySeconds"/> delay is used as a safe fallback.</para>
+    /// <para><b>Authoritative DNS polling:</b> After creating a TXT record, the service polls authoritative nameservers
+    /// via <see cref="IDnsTxtPropagationProbe"/> (wire-format UDP/TCP client with quorum).  This reduces DNS propagation
+    /// wait time from a fixed 20--60 s to typically 2--5 s.</para>
     ///
     /// <para><b>Cloudflare API:</b> All HTTP calls use a shared static <see cref="CloudflareHttpClient"/> with
     /// <see cref="SocketsHttpHandler.PooledConnectionLifetime"/> set to 5 minutes for DNS rotation.  The API token requires
@@ -133,12 +123,6 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
     /// <para><b>Thread safety:</b> The class is safe for sequential reuse across renewal cycles.  It is not designed for
     /// concurrent calls to <see cref="RequestCertificateAsync"/> -- the ACME protocol is inherently sequential per
     /// order.</para>
-    ///
-    /// <para><b>Disposable resources:</b> The <see cref="_dnsInitLock"/> <see cref="SemaphoreSlim"/> is the sole owned
-    /// disposable resource.  <see cref="Dispose"/> releases it deterministically.  The static
-    /// <see cref="CloudflareHttpClient"/> is intentionally <em>not</em> disposed -- it is a process-lifetime singleton
-    /// managed by <see cref="SocketsHttpHandler.PooledConnectionLifetime"/>.  <see cref="CertificateRenewalService.Dispose"/>
-    /// calls <see cref="Dispose"/> via <see cref="DisposalUtilities.TryDispose"/>.</para>
     ///
     /// <para><b>Cross-platform:</b> Fully portable.  All methods use BCL APIs available on all .NET 8 runtimes (Windows
     /// x64, Linux x64).  No P/Invoke, no OS-specific APIs.  PFX key storage flags are resolved at type-load time by
@@ -161,7 +145,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
     internal sealed partial class AcmeCertificateProvider(
         ILogger logger,
         LetsEncryptOptions options,
-        IDnsTxtPropagationProbe dnsTxtProbe) : IDisposable
+        IDnsTxtPropagationProbe dnsTxtProbe)
     {
         #region Constants
 
@@ -203,15 +187,6 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         private const int CloudflareMaxConcurrentDeletes = 5;
 
         /// <summary>
-        /// Fixed delay (in seconds) used as a DNS propagation fallback when authoritative nameservers cannot be resolved.
-        /// </summary>
-        /// <remarks>
-        /// 20 seconds is a conservative lower bound for global DNS propagation -- sufficient for Cloudflare's typical
-        /// sub-5 s propagation while accounting for slower anycast regions.
-        /// </remarks>
-        private const int DnsFallbackDelaySeconds = 20;
-
-        /// <summary>
         /// Maximum number of times to poll the ACME order for <see cref="OrderStatus.Ready"/> or
         /// <see cref="OrderStatus.Valid"/> status before raising an <see cref="InvalidOperationException"/>.
         /// </summary>
@@ -231,15 +206,6 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// submission.
         /// </summary>
         private static readonly TimeSpan OrderPollInterval = TimeSpan.FromSeconds(2);
-
-        /// <summary>
-        /// Maximum time to wait for a TXT record to become visible on the authoritative nameservers before proceeding
-        /// with ACME validation anyway (legacy single-NS polling path).
-        /// </summary>
-        private static readonly TimeSpan DnsPropagationTimeout = TimeSpan.FromSeconds(60);
-
-        /// <summary>Interval between authoritative DNS TXT record visibility polls (legacy path).</summary>
-        private static readonly TimeSpan DnsPollInterval = TimeSpan.FromSeconds(2);
 
         /// <summary>
         /// Shared <see cref="HttpClient"/> for ACME directory HEAD requests (clock-skew guard).
@@ -396,29 +362,6 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
                 // Use CancellationToken.None -- orphaned TXT records pollute the DNS zone; cleanup must complete even during host shutdown.
                 await CleanupTxtRecordsAsync(createdRecords, CancellationToken.None).ConfigureAwait(false);
             }
-        }
-
-        #endregion
-
-        #region Dispose
-
-        /// <summary>
-        /// Releases the <see cref="_dnsInitLock"/> <see cref="SemaphoreSlim"/> used to guard one-time authoritative DNS
-        /// resolution.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Owned resources:</b> The only instance-owned disposable is <see cref="_dnsInitLock"/>.  The static
-        /// <see cref="CloudflareHttpClient"/> is a process-lifetime singleton and is intentionally not disposed -- see its
-        /// field remarks.</para>
-        ///
-        /// <para><b>Caller:</b> <see cref="CertificateRenewalService.Dispose"/> via
-        /// <see cref="DisposalUtilities.TryDispose"/> -- invoked during host shutdown after all hosted services have
-        /// stopped.  At that point, no concurrent <see cref="RequestCertificateAsync"/> call is in flight, so disposing
-        /// the semaphore is safe.</para>
-        /// </remarks>
-        public void Dispose()
-        {
-            _dnsInitLock.Dispose();
         }
 
         #endregion

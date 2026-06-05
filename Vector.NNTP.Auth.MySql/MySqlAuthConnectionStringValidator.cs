@@ -14,11 +14,15 @@ namespace Vector.NNTP.Auth.MySql
     internal static class MySqlAuthConnectionStringValidator
     {
         /// <summary>
-        /// Throws when <paramref name="connectionString"/> is blank or contains a template placeholder password.
+        /// Validates that the connection string is present, parseable by <see cref="MySqlConnectionStringBuilder"/>, and
+        /// does not contain placeholder credentials.
         /// </summary>
         /// <param name="connectionString">MySQL connection string for the <c>nntpusers</c> table.</param>
         /// <param name="paramName">Parameter name for exception messages.</param>
-        /// <exception cref="ArgumentException">Thrown when the connection string or password is invalid.</exception>
+        /// <exception cref="ArgumentException">
+        /// Thrown when <paramref name="connectionString"/> is blank, contains a placeholder user name or password, or is
+        /// not parseable as a MySQL connection string.
+        /// </exception>
         internal static void ValidateOrThrow(string connectionString, string paramName = "connectionString")
         {
             if (string.IsNullOrWhiteSpace(connectionString))
@@ -27,6 +31,13 @@ namespace Vector.NNTP.Auth.MySql
             }
 
             MySqlConnectionStringBuilder builder = new(connectionString);
+            if (CredentialPlaceholderDetector.IsPlaceholder(builder.UserID))
+            {
+                throw new ArgumentException(
+                    "Connection string user name is missing or a template placeholder.",
+                    paramName);
+            }
+
             if (CredentialPlaceholderDetector.IsPlaceholder(builder.Password))
             {
                 throw new ArgumentException(

@@ -61,40 +61,35 @@ namespace Vector.NNTP.Utilities.Dns
         public const int MaxLabelCount = 128;
 
         /// <summary>
-        /// Validates a DNS name for wire-format encoding: non-empty, no empty labels, per-label length limits, total QNAME
-        /// length, and ASCII-only content.
-        /// </summary>
-        /// <param name="name">DNS name in dotted form (e.g. <c>_acme-challenge.example.com</c>).</param>
-        /// <param name="error">On failure, a descriptive error string; on success, <see langword="null"/>.</param>
-        /// <returns><see langword="true"/> if valid; otherwise <see langword="false"/>.</returns>
-        public static bool TryValidateDnsName(string name, out string? error)
-        {
-            return TryValidateDnsName(name.AsSpan(), out error);
-        }
-
-        /// <summary>
-        /// Validates a DNS name for wire-format encoding: non-empty, no empty labels, per-label length limits, total QNAME
-        /// length, and ASCII-only content.
+        /// Validates a DNS name and computes wire QNAME length in a single label split.
         /// </summary>
         /// <param name="name">DNS name in dotted form.</param>
-        /// <param name="error">On failure, a descriptive error string; on success, <see langword="null"/>.</param>
-        /// <returns><see langword="true"/> if valid; otherwise <see langword="false"/>.</returns>
-        public static bool TryValidateDnsName(ReadOnlySpan<char> name, out string? error)
+        /// <param name="labelRanges">Stack buffer for label ranges.</param>
+        /// <param name="labelCount">Number of labels when validation succeeds.</param>
+        /// <param name="qnameLength">Wire QNAME length including root label.</param>
+        /// <param name="error">Error message on failure.</param>
+        /// <returns><see langword="true"/> when the name is valid.</returns>
+        public static bool TryGetWireNameLayout(
+            ReadOnlySpan<char> name,
+            Span<Range> labelRanges,
+            out int labelCount,
+            out int qnameLength,
+            out string? error)
         {
+            qnameLength = 0;
             if (name.IsEmpty)
             {
+                labelCount = 0;
                 error = "DNS name must not be null or empty.";
                 return false;
             }
 
-            Span<Range> labelRanges = stackalloc Range[MaxLabelCount];
-            if (!TrySplitDnsLabels(name, labelRanges, out int labelCount, out error))
+            if (!TrySplitDnsLabels(name, labelRanges, out labelCount, out error))
             {
                 return false;
             }
 
-            int qnameLength = 1;
-
+            qnameLength = 1;
             for (int i = 0; i < labelCount; i++)
             {
                 ReadOnlySpan<char> label = name[labelRanges[i]];
@@ -131,6 +126,31 @@ namespace Vector.NNTP.Utilities.Dns
         }
 
         /// <summary>
+        /// Validates a DNS name for wire-format encoding: non-empty, no empty labels, per-label length limits, total QNAME
+        /// length, and ASCII-only content.
+        /// </summary>
+        /// <param name="name">DNS name in dotted form (e.g. <c>_acme-challenge.example.com</c>).</param>
+        /// <param name="error">On failure, a descriptive error string; on success, <see langword="null"/>.</param>
+        /// <returns><see langword="true"/> if valid; otherwise <see langword="false"/>.</returns>
+        public static bool TryValidateDnsName(string name, out string? error)
+        {
+            return TryValidateDnsName(name.AsSpan(), out error);
+        }
+
+        /// <summary>
+        /// Validates a DNS name for wire-format encoding: non-empty, no empty labels, per-label length limits, total QNAME
+        /// length, and ASCII-only content.
+        /// </summary>
+        /// <param name="name">DNS name in dotted form.</param>
+        /// <param name="error">On failure, a descriptive error string; on success, <see langword="null"/>.</param>
+        /// <returns><see langword="true"/> if valid; otherwise <see langword="false"/>.</returns>
+        public static bool TryValidateDnsName(ReadOnlySpan<char> name, out string? error)
+        {
+            Span<Range> labelRanges = stackalloc Range[MaxLabelCount];
+            return TryGetWireNameLayout(name, labelRanges, out _, out _, out error);
+        }
+
+        /// <summary>
         /// Computes the wire-format QNAME length for a dotted DNS name, including the trailing root label.
         /// </summary>
         /// <param name="name">DNS name in dotted form (already validated).</param>
@@ -139,16 +159,12 @@ namespace Vector.NNTP.Utilities.Dns
         {
             ReadOnlySpan<char> span = name.AsSpan();
             Span<Range> labelRanges = stackalloc Range[MaxLabelCount];
-            int labelCount = span.Split(labelRanges, '.', StringSplitOptions.None);
-
-            int length = 1;
-            for (int i = 0; i < labelCount; i++)
+            if (!TryGetWireNameLayout(span, labelRanges, out _, out int qnameLength, out string? error))
             {
-                ReadOnlySpan<char> label = span[labelRanges[i]];
-                length += 1 + label.Length;
+                throw new ArgumentException(error, nameof(name));
             }
 
-            return length;
+            return qnameLength;
         }
 
         /// <summary>
@@ -162,20 +178,52 @@ namespace Vector.NNTP.Utilities.Dns
         {
             ReadOnlySpan<char> span = name.AsSpan();
             Span<Range> labelRanges = stackalloc Range[MaxLabelCount];
-            int labelCount = span.Split(labelRanges, '.', StringSplitOptions.None);
-
-            int requiredLength = 1;
-            for (int i = 0; i < labelCount; i++)
+            if (!TryGetWireNameLayout(span, labelRanges, out int labelCount, out int qnameLength, out string? error))
             {
-                requiredLength += 1 + span[labelRanges[i]].Length;
+                throw new ArgumentException(error, nameof(name));
             }
 
-            SpanValidationHelpers.EnsureDestinationLength(requiredLength, destination.Length, nameof(destination));
+            SpanValidationHelpers.EnsureDestinationLength(qnameLength, destination.Length, nameof(destination));
 
             int offset = 0;
             for (int i = 0; i < labelCount; i++)
             {
                 ReadOnlySpan<char> label = span[labelRanges[i]];
+                destination[offset++] = (byte)label.Length;
+                offset += EncodingUtilities.AsciiToSpan(label, destination[offset..]);
+            }
+
+            destination[offset++] = 0;
+            return offset;
+        }
+
+        /// <summary>
+        /// Encodes a pre-split dotted DNS name into QNAME wire format without re-splitting labels.
+        /// </summary>
+        /// <param name="name">Presentation-form DNS name.</param>
+        /// <param name="labelRanges">Label ranges from <see cref="TryGetWireNameLayout"/>.</param>
+        /// <param name="labelCount">Number of labels in <paramref name="labelRanges"/>.</param>
+        /// <param name="destination">Destination buffer.</param>
+        /// <returns>Bytes written (QNAME length).</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="destination"/> is too short.</exception>
+        public static int EncodeDnsName(
+            ReadOnlySpan<char> name,
+            ReadOnlySpan<Range> labelRanges,
+            int labelCount,
+            Span<byte> destination)
+        {
+            int qnameLength = 1;
+            for (int i = 0; i < labelCount; i++)
+            {
+                qnameLength += 1 + name[labelRanges[i]].Length;
+            }
+
+            SpanValidationHelpers.EnsureDestinationLength(qnameLength, destination.Length, nameof(destination));
+
+            int offset = 0;
+            for (int i = 0; i < labelCount; i++)
+            {
+                ReadOnlySpan<char> label = name[labelRanges[i]];
                 destination[offset++] = (byte)label.Length;
                 offset += EncodingUtilities.AsciiToSpan(label, destination[offset..]);
             }

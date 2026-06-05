@@ -36,5 +36,19 @@ namespace Vector.NNTP.Sockets.Authentication
             IPAddress clientIp,
             bool isTls,
             CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Discards any host-side user-record material stashed between SASL credential lookup and completion.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Contract:</b> <see cref="NntpAuthenticationService"/> invokes this from session auth reset paths (client
+        /// cancel, cryptographic failure, unsupported continuation) so a prior credential-store lookup does not leave
+        /// transient authentication state attached to the logical async call when
+        /// <see cref="CompleteSaslAccountAsync"/> never runs.
+        /// </para>
+        /// <para><b>Idempotence:</b> Implementations should treat repeated calls as safe no-ops.</para>
+        /// </remarks>
+        public void AbandonSaslExchange();
     }
 }

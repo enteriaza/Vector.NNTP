@@ -23,27 +23,46 @@ namespace Vector.NNTP.Auth.MySql
     /// </para>
     /// <para>
     /// <b>I/O model:</b> The underlying <see cref="INntpUserRecordStore"/> is asynchronous because it performs database I/O.
-    /// The SCRAM contract (<see cref="IScramCredentialStore"/>) is synchronous, so this implementation performs a
-    /// synchronous wait when it must consult the database. This is acceptable for the current socket-host design, but if
-    /// authentication throughput becomes a bottleneck, consider introducing an async SCRAM lookup contract end-to-end.
+    /// The SCRAM contract (<see cref="IScramCredentialStore"/>) is synchronous, so this implementation blocks on
+    /// <c>TryGetUserAsync</c> during credential lookup on the connection's command-loop context. Authentication volume is
+    /// negligible relative to article traffic on an NNTP server, so this is acceptable today; if SASL ever becomes hot-path,
+    /// introduce an async lookup contract (for example <c>ValueTask&lt;ScramStoredCredential?&gt;</c>) end-to-end instead of
+    /// deepening synchronous waits here.
+    /// </para>
+    /// <para>
+    /// <b>Cancellation:</b> <see cref="IScramCredentialStore"/> exposes no token, so lookups use
+    /// <see cref="CancellationToken.None"/> and cannot be aborted when the client disconnects mid-query.
+    /// </para>
+    /// <para>
+    /// <b>Cache contract:</b> A successful lookup calls <see cref="MySqlUserRecordSaslCache.Set"/>; hosts must call
+    /// <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/> on auth reset and
+    /// <see cref="INntpSaslAccountAuthenticator.CompleteSaslAccountAsync"/> on success (which clears via <c>finally</c>).
     /// </para>
     /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="MySqlScramCredentialStore"/> class.
-    /// </remarks>
-    /// <param name="recordStore">Backing user record store.</param>
-    /// <param name="logger">Logger instance.</param>
-    public sealed partial class MySqlScramCredentialStore(INntpUserRecordStore recordStore, ILogger<MySqlScramCredentialStore> logger) : IScramCredentialStore
+    public sealed partial class MySqlScramCredentialStore : IScramCredentialStore
     {
         /// <summary>
         /// Backing user record store.
         /// </summary>
-        private readonly INntpUserRecordStore _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
+        private readonly INntpUserRecordStore _recordStore;
 
         /// <summary>
         /// Logger instance.
         /// </summary>
-        private readonly ILogger<MySqlScramCredentialStore> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        private readonly ILogger<MySqlScramCredentialStore> _logger;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MySqlScramCredentialStore"/> class.
+        /// </summary>
+        /// <param name="recordStore">Backing user record store.</param>
+        /// <param name="logger">Logger instance.</param>
+        internal MySqlScramCredentialStore(
+            INntpUserRecordStore recordStore,
+            ILogger<MySqlScramCredentialStore> logger)
+        {
+            _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
 
         /// <summary>
         /// Tries to get a SCRAM credential for a username.
@@ -59,6 +78,7 @@ namespace Vector.NNTP.Auth.MySql
 
             try
             {
+                // IScramCredentialStore is synchronous; CancellationToken.None is required by that contract (see type remarks).
                 MySqlUserRecord? record = _recordStore
                     .TryGetUserAsync(username, CancellationToken.None)
                     .GetAwaiter()
@@ -99,6 +119,7 @@ namespace Vector.NNTP.Auth.MySql
                     record.ScramIterations,
                     record.ScramStoredKey,
                     record.ScramServerKey);
+                MySqlUserRecordSaslCache.Set(record);
                 ScramLookupSucceeded(_logger, username, record.ScramIterations);
                 return true;
             }

@@ -7,6 +7,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using Vector.NNTP.Encryption.Configuration;
+using Vector.NNTP.Utilities.Encoding;
 
 namespace Vector.NNTP.Encryption.Dns
 {
@@ -68,8 +69,10 @@ namespace Vector.NNTP.Encryption.Dns
             DateTimeOffset deadline = DateTimeOffset.UtcNow + budget;
 
             Dictionary<string, IReadOnlyList<IPAddress>> nsByRecord = new(StringComparer.OrdinalIgnoreCase);
-            foreach ((string recordName, _) in records)
+            Dictionary<string, byte[]> expectedBytesByRecord = new(StringComparer.OrdinalIgnoreCase);
+            foreach ((string recordName, string expectedTxt) in records)
             {
+                expectedBytesByRecord[recordName] = EncodingUtilities.AsciiToBytes(expectedTxt);
                 if (!nsByRecord.ContainsKey(recordName))
                 {
                     IReadOnlyList<IPAddress> ns = await DnsWireRecursiveResolver.ResolveAuthoritativeNameServerAddressesAsync(
@@ -86,10 +89,11 @@ namespace Vector.NNTP.Encryption.Dns
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 bool allOk = true;
-                foreach ((string recordName, string expectedTxt) in records)
+                foreach ((string recordName, _) in records)
                 {
                     IReadOnlyList<IPAddress> servers = nsByRecord[recordName];
-                    if (!await QuorumShowsTxtAsync(recordName, expectedTxt, servers, quorum, cancellationToken).ConfigureAwait(false))
+                    byte[] expectedBytes = expectedBytesByRecord[recordName];
+                    if (!await QuorumShowsTxtAsync(recordName, expectedBytes, servers, quorum, cancellationToken).ConfigureAwait(false))
                     {
                         allOk = false;
                         break;
@@ -113,14 +117,14 @@ namespace Vector.NNTP.Encryption.Dns
         /// Checks if the quorum of name servers shows the expected TXT record.
         /// </summary>
         /// <param name="recordName">The name of the record to check.</param>
-        /// <param name="expectedTxt">The expected TXT record.</param>
+        /// <param name="expectedTxt">The expected TXT record bytes (ASCII challenge digest).</param>
         /// <param name="nameServers">The name servers to check.</param>
         /// <param name="quorumRatio">The quorum ratio.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns><see langword="true"/> if the quorum of name servers shows the expected TXT record; otherwise <see langword="false"/>.</returns>
         private static async Task<bool> QuorumShowsTxtAsync(
             string recordName,
-            string expectedTxt,
+            byte[] expectedTxt,
             IReadOnlyList<IPAddress> nameServers,
             double quorumRatio,
             CancellationToken cancellationToken)
@@ -134,6 +138,7 @@ namespace Vector.NNTP.Encryption.Dns
             int required = DnsAuthoritativeQuorum.RequiredMatchCount(nameServers.Count, quorumRatio);
             int ok = 0;
             int doneGate = 0;
+            ReadOnlyMemory<byte> expectedMemory = expectedTxt;
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = QuorumParallelism,
@@ -149,8 +154,7 @@ namespace Vector.NNTP.Encryption.Dns
 
                 try
                 {
-                    List<string> txts = await AuthoritativeDnsWireClient.QueryTxtAsync(ip, recordName, ct).ConfigureAwait(false);
-                    if (TxtListContains(txts, expectedTxt))
+                    if (await AuthoritativeDnsWireClient.QueryTxtContainsAsync(ip, recordName, expectedMemory, ct).ConfigureAwait(false))
                     {
                         int newOk = Interlocked.Increment(ref ok);
                         if (newOk >= required)
@@ -172,13 +176,34 @@ namespace Vector.NNTP.Encryption.Dns
         /// Checks if the list of TXT records contains the expected TXT record.
         /// </summary>
         /// <param name="txts">The list of TXT records.</param>
-        /// <param name="expectedTxt">The expected TXT record.</param>
+        /// <param name="expectedTxt">The expected TXT record bytes.</param>
         /// <returns><see langword="true"/> if the list of TXT records contains the expected TXT record; otherwise <see langword="false"/>.</returns>
-        private static bool TxtListContains(IReadOnlyList<string> txts, string expectedTxt)
+        private static bool TxtListContains(IReadOnlyList<string> txts, ReadOnlySpan<byte> expectedTxt)
         {
             foreach (string? part in txts)
             {
-                if (string.Equals(part, expectedTxt, StringComparison.Ordinal))
+                if (part is null || part.Length != expectedTxt.Length)
+                {
+                    continue;
+                }
+
+                if (!EncodingUtilities.IsAscii(part.AsSpan()))
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<char> chars = part.AsSpan();
+                bool match = true;
+                for (int i = 0; i < expectedTxt.Length; i++)
+                {
+                    if ((byte)chars[i] != expectedTxt[i])
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+
+                if (match)
                 {
                     return true;
                 }

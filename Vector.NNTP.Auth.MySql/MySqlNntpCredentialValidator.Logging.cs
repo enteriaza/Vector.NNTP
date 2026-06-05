@@ -3,6 +3,7 @@
 // </copyright>
 
 using Microsoft.Extensions.Logging;
+using Vector.NNTP.Session.Policy;
 
 namespace Vector.NNTP.Auth.MySql
 {
@@ -89,7 +90,7 @@ namespace Vector.NNTP.Auth.MySql
         /// <param name="username">Authenticated username.</param>
         /// <param name="clientIp">Client IP address.</param>
         /// <param name="allowPosting">Whether posting is permitted.</param>
-        /// <param name="accountType">Account type.</param>
+        /// <param name="accountType">Resolved session account type from policy materialisation.</param>
         /// <param name="customerId">Customer identifier.</param>
         [LoggerMessage(
             EventId = 204,
@@ -101,7 +102,7 @@ namespace Vector.NNTP.Auth.MySql
             string username,
             string clientIp,
             bool allowPosting,
-            char accountType,
+            NntpAccountType accountType,
             string customerId);
 
         /// <summary>

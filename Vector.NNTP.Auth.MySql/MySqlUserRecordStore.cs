@@ -14,33 +14,45 @@ namespace Vector.NNTP.Auth.MySql
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Query:</b> This store issues the following SQL statement against the configured connection:
+    /// <b>Query:</b> This store issues the following SQL statement against the configured connection.  The
+    /// <c>@account_name</c> parameter is bound to the plaintext NNTP username; the server-side
+    /// <c>account_name</c> column stores <c>MD5(@account_name)</c> and supplies the AES key material via
+    /// <c>SHA2(account_name, 256)</c> (the stored hash, not the bind parameter).
     /// </para>
     /// <code>
     /// SELECT
-    ///   CAST(AES_DECRYPT(account_pass, UNHEX(SHA2(@account_name, 256))) AS CHAR) AS account_pass,
-    ///   account_type,
-    ///   account_rate_limit,
-    ///   account_byte_limit,
-    ///   account_session_limit,
-    ///   account_srcip_limit,
-    ///   is_enabled,
-    ///   customer_id
+    ///   CAST(AES_DECRYPT(account_pass, UNHEX(SHA2(account_name, 256))) AS CHAR) AS account_pass,
+    ///   scram_salt, scram_iterations, scram_stored_key, scram_server_key,
+    ///   allow_auth_plain, allow_auth_scram256,
+    ///   account_type, account_rate_limit, account_byte_limit, account_session_limit, account_srcip_limit,
+    ///   is_enabled, customer_id
     /// FROM nntpusers
     /// WHERE account_name = MD5(@account_name);
     /// </code>
     /// <para>
+    /// <b>Binary columns:</b> SCRAM salt and key material are small, fixed-size blobs (typically 16–32 bytes per field).
+    /// They are materialised with <see cref="MySqlDataReader.GetFieldValue{T}(int)"/> because authentication is
+    /// control-plane traffic: a few short-lived <c>byte[]</c> allocations per login are negligible compared with the
+    /// cost of a pooled <c>GetBytes</c> staging copy for such tiny values.
+    /// </para>
+    /// <para>
     /// <b>Thread safety:</b> This type is safe for concurrent use and is registered as a singleton. It opens a new
     /// <see cref="MySqlConnection"/> for each lookup and relies on the underlying ADO.NET pooling for efficiency.
     /// </para>
+    /// <para>
+    /// <b>Construction:</b> Requires validated <see cref="MySqlAuthOptions"/> from DI; see
+    /// <see cref="ServiceCollectionExtensions.AddNntpMySqlAuth"/>.
+    /// </para>
     /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="MySqlUserRecordStore"/> class.
-    /// </remarks>
-    /// <param name="connectionString">MySQL connection string for the <c>nntpusers</c> table.</param>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="connectionString"/> is null or whitespace.</exception>
-    internal sealed class MySqlUserRecordStore(string connectionString) : INntpUserRecordStore
+    /// <param name="options">Validated MySQL authentication connection settings.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
+    internal sealed class MySqlUserRecordStore(MySqlAuthOptions options) : INntpUserRecordStore
     {
+        /// <summary>
+        /// Default ADO.NET command timeout in seconds when the connection string does not specify one.
+        /// </summary>
+        private const int DefaultCommandTimeoutSeconds = 5;
+
         /// <summary>
         /// SQL statement to lookup a user record by account name.
         /// </summary>
@@ -57,12 +69,12 @@ namespace Vector.NNTP.Auth.MySql
         /// <summary>
         /// MySQL connection string for the <c>nntpusers</c> table.
         /// </summary>
-        private readonly string _connectionString = ValidateConnectionString(connectionString);
+        private readonly string _connectionString = (options ?? throw new ArgumentNullException(nameof(options))).ConnectionString;
 
         /// <summary>
         /// Cached command timeout in seconds, derived from the connection string.
         /// </summary>
-        private readonly int _commandTimeoutSeconds = GetCommandTimeoutSeconds(connectionString);
+        private readonly int _commandTimeoutSeconds = GetCommandTimeoutSeconds(options.ConnectionString);
 
         /// <summary>
         /// Tries to get a user record by account name.
@@ -93,10 +105,10 @@ namespace Vector.NNTP.Auth.MySql
             }
 
             string password = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
-            ReadOnlyMemory<byte> scramSalt = reader.IsDBNull(1) ? ReadOnlyMemory<byte>.Empty : reader.GetFieldValue<byte[]>(1);
+            ReadOnlyMemory<byte> scramSalt = ReadBinaryColumn(reader, 1);
             int scramIterations = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-            ReadOnlyMemory<byte> scramStoredKey = reader.IsDBNull(3) ? ReadOnlyMemory<byte>.Empty : reader.GetFieldValue<byte[]>(3);
-            ReadOnlyMemory<byte> scramServerKey = reader.IsDBNull(4) ? ReadOnlyMemory<byte>.Empty : reader.GetFieldValue<byte[]>(4);
+            ReadOnlyMemory<byte> scramStoredKey = ReadBinaryColumn(reader, 3);
+            ReadOnlyMemory<byte> scramServerKey = ReadBinaryColumn(reader, 4);
 
             bool allowAuthPlain = !reader.IsDBNull(5) &&
                 string.Equals(reader.GetString(5), "Y", StringComparison.OrdinalIgnoreCase);
@@ -131,14 +143,21 @@ namespace Vector.NNTP.Auth.MySql
         }
 
         /// <summary>
-        /// Validates and returns a non-empty connection string for store construction.
+        /// Reads a binary column as a <see cref="ReadOnlyMemory{T}"/> wrapper over the provider-materialised
+        /// <c>byte[]</c>.
         /// </summary>
-        /// <param name="connectionString">MySQL connection string.</param>
-        /// <returns>The validated connection string.</returns>
-        private static string ValidateConnectionString(string connectionString)
+        /// <param name="reader">Active row reader.</param>
+        /// <param name="ordinal">Column ordinal.</param>
+        /// <returns>Column bytes, or empty when the column is null or zero-length.</returns>
+        private static ReadOnlyMemory<byte> ReadBinaryColumn(MySqlDataReader reader, int ordinal)
         {
-            MySqlAuthConnectionStringValidator.ValidateOrThrow(connectionString, nameof(connectionString));
-            return connectionString;
+            if (reader.IsDBNull(ordinal))
+            {
+                return ReadOnlyMemory<byte>.Empty;
+            }
+
+            byte[] value = reader.GetFieldValue<byte[]>(ordinal);
+            return value.Length == 0 ? ReadOnlyMemory<byte>.Empty : value;
         }
 
         /// <summary>
@@ -150,12 +169,9 @@ namespace Vector.NNTP.Auth.MySql
         {
             MySqlConnectionStringBuilder builder = new(connectionString);
 
-            return builder.TryGetValue("DefaultCommandTimeout", out object? value) &&
-                value is not null &&
-                int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds) &&
-                seconds > 0
-                ? seconds
-                : 5;
+            return builder.DefaultCommandTimeout > 0
+                ? (int)builder.DefaultCommandTimeout
+                : DefaultCommandTimeoutSeconds;
         }
 
         /// <summary>

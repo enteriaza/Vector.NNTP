@@ -34,11 +34,6 @@ namespace Vector.NNTP.Encryption.Dns
         private const int QuestionSuffixSize = 4;
 
         /// <summary>
-        /// The maximum number of compression pointer hops.
-        /// </summary>
-        private const int MaxCompressionPointerHops = 128;
-
-        /// <summary>
         /// The recursive resolvers.
         /// </summary>
         private static readonly IPAddress[] RecursiveResolvers = ResolveRecursiveResolvers();
@@ -669,7 +664,7 @@ namespace Vector.NNTP.Encryption.Dns
         {
             for (int q = 0; q < qdCount; q++)
             {
-                if (!TrySkipName(span, ref offset))
+                if (!DnsWireNameSkipper.TrySkipName(span, ref offset))
                 {
                     return false;
                 }
@@ -683,59 +678,6 @@ namespace Vector.NNTP.Encryption.Dns
             }
 
             return true;
-        }
-
-        /// <summary>
-        /// Advances <paramref name="offset"/> past a DNS name in the wire format, handling both inline labels and
-        /// compression pointers (RFC 1035 §4.1.4).
-        /// </summary>
-        /// <param name="span">The full DNS response buffer.</param>
-        /// <param name="offset">Current read position; advanced past the name on return.</param>
-        /// <returns><see langword="true"/> if the name was successfully skipped; <see langword="false"/> if the buffer is
-        /// too short, the hop limit is exceeded, or a reserved label type is encountered.</returns>
-        private static bool TrySkipName(ReadOnlySpan<byte> span, ref int offset)
-        {
-            int hops = 0;
-            while (offset < span.Length)
-            {
-                if (++hops > MaxCompressionPointerHops)
-                {
-                    return false;
-                }
-
-                byte b = span[offset];
-                if (b == 0)
-                {
-                    offset++;
-                    return true;
-                }
-
-                if ((b & 0xC0) == 0xC0)
-                {
-                    if (offset + 2 > span.Length)
-                    {
-                        return false;
-                    }
-
-                    offset += 2;
-                    return true;
-                }
-
-                if ((b & 0xC0) != 0)
-                {
-                    return false;
-                }
-
-                int advance = 1 + b;
-                if (offset + advance > span.Length)
-                {
-                    return false;
-                }
-
-                offset += advance;
-            }
-
-            return false;
         }
     }
 }

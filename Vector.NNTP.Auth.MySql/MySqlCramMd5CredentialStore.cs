@@ -3,9 +3,9 @@
 // </copyright>
 // COLD PATH: ICramMd5CredentialStore implementation backed by the MySQL nntpusers table.
 
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Vector.NNTP.Sockets.Authentication;
+using Vector.NNTP.Utilities.Encoding;
 
 namespace Vector.NNTP.Auth.MySql
 {
@@ -14,28 +14,38 @@ namespace Vector.NNTP.Auth.MySql
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Secret material:</b> The decrypted <c>account_pass</c> column is converted to UTF-8 bytes and used as the
-    /// CRAM-MD5 shared secret. This matches the password comparison used for <see cref="INntpCredentialValidator"/>.
+    /// <b>Secret material:</b> The decrypted <c>account_pass</c> column is converted to ASCII bytes and used as the
+    /// CRAM-MD5 shared secret when the password is US-ASCII. Non-ASCII passwords are rejected.
+    /// </para>
+    /// <para>
+    /// <b>Cancellation:</b> <see cref="ICramMd5CredentialStore"/> exposes no token, so lookups use
+    /// <see cref="CancellationToken.None"/> and cannot be aborted when the client disconnects mid-query.
     /// </para>
     /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="MySqlCramMd5CredentialStore"/> class.
-    /// </remarks>
-    /// <param name="recordStore">Backing user record store.</param>
-    /// <param name="logger">Logger instance.</param>
-    public sealed partial class MySqlCramMd5CredentialStore(
-        INntpUserRecordStore recordStore,
-        ILogger<MySqlCramMd5CredentialStore> logger) : ICramMd5CredentialStore
+    public sealed partial class MySqlCramMd5CredentialStore : ICramMd5CredentialStore
     {
         /// <summary>
         /// Backing user record store.
         /// </summary>
-        private readonly INntpUserRecordStore _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
+        private readonly INntpUserRecordStore _recordStore;
 
         /// <summary>
         /// Logger instance.
         /// </summary>
-        private readonly ILogger<MySqlCramMd5CredentialStore> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        private readonly ILogger<MySqlCramMd5CredentialStore> _logger;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MySqlCramMd5CredentialStore"/> class.
+        /// </summary>
+        /// <param name="recordStore">Backing user record store.</param>
+        /// <param name="logger">Logger instance.</param>
+        internal MySqlCramMd5CredentialStore(
+            INntpUserRecordStore recordStore,
+            ILogger<MySqlCramMd5CredentialStore> logger)
+        {
+            _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
 
         /// <summary>
         /// Tries to get a CRAM-MD5 secret for a username.
@@ -49,13 +59,13 @@ namespace Vector.NNTP.Auth.MySql
 
             CramLookupStarted(_logger, username);
 
-            // CRAM-MD5 lookups are expected to be relatively rare. We perform a synchronous wait on the asynchronous
-            // store API here; higher-level SASL negotiation already runs on the thread-pool and is not on a hot path.
             try
             {
-                using CancellationTokenSource cancellationSource = new();
-                Task<MySqlUserRecord?> task = _recordStore.TryGetUserAsync(username, cancellationSource.Token);
-                MySqlUserRecord? record = task.GetAwaiter().GetResult();
+                // ICramMd5CredentialStore is synchronous; CancellationToken.None is required by that contract (see type remarks).
+                MySqlUserRecord? record = _recordStore
+                    .TryGetUserAsync(username, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
                 if (record is null)
                 {
                     CramLookupUserNotFound(_logger, username);
@@ -77,8 +87,16 @@ namespace Vector.NNTP.Auth.MySql
                     return false;
                 }
 
-                byte[] bytes = Encoding.UTF8.GetBytes(record.AccountPassword);
+                if (!EncodingUtilities.IsAscii(record.AccountPassword.AsSpan()))
+                {
+                    CramLookupNotPermitted(_logger, username);
+                    secret = ReadOnlyMemory<byte>.Empty;
+                    return false;
+                }
+
+                byte[] bytes = EncodingUtilities.AsciiToBytes(record.AccountPassword);
                 secret = new ReadOnlyMemory<byte>(bytes);
+                MySqlUserRecordSaslCache.Set(record);
                 CramLookupSucceeded(_logger, username);
                 return true;
             }

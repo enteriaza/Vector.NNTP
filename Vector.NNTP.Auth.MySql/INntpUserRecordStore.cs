@@ -10,11 +10,15 @@ namespace Vector.NNTP.Auth.MySql
     /// </summary>
     /// <remarks>
     /// <para>
+    /// <b>Scope:</b> Assembly-internal abstraction; hosts integrate via the public credential-validator and SASL credential
+    /// store contracts instead.
+    /// </para>
+    /// <para>
     /// <b>Testability:</b> The MySQL-backed implementation lives in this assembly, but tests can inject in-memory or
     /// fake implementations without requiring a running MySQL instance.
     /// </para>
     /// </remarks>
-    public interface INntpUserRecordStore
+    internal interface INntpUserRecordStore
     {
         /// <summary>
         /// Attempts to retrieve a user record for the specified account name.

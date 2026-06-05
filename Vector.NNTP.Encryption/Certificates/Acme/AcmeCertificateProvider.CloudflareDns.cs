@@ -2,17 +2,13 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 // AcmeCertificateProvider.CloudflareDns.cs — Cloudflare REST API interactions: TXT record
-// creation and deletion, authoritative nameserver resolution, and DNS propagation polling.
+// creation and deletion.
 //
 // All Cloudflare API calls use the shared static CloudflareHttpClient (defined in the primary partial).  Responses are
 // validated at two levels: HTTP status code, then the Cloudflare envelope's "success" field -- Cloudflare can return
 // HTTP 200 with "success": false for logical errors.
 //
 // Responsibilities:
-//   CreateAuthoritativeDnsClientAsync   -- Cached factory for the authoritative DNS client (one Cloudflare API call
-//                                          per process lifetime).
-//   ResolveAuthoritativeNameserversAsync -- GET /zones/{id} -> NS hostnames -> IP resolution.
-//   WaitForTxtRecordAsync               -- Poll authoritative NS until a TXT record is visible or timeout expires.
 //   CreateCloudflareTxtRecordAsync      -- POST /dns_records (TXT record for _acme-challenge).
 //   DeleteCloudflareTxtRecordAsync      -- DELETE /dns_records/{id} (single record cleanup).
 //   SendCloudflareRequestAsync          -- Shared helper encapsulating credential injection, response size validation,
@@ -20,20 +16,10 @@
 //   EnsureCloudflareSuccess             -- Validate the Cloudflare JSON envelope's "success" field.
 //   CleanupTxtRecordsAsync              -- Bounded-concurrency best-effort deletion of all TXT records created during
 //                                          a renewal cycle.
-//   FormatNameserverIps                 -- Formats an IPAddress[] into a comma-delimited diagnostic string.
-//
-// DNS nameserver resolution:
-//   ResolveAuthoritativeNameserversAsync resolves each NS hostname to IP addresses, preferring IPv4 to avoid
-//   broken-IPv6 timeouts in dual-stack environments.  Results are de-duplicated by IP address to avoid redundant
-//   queries to the same anycast endpoint.
 //
 // Concurrency:
 //   CleanupTxtRecordsAsync uses Parallel.ForEachAsync with bounded concurrency (CloudflareMaxConcurrentDeletes)
 //   to delete TXT records in parallel while staying within Cloudflare's rate limits.
-//
-//   The authoritative DNS client cache uses a SemaphoreSlim with double-check locking to guarantee exactly one
-//   Cloudflare API call for nameserver resolution, even under hypothetical concurrent access.  The fast path
-//   (Volatile.Read of the resolved flag) is lock-free for all calls after the first successful resolution.
 //
 // Security:
 //   The bearer token is set per-request on the HttpRequestMessage and unconditionally scrubbed in a finally block
@@ -46,21 +32,16 @@
 //   P/Invoke, no OS-specific APIs, no architecture-specific intrinsics.
 //
 // SIMD applicability:
-//   Not applicable.  This file performs HTTP API calls, JSON parsing, DNS hostname resolution, and string
-//   formatting.  There are no contiguous memory buffers, byte-level pattern searches, or bulk numeric operations
-//   that would benefit from vector instructions.
+//   Not applicable.  This file performs HTTP API calls, JSON parsing, and string formatting.  There are no contiguous
+//   memory buffers, byte-level pattern searches, or bulk numeric operations that would benefit from vector instructions.
 //
 // Callers (all within other AcmeCertificateProvider partials):
-//   RequestCertificateAsync  -> CreateAuthoritativeDnsClientAsync, CleanupTxtRecordsAsync
-//   RequestCertificateAsync -> CreateCloudflareTxtRecordAsync, WaitForTxtRecordAsync
+//   RequestCertificateAsync -> CreateCloudflareTxtRecordAsync, CleanupTxtRecordsAsync
 
 using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Vector.NNTP.Encryption.Acme;
-using Vector.NNTP.Encryption.Dns;
-using Vector.NNTP.Utilities.Diagnostics;
 using Vector.NNTP.Utilities.IO;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
@@ -69,8 +50,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
     /// Provides functionality for managing ACME certificate issuance and renewal using Cloudflare's DNS.
     /// </summary>
     /// <remarks>Handles interaction with Cloudflare's API to manage DNS records necessary for ACME
-    /// challenges, including creating, updating, and deleting TXT records. Implements caching for authoritative DNS
-    /// resolution to optimize performance and reduce API calls.</remarks>
+    /// challenges, including creating, updating, and deleting TXT records.</remarks>
     internal sealed partial class AcmeCertificateProvider
     {
         #region Constants -- Cloudflare Response Validation
@@ -105,373 +85,6 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// </list>
         /// </remarks>
         private const long MaxCloudflareResponseBytes = 1_048_576;
-
-        #endregion
-
-        #region Fields -- Authoritative DNS Cache
-
-        /// <summary>
-        /// Cached <see cref="LegacyAuthoritativeDnsClient"/> configured to query the zone's authoritative nameservers directly,
-        /// resolved once on first renewal via <see cref="ResolveAuthoritativeNameserversAsync"/> and reused across all
-        /// subsequent renewal cycles.
-        /// </summary>
-        /// <remarks>
-        /// <para>Authoritative nameservers are part of the zone's delegation at the parent TLD -- they change only when
-        /// the domain is transferred to a different DNS provider or when Cloudflare manually reassigns NS pairs (a rare
-        /// operational event).  Neither scenario occurs during the lifetime of a running process.  Caching eliminates a
-        /// Cloudflare <c>GET /zones/{id}</c> API call on every renewal cycle (typically every 60 days).</para>
-        /// <para><see langword="null"/> indicates the nameservers have not yet been resolved, or a previous resolution
-        /// attempt failed.  In the latter case <see cref="_authoritativeDnsResolved"/> remains <see langword="false"/>,
-        /// allowing the next renewal cycle to retry.  When <see cref="_authoritativeDnsResolved"/> is
-        /// <see langword="true"/> and this field is <see langword="null"/>, it indicates an impossible state -- resolution
-        /// succeeded with zero IPs, which is handled by the <c>nameservers.Length == 0</c> guard in
-        /// <see cref="CreateAuthoritativeDnsClientAsync"/>.</para>
-        /// </remarks>
-        private LegacyAuthoritativeDnsClient? _cachedAuthoritativeDnsClient;
-
-        /// <summary>
-        /// Set to <see langword="true"/> (via <see cref="Volatile.Write(ref bool, bool)"/>) after the first
-        /// <em>successful</em> nameserver resolution.  Distinguishes "never resolved" (<see langword="false"/>) from
-        /// "resolved and cached" (<see langword="true"/>).
-        /// </summary>
-        /// <remarks>
-        /// <para>Intentionally <em>not</em> set on failure -- a transient network error at startup should not permanently
-        /// disable authoritative DNS polling.  The next renewal cycle (typically 6 hours later) retries the Cloudflare API
-        /// call.</para>
-        /// <para><b>Memory ordering:</b> Written via <see cref="Volatile.Write(ref bool, bool)"/> and read via
-        /// <see cref="M:System.Threading.Volatile.Read(System.Boolean@)"/> to ensure the cached client reference is visible to the reading thread
-        /// before the flag is observed as <see langword="true"/>.  The volatile write acts as a release fence, and the
-        /// volatile read acts as an acquire fence -- together they form a happens-before relationship that guarantees the
-        /// reading thread sees the fully constructed <see cref="_cachedAuthoritativeDnsClient"/> when the flag is
-        /// <see langword="true"/>.</para>
-        /// </remarks>
-        private bool _authoritativeDnsResolved;
-
-        /// <summary>
-        /// Guards the one-time initialisation of <see cref="_cachedAuthoritativeDnsClient"/> to prevent duplicate
-        /// Cloudflare <c>GET /zones/{id}</c> API calls under hypothetical concurrent access.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Current callers:</b> <see cref="CreateAuthoritativeDnsClientAsync"/> is currently called exclusively
-        /// from <see cref="RequestCertificateAsync"/>, which runs on a single <see cref="CertificateRenewalService"/>
-        /// loop -- so concurrent access does not occur today.  The semaphore provides defence-in-depth against future
-        /// refactoring that might introduce concurrent callers.</para>
-        /// <para><b>Fast path:</b> The <see cref="M:System.Threading.Volatile.Read(System.Boolean@)"/> check on
-        /// <see cref="_authoritativeDnsResolved"/> before the semaphore ensures that after the first successful resolution,
-        /// all subsequent calls return the cached client without touching the semaphore -- zero contention on the hot
-        /// path.</para>
-        /// <para><b>Failure path:</b> If the Cloudflare API call fails, the semaphore is released without setting the
-        /// flag, allowing the next renewal cycle's call to retry.  If two threads hypothetically raced past the outer
-        /// <see cref="M:System.Threading.Volatile.Read(System.Boolean@)"/> check simultaneously, one would acquire the semaphore and resolve, the
-        /// other would wait, then see the flag is set in the inner double-check and return the cached client
-        /// immediately.</para>
-        /// <para><b>Disposal:</b> Disposed by <see cref="Dispose"/> during host shutdown.</para>
-        /// </remarks>
-        private readonly SemaphoreSlim _dnsInitLock = new(1, 1);
-
-        #endregion
-
-        #region Private Methods -- Authoritative DNS Resolution
-
-        /// <summary>
-        /// Returns a cached <see cref="LegacyAuthoritativeDnsClient"/> configured to query the zone's authoritative nameservers
-        /// directly (bypassing recursive resolver caches).  On first call, resolves the nameservers via the Cloudflare
-        /// <c>GET /zones/{id}</c> API and caches the result for all subsequent renewal cycles.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Double-check locking:</b> The method uses a <see cref="M:System.Threading.Volatile.Read(System.Boolean@)"/> fast path followed
-        /// by a <see cref="SemaphoreSlim"/>-guarded initialisation with an inner re-check.  This guarantees exactly one
-        /// Cloudflare API call for nameserver resolution, even under hypothetical concurrent access, while keeping the
-        /// post-initialisation path lock-free.</para>
-        ///
-        /// <para><b>Cache lifetime:</b> The cached client persists for the lifetime of this
-        /// <see cref="AcmeCertificateProvider"/> instance (which lives for the entire process -- created once in
-        /// <see cref="CertificateRenewalService.ExecuteAsync"/>).  Authoritative nameservers are part of the zone's
-        /// delegation and do not change during normal operation.</para>
-        ///
-        /// <para><b>Failure handling:</b> If resolution fails (Cloudflare API error, all NS hostname resolutions fail),
-        /// <see cref="_cachedAuthoritativeDnsClient"/> remains <see langword="null"/> and
-        /// <see cref="_authoritativeDnsResolved"/> is <em>not</em> set -- allowing the next renewal cycle to retry the
-        /// Cloudflare API call.  This handles transient network failures at startup without permanently falling back to
-        /// the fixed delay.</para>
-        ///
-        /// <para>Returns <see langword="null"/> when authoritative nameservers cannot be resolved.  The caller
-        /// (<see cref="RequestCertificateAsync"/>) falls back to a fixed <see cref="DnsFallbackDelaySeconds"/>
-        /// delay.</para>
-        /// </remarks>
-        /// <param name="ct">Cancellation token for host shutdown.</param>
-        /// <returns>An <see cref="LegacyAuthoritativeDnsClient"/> configured with the zone's authoritative nameserver IPs, or
-        /// <see langword="null"/> if resolution failed.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when <paramref name="ct"/> is cancelled (host
-        /// shutdown).</exception>
-        private async Task<LegacyAuthoritativeDnsClient?> CreateAuthoritativeDnsClientAsync(CancellationToken ct)
-        {
-            // Fast path -- lock-free after first successful resolution.  Volatile.Read provides an acquire fence ensuring
-            // the _cachedAuthoritativeDnsClient reference is visible if the flag is true.
-            if (Volatile.Read(ref _authoritativeDnsResolved))
-            {
-                if (_cachedAuthoritativeDnsClient is not null && logger.IsEnabled(LogLevel.Debug))
-                    LogUsingCachedDnsClient(_cachedAuthoritativeDnsClient.NameserverCount);
-
-                return _cachedAuthoritativeDnsClient;
-            }
-
-            // Slow path -- acquire the semaphore to ensure exactly one Cloudflare API call.
-            await _dnsInitLock.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                // Double-check after acquiring the lock -- another thread may have resolved while we waited.
-                if (Volatile.Read(ref _authoritativeDnsResolved))
-                {
-                    if (_cachedAuthoritativeDnsClient is not null && logger.IsEnabled(LogLevel.Debug))
-                        LogUsingCachedDnsClient(_cachedAuthoritativeDnsClient.NameserverCount);
-
-                    return _cachedAuthoritativeDnsClient;
-                }
-
-                IPAddress[] nameservers = await ResolveAuthoritativeNameserversAsync(ct).ConfigureAwait(false);
-
-                if (nameservers.Length == 0)
-                {
-                    // Do NOT set _authoritativeDnsResolved -- allow the next call to retry the Cloudflare API.
-                    // A transient network failure should not permanently disable authoritative DNS polling.
-                    LogNameserverResolutionFailed(DnsFallbackDelaySeconds);
-                    return null;
-                }
-
-                // Build the display string outside the log call to avoid allocation when Information is disabled.
-                // Direct loop avoids the LINQ Select iterator + delegate allocation from the previous implementation.
-                string servers = FormatNameserverIps(nameservers);
-                LogResolvedNameservers(nameservers.Length, servers);
-
-                _cachedAuthoritativeDnsClient = new LegacyAuthoritativeDnsClient(nameservers);
-
-                // Volatile.Write acts as a release fence -- ensures the fully constructed LegacyAuthoritativeDnsClient is
-                // visible to any thread that subsequently reads the flag via Volatile.Read on the fast path.
-                Volatile.Write(ref _authoritativeDnsResolved, true);
-                return _cachedAuthoritativeDnsClient;
-            }
-            finally
-            {
-                _ = _dnsInitLock.Release();
-            }
-        }
-
-        /// <summary>
-        /// Formats an array of <see cref="IPAddress"/> instances into a comma-delimited display string for diagnostic
-        /// logging.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Single-element fast path:</b> When the array contains exactly one IP, the result is returned directly
-        /// via <see cref="IPAddress.ToString"/> without allocating a <see cref="StringBuilder"/>.</para>
-        ///
-        /// <para><b>Allocation:</b> For multi-element arrays, a single <see cref="StringBuilder"/> is allocated with a
-        /// capacity hint of <c>nameservers.Length * 16</c> (~15 characters per IPv4 address + separator).  This replaces
-        /// the previous LINQ <c>nameservers.Select(ip => ip.ToString())</c> which allocated a LINQ iterator and
-        /// delegate.</para>
-        ///
-        /// <para><b>Address normalisation:</b> Each entry is formatted via
-        /// <see cref="FormattingUtilities.NormaliseAddress(System.Net.IPAddress)"/> so IPv4-mapped IPv6 addresses log as
-        /// dotted-quad.</para>
-        /// </remarks>
-        /// <param name="nameservers">The nameserver IP addresses to format.  Must not be empty.</param>
-        /// <returns>A comma-delimited string of IP addresses (e.g. <c>"1.2.3.4, 5.6.7.8"</c>).</returns>
-        private static string FormatNameserverIps(IPAddress[] nameservers)
-        {
-            if (nameservers.Length == 1)
-                return FormattingUtilities.NormaliseAddress(nameservers[0]).ToString();
-
-            StringBuilder sb = new(nameservers.Length * 16); // ~15 chars per IPv4 address + separator
-            for (int i = 0; i < nameservers.Length; i++)
-            {
-                if (i > 0)
-                    _ = sb.Append(", ");
-                _ = sb.Append(FormattingUtilities.NormaliseAddress(nameservers[i]));
-            }
-            return sb.ToString();
-        }
-
-        /// <summary>
-        /// Resolves the zone's authoritative nameservers by querying the Cloudflare <c>GET /zones/{id}</c> API, then
-        /// resolving each NS hostname to IP addresses via <see cref="System.Net.Dns.GetHostAddressesAsync(string, AddressFamily,
-        /// CancellationToken)"/>.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Partial success:</b> Individual NS hostnames that fail DNS resolution are logged at
-        /// <see cref="LogLevel.Debug"/> and skipped -- a partial set of nameservers is still useful for propagation polling.
-        /// If <em>all</em> NS resolutions fail, the returned array is empty and the caller falls back to a fixed
-        /// delay.</para>
-        ///
-        /// <para><b>IPv4 preference:</b> Each NS hostname is resolved via
-        /// <see cref="System.Net.Dns.GetHostAddressesAsync(string, AddressFamily, CancellationToken)"/> with
-        /// <see cref="AddressFamily.InterNetwork"/> (IPv4).  If no IPv4 addresses are returned, a fallback resolution
-        /// with <see cref="AddressFamily.InterNetworkV6"/> (IPv6) is attempted.  This avoids a common dual-stack pitfall:
-        /// many server environments have IPv6 addresses configured (via SLAAC or DHCPv6) but no working IPv6 route to
-        /// external hosts.  When the <see cref="LegacyAuthoritativeDnsClient"/> randomly selects an unreachable IPv6 address
-        /// during propagation polling, the 5-second UDP receive timeout fires -- wasting time and potentially exhausting
-        /// the <see cref="DnsPropagationTimeout"/>.  Preferring IPv4 (universally routable in server environments) avoids
-        /// these spurious timeouts while still supporting IPv6-only deployments where IPv4 is unavailable.</para>
-        ///
-        /// <para><b>De-duplication:</b> Cloudflare typically assigns two NS hostnames (e.g. <c>anna.ns.cloudflare.com</c>,
-        /// <c>bob.ns.cloudflare.com</c>), but each may resolve to the same anycast IP.  A <see cref="HashSet{T}"/>
-        /// de-duplicates by IP address to avoid redundant queries to the same endpoint during propagation polling.</para>
-        ///
-        /// <para><b>Cancellation:</b> <see cref="OperationCanceledException"/> from either the Cloudflare API call or a
-        /// <see cref="System.Net.Dns.GetHostAddressesAsync(string, AddressFamily, CancellationToken)"/> call is rethrown rather than
-        /// caught by the outer <c>catch (Exception)</c> block, ensuring host-shutdown cancellation propagates immediately
-        /// instead of being logged as a warning and swallowed.</para>
-        ///
-        /// <para><b>Credential safety:</b> Delegates to <see cref="SendCloudflareRequestAsync"/> which handles credential
-        /// injection and unconditional scrubbing in a <see langword="finally"/> block.  See the file-level Security comment
-        /// for the full rationale.</para>
-        ///
-        /// <para><b>Response size guard:</b> Enforced by <see cref="SendCloudflareRequestAsync"/> at two levels:
-        /// <see cref="EnsureResponseSizeWithinLimit"/> rejects responses whose <c>Content-Length</c> exceeds
-        /// <see cref="MaxCloudflareResponseBytes"/> without reading any body bytes;
-        /// <see cref="LengthLimitedReadStream"/> wraps the response stream for chunked responses and throws if the
-        /// cumulative read exceeds the limit during <c>JsonDocument.ParseAsync</c>.</para>
-        ///
-        /// <para><b>Schema errors:</b> If the Cloudflare response is valid HTTP 200 but contains unexpected JSON structure
-        /// (missing <c>result</c> or <c>name_servers</c> property), the resulting <see cref="KeyNotFoundException"/> is
-        /// caught by the outer <c>catch (Exception)</c> block and logged -- the caller falls back to a fixed delay.</para>
-        /// </remarks>
-        /// <param name="ct">Cancellation token for host shutdown.</param>
-        /// <returns>An array of unique nameserver IP addresses, or an empty array if the zone API call or all NS
-        /// resolutions failed.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when <paramref name="ct"/> is cancelled (host
-        /// shutdown).</exception>
-        private async Task<IPAddress[]> ResolveAuthoritativeNameserversAsync(CancellationToken ct)
-        {
-            try
-            {
-                using HttpRequestMessage request = new(HttpMethod.Get, $"zones/{options.CloudflareZoneId}");
-
-                using JsonDocument doc = await SendCloudflareRequestAsync(request, "GET /zones/{id}", ct).ConfigureAwait(false);
-
-                JsonElement nameServersElement = doc.RootElement.GetProperty("result").GetProperty("name_servers");
-
-                // Use a HashSet to de-duplicate IPs inline -- avoids the allocation of an intermediate List + a
-                // Distinct() LINQ iterator + a ToArray() copy.  Cloudflare NS hostnames often resolve to overlapping
-                // anycast IPs.
-                HashSet<IPAddress> addresses = [];
-                foreach (JsonElement ns in nameServersElement.EnumerateArray())
-                {
-                    string? hostname = ns.GetString();
-                    if (string.IsNullOrWhiteSpace(hostname))
-                        continue;
-
-                    try
-                    {
-                        // Prefer IPv4 to avoid broken-IPv6 timeouts in dual-stack environments.  Many servers have
-                        // IPv6 configured (SLAAC/DHCPv6) but no working route -- the LegacyAuthoritativeDnsClient's
-                        // 5-second UDP timeout would fire on every poll that randomly selects an unreachable IPv6
-                        // address, wasting DnsPropagationTimeout budget.  Fall back to IPv6 only when no IPv4
-                        // addresses are available (IPv6-only deployments).
-                        IPAddress[] resolved = await System.Net.Dns.GetHostAddressesAsync(hostname, AddressFamily.InterNetwork, ct).ConfigureAwait(false);
-
-                        if (resolved.Length == 0)
-                            resolved = await System.Net.Dns.GetHostAddressesAsync(hostname, AddressFamily.InterNetworkV6, ct).ConfigureAwait(false);
-
-                        foreach (IPAddress ip in resolved)
-                            _ = addresses.Add(ip);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        if (logger.IsEnabled(LogLevel.Debug))
-                            LogNameserverHostnameResolutionFailed(ex, hostname);
-                    }
-                }
-
-                return [.. addresses];
-            }
-            catch (OperationCanceledException)
-            {
-                // Host shutdown -- rethrow so the caller's cancellation handling runs instead of logging a spurious warning.
-                throw;
-            }
-            catch (Exception ex)
-            {
-                LogCloudflareZoneApiFailed(ex);
-                return [];
-            }
-        }
-
-        #endregion
-
-        #region Private Methods -- DNS Propagation Polling
-
-        /// <summary>
-        /// Polls the authoritative nameservers until the specified TXT record is visible, or the
-        /// <see cref="DnsPropagationTimeout"/> expires.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Poll loop:</b> Queries the authoritative DNS client at <see cref="DnsPollInterval"/> intervals.
-        /// Individual query failures are logged at <see cref="LogLevel.Debug"/> and retried -- transient DNS errors are
-        /// expected during the propagation window (Cloudflare's anycast PoPs may have slightly different propagation
-        /// latencies).</para>
-        ///
-        /// <para><b>Timeout behaviour:</b> If the timeout expires, the method logs a warning and returns -- ACME validation
-        /// proceeds anyway.  The record may be visible to Let's Encrypt's own resolvers even if the authoritative NS
-        /// returned stale results, so aborting here would unnecessarily fail the renewal.</para>
-        ///
-        /// <para><b>Matching strategy:</b> The expected TXT value is compared via <see cref="StringComparison.Ordinal"/>
-        /// because ACME challenge tokens are base64url-encoded (case-sensitive by definition).  A simple
-        /// <c>foreach</c>/<c>Equals</c> loop avoids a <see cref="List{T}.Contains"/> call that would use the default
-        /// <see cref="EqualityComparer{T}"/> and is no less readable for this use case.</para>
-        ///
-        /// <para><b>Monotonic timing:</b> <see cref="Environment.TickCount64"/> provides monotonic millisecond timing
-        /// that is immune to wall-clock adjustments (NTP step corrections, DST transitions, manual clock changes).
-        /// Unlike <see cref="DateTime.UtcNow"/> or <see cref="System.Diagnostics.Stopwatch"/>, <c>TickCount64</c> is a single 64-bit read
-        /// with no <c>QueryPerformanceCounter</c> overhead on Windows and no <c>clock_gettime(CLOCK_MONOTONIC)</c>
-        /// syscall overhead on Linux -- the JIT inlines it to a direct TSC or jiffies read on both platforms.</para>
-        /// </remarks>
-        /// <param name="dnsClient">The authoritative DNS client.</param>
-        /// <param name="recordName">The fully-qualified TXT record name (e.g. <c>_acme-challenge.example.com</c>).</param>
-        /// <param name="expectedValue">The expected TXT record value (the base64url-encoded ACME challenge digest).</param>
-        /// <param name="ct">Cancellation token for host shutdown.</param>
-        /// <exception cref="OperationCanceledException">Thrown when <paramref name="ct"/> is cancelled (host
-        /// shutdown).</exception>
-        private async Task WaitForTxtRecordAsync(
-            LegacyAuthoritativeDnsClient dnsClient, string recordName, string expectedValue, CancellationToken ct)
-        {
-            long startTicks = Environment.TickCount64;
-            long timeoutMs = (long)DnsPropagationTimeout.TotalMilliseconds;
-
-            if (logger.IsEnabled(LogLevel.Debug))
-                LogPollingAuthoritativeDns(recordName);
-
-            while (true)
-            {
-                try
-                {
-                    List<string> txtValues = await dnsClient.QueryTxtAsync(recordName, ct).ConfigureAwait(false);
-
-                    foreach (string value in txtValues)
-                    {
-                        if (value.Equals(expectedValue, StringComparison.Ordinal))
-                        {
-                            long elapsedMs = Environment.TickCount64 - startTicks;
-                            LogTxtRecordVisible(recordName, elapsedMs);
-                            return;
-                        }
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    if (logger.IsEnabled(LogLevel.Debug))
-                        LogDnsQueryFailed(ex, recordName);
-                }
-
-                long elapsed = Environment.TickCount64 - startTicks;
-                if (elapsed >= timeoutMs)
-                {
-                    LogTxtRecordPropagationTimeout(recordName, (int)DnsPropagationTimeout.TotalSeconds);
-                    return;
-                }
-
-                await Task.Delay(DnsPollInterval, ct).ConfigureAwait(false);
-            }
-        }
 
         #endregion
 
@@ -771,9 +384,8 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// scrubbed from the request before any exception propagates.
         /// </summary>
         /// <remarks>
-        /// <para><b>Rationale:</b> The three Cloudflare API methods (<see cref="ResolveAuthoritativeNameserversAsync"/>,
-        /// <see cref="CreateCloudflareTxtRecordAsync"/>, <see cref="DeleteCloudflareTxtRecordAsync"/>) previously
-        /// duplicated an identical pattern: set <c>Authorization</c> header -> send -> validate <c>Content-Length</c> ->
+        /// <para><b>Rationale:</b> Cloudflare API methods (<see cref="CreateCloudflareTxtRecordAsync"/>,
+        /// <see cref="DeleteCloudflareTxtRecordAsync"/>, and related helpers) previously duplicated an identical pattern: set <c>Authorization</c> header -> send -> validate <c>Content-Length</c> ->
         /// ensure HTTP success -> read stream -> wrap in <see cref="LengthLimitedReadStream"/> -> parse JSON -> validate
         /// Cloudflare envelope -> scrub auth header -> dispose response.  This helper centralises all seven steps,
         /// eliminating ~40 lines of duplication per call site and ensuring any future Cloudflare API calls automatically

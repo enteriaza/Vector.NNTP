@@ -128,18 +128,6 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         private partial void LogSettingDnsTxtRecord(string name, string value);
 
         /// <summary>
-        /// Logs that no authoritative DNS client is available and a fixed delay will be used for DNS propagation.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="RequestCertificateAsync"/> -- when
-        /// <see cref="CreateAuthoritativeDnsClientAsync"/> returned <see langword="null"/>.  Guarded by
-        /// <c>logger.IsEnabled(LogLevel.Debug)</c>.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 211, Level = LogLevel.Debug,
-            Message = "Certificates: No authoritative DNS client -- waiting fixed {Delay}s for DNS propagation")]
-        private partial void LogNoAuthoritativeDnsClient(int delay);
-
-        /// <summary>
         /// Logs that a DNS-01 challenge has been successfully validated for a domain.
         /// </summary>
         /// <remarks>
@@ -242,115 +230,6 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         #endregion
 
         #region Logging Methods -- Cloudflare DNS (230-249)
-
-        /// <summary>
-        /// Logs that the cached authoritative DNS client is being reused.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="CreateAuthoritativeDnsClientAsync"/> -- on both the fast path (lock-free
-        /// <see cref="M:System.Threading.Volatile.Read(System.Boolean@)"/> check) and the slow path (inner double-check after
-        /// semaphore acquisition).  Guarded by <c>logger.IsEnabled(LogLevel.Debug)</c>.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 230, Level = LogLevel.Debug,
-            Message = "Certificates: Using cached authoritative DNS client ({Count} nameserver IP(s))")]
-        private partial void LogUsingCachedDnsClient(int count);
-
-        /// <summary>
-        /// Logs that authoritative nameservers could not be resolved, falling back to a fixed delay.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="CreateAuthoritativeDnsClientAsync"/> -- when
-        /// <see cref="ResolveAuthoritativeNameserversAsync"/> returns an empty array.  The resolved flag is
-        /// intentionally <em>not</em> set, allowing the next renewal cycle to retry.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 231, Level = LogLevel.Warning,
-            Message = "Certificates: Could not resolve authoritative nameservers -- falling back to fixed {Delay}s propagation delay")]
-        private partial void LogNameserverResolutionFailed(int delay);
-
-        /// <summary>
-        /// Logs the successfully resolved authoritative nameserver IP addresses.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="CreateAuthoritativeDnsClientAsync"/> -- after
-        /// <see cref="ResolveAuthoritativeNameserversAsync"/> returns a non-empty array, before caching the new
-        /// <see cref="LegacyAuthoritativeDnsClient"/>.  The <c>{Servers}</c> parameter is a comma-delimited
-        /// <see cref="string.Join(string, IEnumerable{string})"/> of IP addresses.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 232, Level = LogLevel.Information,
-            Message = "Certificates: Resolved {Count} unique authoritative nameserver IP(s): {Servers}")]
-        private partial void LogResolvedNameservers(int count, string servers);
-
-        /// <summary>
-        /// Logs that a single authoritative nameserver hostname could not be resolved (skipped).
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="ResolveAuthoritativeNameserversAsync"/> -- in the per-hostname <c>catch</c>
-        /// block when <see cref="System.Net.Dns.GetHostAddressesAsync(string, System.Net.Sockets.AddressFamily,
-        /// CancellationToken)"/> throws.  Guarded by <c>logger.IsEnabled(LogLevel.Debug)</c>.  The original exception
-        /// is passed for diagnostics.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 233, Level = LogLevel.Debug,
-            Message = "Certificates: Failed to resolve authoritative nameserver {Hostname} -- skipping")]
-        private partial void LogNameserverHostnameResolutionFailed(Exception ex, string hostname);
-
-        /// <summary>
-        /// Logs that the Cloudflare zone API call failed and nameserver resolution cannot proceed.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="ResolveAuthoritativeNameserversAsync"/> -- in the outer <c>catch</c> block
-        /// when the Cloudflare <c>GET /zones/{id}</c> API call fails (HTTP error, JSON parse failure, schema
-        /// mismatch, or envelope <c>"success": false</c>).  The original exception is passed for diagnostics.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 234, Level = LogLevel.Warning,
-            Message = "Certificates: Failed to resolve authoritative nameservers from Cloudflare zone API")]
-        private partial void LogCloudflareZoneApiFailed(Exception ex);
-
-        /// <summary>
-        /// Logs the start of authoritative DNS polling for a TXT record.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="WaitForTxtRecordAsync"/> -- once before the poll loop begins.  Guarded by
-        /// <c>logger.IsEnabled(LogLevel.Debug)</c>.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 235, Level = LogLevel.Debug,
-            Message = "Certificates: Polling authoritative DNS for {Record}...")]
-        private partial void LogPollingAuthoritativeDns(string record);
-
-        /// <summary>
-        /// Logs that a TXT record became visible on the authoritative nameservers.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="WaitForTxtRecordAsync"/> -- when the polled TXT value matches the expected
-        /// challenge digest.  The <c>{Elapsed}</c> parameter is computed from <see cref="Environment.TickCount64"/>
-        /// for monotonic, allocation-free timing.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 236, Level = LogLevel.Information,
-            Message = "Certificates: TXT record {Record} visible on authoritative DNS in {Elapsed}ms")]
-        private partial void LogTxtRecordVisible(string record, long elapsed);
-
-        /// <summary>
-        /// Logs that an individual DNS query failed during propagation polling (will retry).
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="WaitForTxtRecordAsync"/> -- in the per-iteration <c>catch</c> block when
-        /// <see cref="LegacyAuthoritativeDnsClient.QueryTxtAsync(string, CancellationToken)"/> throws.  Guarded by
-        /// <c>logger.IsEnabled(LogLevel.Debug)</c>.  The original exception is passed for diagnostics.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 237, Level = LogLevel.Debug,
-            Message = "Certificates: DNS query for {Record} failed -- will retry")]
-        private partial void LogDnsQueryFailed(Exception ex, string record);
-
-        /// <summary>
-        /// Logs that a TXT record was not visible within the propagation timeout -- ACME validation proceeds anyway.
-        /// </summary>
-        /// <remarks>
-        /// <para><b>Caller:</b> <see cref="WaitForTxtRecordAsync"/> -- when <see cref="DnsPropagationTimeout"/> expires
-        /// without the expected TXT value appearing.  Validation proceeds because Let's Encrypt's own resolvers may see
-        /// the record even if the authoritative NS returned stale results.</para>
-        /// </remarks>
-        [LoggerMessage(EventId = 238, Level = LogLevel.Warning,
-            Message = "Certificates: TXT record {Record} not visible after {Timeout}s -- proceeding with ACME validation anyway")]
-        private partial void LogTxtRecordPropagationTimeout(string record, int timeout);
 
         /// <summary>
         /// Logs that a Cloudflare TXT record was successfully created.

@@ -50,14 +50,15 @@ namespace Vector.NNTP.Utilities.Dns
 
             name = name.TrimEnd('.');
 
-            if (!DnsWireFormatUtilities.TryValidateDnsName(name, out string? error))
+            ReadOnlySpan<char> nameSpan = name.AsSpan();
+            Span<Range> labelRanges = stackalloc Range[DnsWireFormatUtilities.MaxLabelCount];
+            if (!DnsWireFormatUtilities.TryGetWireNameLayout(nameSpan, labelRanges, out int labelCount, out int qnameLength, out string? error))
             {
                 throw new ArgumentException(error, nameof(name));
             }
 
             queryId = (ushort)Random.Shared.Next(ushort.MaxValue + 1);
 
-            int qnameLength = DnsWireFormatUtilities.ComputeWireNameLength(name);
             int packetLength = DnsWireFormatUtilities.DnsHeaderSize + qnameLength + DnsWireFormatUtilities.QuestionSuffixSize;
 
             Span<byte> span = packetLength <= MaxStackAllocQuerySize
@@ -70,7 +71,7 @@ namespace Vector.NNTP.Utilities.Dns
             BinaryPrimitives.WriteUInt16BigEndian(span[4..], 1);
 
             int offset = DnsWireFormatUtilities.DnsHeaderSize;
-            offset += DnsWireFormatUtilities.EncodeDnsName(name, span[offset..]);
+            offset += DnsWireFormatUtilities.EncodeDnsName(nameSpan, labelRanges, labelCount, span[offset..]);
 
             BinaryPrimitives.WriteUInt16BigEndian(span[offset..], qtype);
             offset += 2;

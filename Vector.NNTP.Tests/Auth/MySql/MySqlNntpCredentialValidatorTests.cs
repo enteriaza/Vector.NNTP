@@ -141,6 +141,142 @@ namespace Vector.NNTP.Tests.Auth.MySql
         }
 
         /// <summary>
+        /// Ensures non-ASCII supplied passwords are rejected without throwing.
+        /// </summary>
+        /// <returns>A task that completes when the assertion is evaluated.</returns>
+        [Test]
+        public async Task ValidatePasswordAsync_NonAsciiPassword_Fails()
+        {
+            MySqlUserRecord record = new MySqlUserRecord(
+                "user1",
+                "secret",
+                allowAuthPlain: true,
+                allowAuthScram256: true,
+                scramSalt: ReadOnlyMemory<byte>.Empty,
+                scramIterations: 0,
+                scramStoredKey: ReadOnlyMemory<byte>.Empty,
+                scramServerKey: ReadOnlyMemory<byte>.Empty,
+                'R',
+                0,
+                0L,
+                0,
+                0,
+                true,
+                string.Empty);
+            FakeUserRecordStore store = new FakeUserRecordStore(record);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
+
+            NntpAuthResult result = await validator.ValidatePasswordAsync(
+                NntpAuthMechanisms.AuthInfoUserPass,
+                "user1",
+                "secre\u00E9t",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
+
+            Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.InvalidCredentials));
+        }
+
+        /// <summary>
+        /// Ensures <see cref="MySqlNntpCredentialValidator.PasswordEquals"/> rejects non-ASCII operands directly.
+        /// </summary>
+        [Test]
+        public void PasswordEquals_NonAsciiStoredPassword_ReturnsFalse()
+        {
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(
+                new FakeUserRecordStore(null),
+                normalizer,
+                NullLogger<MySqlNntpCredentialValidator>.Instance);
+
+            Assert.That(validator.PasswordEquals("secre\u00E9t", "secret"), Is.False);
+        }
+
+        /// <summary>
+        /// Ensures SCRAM completion reuses the record cached by the credential store (single DB lookup).
+        /// </summary>
+        /// <returns>A task that completes when the assertion is evaluated.</returns>
+        [Test]
+        public async Task CompleteSaslAccountAsync_Scram_UsesCachedRecord_SingleStoreLookup()
+        {
+            MySqlUserRecord record = CreateScramRecord();
+            CountingUserRecordStore store = new CountingUserRecordStore(record);
+            MySqlScramCredentialStore scramStore = new MySqlScramCredentialStore(store, NullLogger<MySqlScramCredentialStore>.Instance);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
+
+            Assert.That(scramStore.TryGetScramCredential("user1", out _), Is.True);
+            Assert.That(store.LookupCount, Is.EqualTo(1));
+
+            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+                NntpAuthMechanisms.SaslScramSha256,
+                "user1",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
+
+            Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.Success));
+            Assert.That(store.LookupCount, Is.EqualTo(1));
+        }
+
+        /// <summary>
+        /// Ensures CRAM completion reuses the record cached by the credential store (single DB lookup).
+        /// </summary>
+        /// <returns>A task that completes when the assertion is evaluated.</returns>
+        [Test]
+        public async Task CompleteSaslAccountAsync_Cram_UsesCachedRecord_SingleStoreLookup()
+        {
+            MySqlUserRecord record = CreateCramRecord();
+            CountingUserRecordStore store = new CountingUserRecordStore(record);
+            MySqlCramMd5CredentialStore cramStore = new MySqlCramMd5CredentialStore(store, NullLogger<MySqlCramMd5CredentialStore>.Instance);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
+
+            Assert.That(cramStore.TryGetCramSecret("user1", out _), Is.True);
+            Assert.That(store.LookupCount, Is.EqualTo(1));
+
+            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+                NntpAuthMechanisms.SaslCramMd5,
+                "user1",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
+
+            Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.Success));
+            Assert.That(store.LookupCount, Is.EqualTo(1));
+        }
+
+        /// <summary>
+        /// Ensures <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/> clears a pending SASL cache entry.
+        /// </summary>
+        /// <returns>A task that completes when the assertion is evaluated.</returns>
+        [Test]
+        public async Task AbandonSaslExchange_ClearsCachedRecord_ForcingSecondLookupOnCompletion()
+        {
+            MySqlUserRecord record = CreateScramRecord();
+            CountingUserRecordStore store = new CountingUserRecordStore(record);
+            MySqlScramCredentialStore scramStore = new MySqlScramCredentialStore(store, NullLogger<MySqlScramCredentialStore>.Instance);
+            Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
+            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(store, normalizer, NullLogger<MySqlNntpCredentialValidator>.Instance);
+
+            Assert.That(scramStore.TryGetScramCredential("user1", out _), Is.True);
+            Assert.That(store.LookupCount, Is.EqualTo(1));
+
+            validator.AbandonSaslExchange();
+
+            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+                NntpAuthMechanisms.SaslScramSha256,
+                "user1",
+                IPAddress.Loopback,
+                true,
+                CancellationToken.None).ConfigureAwait(false);
+
+            Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.Success));
+            Assert.That(store.LookupCount, Is.EqualTo(2));
+        }
+
+        /// <summary>
         /// Ensures that SCRAM completion after proof verification yields a success result with policy from the record.
         /// </summary>
         /// <returns>A task that completes when the assertion is evaluated.</returns>
@@ -239,6 +375,88 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 CancellationToken.None).ConfigureAwait(false);
 
             Assert.That(result.Status, Is.EqualTo(NntpAuthStatus.TransientFailure));
+        }
+
+        /// <summary>
+        /// Builds a SCRAM-enabled user record for cache tests.
+        /// </summary>
+        /// <returns>Test user record.</returns>
+        private static MySqlUserRecord CreateScramRecord()
+        {
+            return new MySqlUserRecord(
+                "user1",
+                "secret",
+                allowAuthPlain: false,
+                allowAuthScram256: true,
+                scramSalt: new byte[] { 1, 2, 3 },
+                scramIterations: 4096,
+                scramStoredKey: new byte[32],
+                scramServerKey: new byte[32],
+                'B',
+                10,
+                1000L,
+                2,
+                1,
+                true,
+                "00000000-0000-0000-0000-0000000042");
+        }
+
+        /// <summary>
+        /// Builds a CRAM-enabled user record for cache tests.
+        /// </summary>
+        /// <returns>Test user record.</returns>
+        private static MySqlUserRecord CreateCramRecord()
+        {
+            return new MySqlUserRecord(
+                "user1",
+                "secret",
+                allowAuthPlain: true,
+                allowAuthScram256: false,
+                scramSalt: ReadOnlyMemory<byte>.Empty,
+                scramIterations: 0,
+                scramStoredKey: ReadOnlyMemory<byte>.Empty,
+                scramServerKey: ReadOnlyMemory<byte>.Empty,
+                'B',
+                10,
+                1000L,
+                2,
+                1,
+                true,
+                "00000000-0000-0000-0000-0000000042");
+        }
+
+        /// <summary>
+        /// Fake user record store that counts lookup invocations.
+        /// </summary>
+        private sealed class CountingUserRecordStore : INntpUserRecordStore
+        {
+            /// <summary>
+            /// Backing record returned when the account name matches.
+            /// </summary>
+            private readonly MySqlUserRecord _record;
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="CountingUserRecordStore"/> class.
+            /// </summary>
+            /// <param name="record">User record to return.</param>
+            public CountingUserRecordStore(MySqlUserRecord record)
+            {
+                this._record = record;
+            }
+
+            /// <summary>
+            /// Gets the number of times <see cref="TryGetUserAsync"/> was invoked.
+            /// </summary>
+            public int LookupCount { get; private set; }
+
+            /// <inheritdoc />
+            public Task<MySqlUserRecord?> TryGetUserAsync(string accountName, CancellationToken cancellationToken)
+            {
+                _ = cancellationToken;
+                this.LookupCount++;
+                return Task.FromResult<MySqlUserRecord?>(
+                    this._record.AccountName == accountName ? this._record : null);
+            }
         }
 
         /// <summary>

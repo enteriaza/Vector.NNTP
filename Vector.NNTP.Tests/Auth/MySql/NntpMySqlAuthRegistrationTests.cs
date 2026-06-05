@@ -44,6 +44,29 @@ namespace Vector.NNTP.Tests.Auth.MySql
         }
 
         /// <summary>
+        /// Verifies <c>ConnectionStrings:MainDB</c> registers <see cref="MySqlUserRecordStore"/> by type for
+        /// <see cref="INntpUserRecordStore"/>.
+        /// </summary>
+        [Test]
+        public void AddNntpMySqlAuthFromHostConfiguration_RegistersUserRecordStoreByType()
+        {
+            IConfiguration configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:MainDB"] = "Server=127.0.0.1;Database=nntp;User ID=test;Password=test",
+                })
+                .Build();
+
+            ServiceCollection services = new ServiceCollection();
+            services.AddLogging();
+            services.AddNntpMySqlAuthFromHostConfiguration(configuration);
+
+            using ServiceProvider provider = services.BuildServiceProvider();
+            INntpUserRecordStore store = provider.GetRequiredService<INntpUserRecordStore>();
+            Assert.That(store, Is.InstanceOf<MySqlUserRecordStore>());
+        }
+
+        /// <summary>
         /// Verifies placeholder <c>MainDB</c> passwords are rejected at registration time.
         /// </summary>
         [Test]

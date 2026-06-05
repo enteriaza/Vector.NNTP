@@ -2,17 +2,15 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-using System.Buffers;
 using System.Net;
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Vector.NNTP.Session.Accounts;
 using Vector.NNTP.Session.Coordination;
 using Vector.NNTP.Session.Policy;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Utilities.Diagnostics;
-using Vector.NNTP.Utilities.Security;
+using Vector.NNTP.Utilities.Encoding;
 
 namespace Vector.NNTP.Auth.MySql
 {
@@ -24,38 +22,46 @@ namespace Vector.NNTP.Auth.MySql
     /// <para>
     /// <b>Password handling:</b> The underlying <see cref="INntpUserRecordStore"/> executes a parameterised query that
     /// decrypts <c>account_pass</c> using <c>AES_DECRYPT</c> and casts it to <c>CHAR</c>. This validator compares the
-    /// supplied password with the decrypted value using an ordinal, case-sensitive comparison.
+    /// supplied password with the decrypted value using a constant-time ASCII comparison. Passwords must be US-ASCII;
+    /// non-ASCII input is rejected without comparison.
     /// </para>
     /// <para>
     /// <b>Session admission:</b> Credential validation returns <see cref="NntpSessionPolicy"/> only. Distributed admission
     /// is performed by <see cref="NntpAuthenticationService"/> via <see cref="INntpSessionCoordinator"/>.
     /// </para>
     /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="MySqlNntpCredentialValidator"/> class.
-    /// </remarks>
-    /// <param name="recordStore">Backing user record store.</param>
-    /// <param name="accountKeyNormalizer">Account key normalizer for policy construction.</param>
-    /// <param name="logger">Logger for backend/auth failures.</param>
-    public sealed partial class MySqlNntpCredentialValidator(
-        INntpUserRecordStore recordStore,
-        IAccountKeyNormalizer accountKeyNormalizer,
-        ILogger<MySqlNntpCredentialValidator> logger) : INntpCredentialValidator, INntpSaslAccountAuthenticator
+    public sealed partial class MySqlNntpCredentialValidator : INntpCredentialValidator, INntpSaslAccountAuthenticator
     {
         /// <summary>
         /// Backing user record store.
         /// </summary>
-        private readonly INntpUserRecordStore _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
+        private readonly INntpUserRecordStore _recordStore;
 
         /// <summary>
         /// Account key normalizer for policy construction.
         /// </summary>
-        private readonly IAccountKeyNormalizer _accountKeyNormalizer = accountKeyNormalizer ?? throw new ArgumentNullException(nameof(accountKeyNormalizer));
+        private readonly IAccountKeyNormalizer _accountKeyNormalizer;
 
         /// <summary>
         /// Logger for backend/auth failures.
         /// </summary>
-        private readonly ILogger<MySqlNntpCredentialValidator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        private readonly ILogger<MySqlNntpCredentialValidator> _logger;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MySqlNntpCredentialValidator"/> class.
+        /// </summary>
+        /// <param name="recordStore">Backing user record store.</param>
+        /// <param name="accountKeyNormalizer">Account key normalizer for policy construction.</param>
+        /// <param name="logger">Logger for backend/auth failures.</param>
+        internal MySqlNntpCredentialValidator(
+            INntpUserRecordStore recordStore,
+            IAccountKeyNormalizer accountKeyNormalizer,
+            ILogger<MySqlNntpCredentialValidator> logger)
+        {
+            _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
+            _accountKeyNormalizer = accountKeyNormalizer ?? throw new ArgumentNullException(nameof(accountKeyNormalizer));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
 
         /// <summary>
         /// Completes SASL authentication for the given account.
@@ -74,7 +80,7 @@ namespace Vector.NNTP.Auth.MySql
             bool isTls,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(username))
+            if (string.IsNullOrWhiteSpace(username))
             {
                 return NntpAuthResult.InvalidCredentials();
             }
@@ -90,6 +96,14 @@ namespace Vector.NNTP.Auth.MySql
                 isTls,
                 record => isScram ? record.AllowAuthScram256 : record.AllowAuthPlain,
                 cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Abandons the SASL exchange and clears the cached user record.
+        /// </summary>
+        public void AbandonSaslExchange()
+        {
+            MySqlUserRecordSaslCache.Clear();
         }
 
         /// <summary>
@@ -111,7 +125,7 @@ namespace Vector.NNTP.Auth.MySql
             bool isTls,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(username))
+            if (string.IsNullOrWhiteSpace(username))
             {
                 return NntpAuthResult.InvalidCredentials();
             }
@@ -163,11 +177,17 @@ namespace Vector.NNTP.Auth.MySql
         }
 
         /// <summary>
-        /// Compares the stored password with the supplied password.
+        /// Compares the stored password with the supplied password using constant-time ASCII encoding.
         /// </summary>
         /// <param name="storedPassword">Decrypted password from the data store.</param>
         /// <param name="suppliedPassword">Password supplied by the client.</param>
         /// <returns><see langword="true"/> when the passwords match.</returns>
+        /// <remarks>
+        /// <para><b>Charset:</b> Both operands must be pure US-ASCII. Non-ASCII input returns <see langword="false"/>
+        /// without throwing.</para>
+        /// <para><b>Encoding:</b> Uses <see cref="EncodingUtilities.AsciiToSpan"/> (BCL SIMD on x64) into zero-padded
+        /// compare buffers; no intermediate heap byte arrays for password material.</para>
+        /// </remarks>
         internal bool PasswordEquals(string storedPassword, string suppliedPassword)
         {
             if (storedPassword is null || suppliedPassword is null)
@@ -175,50 +195,46 @@ namespace Vector.NNTP.Auth.MySql
                 return false;
             }
 
-            byte[] storedBytes = Encoding.UTF8.GetBytes(storedPassword);
-            byte[] suppliedBytes = Encoding.UTF8.GetBytes(suppliedPassword);
+            if (!EncodingUtilities.IsAscii(storedPassword.AsSpan()) || !EncodingUtilities.IsAscii(suppliedPassword.AsSpan()))
+            {
+                return false;
+            }
+
+            int storedLength = storedPassword.Length;
+            int suppliedLength = suppliedPassword.Length;
+            int maxLength = Math.Max(storedLength, suppliedLength);
+
+            const int StackallocThresholdBytes = 4096;
+
+            if (maxLength <= StackallocThresholdBytes)
+            {
+                Span<byte> left = stackalloc byte[maxLength];
+                Span<byte> right = stackalloc byte[maxLength];
+                left.Clear();
+                right.Clear();
+                _ = EncodingUtilities.AsciiToSpan(storedPassword.AsSpan(), left);
+                _ = EncodingUtilities.AsciiToSpan(suppliedPassword.AsSpan(), right);
+                bool equals = CryptographicOperations.FixedTimeEquals(left, right);
+                return equals && storedLength == suppliedLength;
+            }
+
+            byte[] leftArray = ArrayPool<byte>.Shared.Rent(maxLength);
+            byte[] rightArray = ArrayPool<byte>.Shared.Rent(maxLength);
             try
             {
-                int storedLength = storedBytes.Length;
-                int suppliedLength = suppliedBytes.Length;
-                int maxLength = Math.Max(storedLength, suppliedLength);
-
-                const int StackallocThresholdBytes = 4096;
-
-                if (maxLength <= StackallocThresholdBytes)
-                {
-                    Span<byte> left = stackalloc byte[maxLength];
-                    Span<byte> right = stackalloc byte[maxLength];
-                    left.Clear();
-                    right.Clear();
-                    storedBytes.CopyTo(left);
-                    suppliedBytes.CopyTo(right);
-                    bool equals = CryptographicOperations.FixedTimeEquals(left, right);
-                    return equals && storedLength == suppliedLength;
-                }
-
-                byte[] leftArray = ArrayPool<byte>.Shared.Rent(maxLength);
-                byte[] rightArray = ArrayPool<byte>.Shared.Rent(maxLength);
-                try
-                {
-                    Span<byte> left = leftArray.AsSpan(0, maxLength);
-                    Span<byte> right = rightArray.AsSpan(0, maxLength);
-                    left.Clear();
-                    right.Clear();
-                    storedBytes.CopyTo(left);
-                    suppliedBytes.CopyTo(right);
-                    bool equals = CryptographicOperations.FixedTimeEquals(left, right);
-                    return equals && storedLength == suppliedLength;
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(leftArray, clearArray: true);
-                    ArrayPool<byte>.Shared.Return(rightArray, clearArray: true);
-                }
+                Span<byte> left = leftArray.AsSpan(0, maxLength);
+                Span<byte> right = rightArray.AsSpan(0, maxLength);
+                left.Clear();
+                right.Clear();
+                _ = EncodingUtilities.AsciiToSpan(storedPassword.AsSpan(), left);
+                _ = EncodingUtilities.AsciiToSpan(suppliedPassword.AsSpan(), right);
+                bool equals = CryptographicOperations.FixedTimeEquals(left, right);
+                return equals && storedLength == suppliedLength;
             }
             finally
             {
-                SecureMemoryUtilities.ZeroBuffers(storedBytes, suppliedBytes);
+                ArrayPool<byte>.Shared.Return(leftArray, clearArray: true);
+                ArrayPool<byte>.Shared.Return(rightArray, clearArray: true);
             }
         }
 
@@ -273,9 +289,12 @@ namespace Vector.NNTP.Auth.MySql
 
             try
             {
-                MySqlUserRecord? record = await _recordStore
-                    .TryGetUserAsync(username, cancellationToken)
-                    .ConfigureAwait(false);
+                if (!MySqlUserRecordSaslCache.TryTake(username, out MySqlUserRecord? record))
+                {
+                    record = await _recordStore
+                        .TryGetUserAsync(username, cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
                 if (record is null)
                 {
@@ -306,6 +325,10 @@ namespace Vector.NNTP.Auth.MySql
                 AuthenticationBackendFailed(_logger, ex, mechanism, username);
                 return NntpAuthResult.TransientFailure();
             }
+            finally
+            {
+                MySqlUserRecordSaslCache.Clear();
+            }
         }
 
         /// <summary>
@@ -319,14 +342,13 @@ namespace Vector.NNTP.Auth.MySql
         {
             NntpSessionPolicy policy = CreatePolicy(record);
             string clientIpText = FormatClientIp(clientIp);
-            char accountTypeChar = policy.AccountType == NntpAccountType.RateLimited ? 'R' : 'B';
             AuthenticationSucceeded(
                 _logger,
                 mechanism,
                 policy.Username,
                 clientIpText,
                 policy.AllowPosting,
-                accountTypeChar,
+                policy.AccountType,
                 policy.CustomerId);
 
             return NntpAuthResult.Success(policy);

@@ -317,9 +317,6 @@ namespace Vector.NNTP.Encryption.Certificates
         ///     <see cref="CertificateStore.DisposeCertificate"/> -- prevents <see cref="GetCurrentCertificate"/> from
         ///     returning a disposed certificate to <c>NntpListener</c> and cleans up the persisted CNG key on
         ///     Windows.</description></item>
-        ///   <item><description>Dispose <see cref="_acmeProvider"/> -- releases the <see cref="SemaphoreSlim"/> used for
-        ///     one-time authoritative DNS resolution.  Best-effort via <see cref="DisposalUtilities.TryDispose"/> to
-        ///     ensure a faulting dispose does not prevent subsequent cleanup.</description></item>
         ///   <item><description>Call <c>base.Dispose()</c> -- disposes the <see cref="BackgroundService"/>
         ///     timer.</description></item>
         ///   <item><description>Call <see cref="GC.SuppressFinalize(object)"/> -- prevents the GC from scheduling a
@@ -352,7 +349,6 @@ namespace Vector.NNTP.Encryption.Certificates
             if (cert is not null)
                 CertificateStore.DisposeCertificate(cert, logger);
 
-            _ = DisposalUtilities.TryDispose(_acmeProvider);
             base.Dispose();
             GC.SuppressFinalize(this);
         }

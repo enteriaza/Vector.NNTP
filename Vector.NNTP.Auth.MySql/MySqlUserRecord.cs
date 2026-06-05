@@ -9,11 +9,18 @@ namespace Vector.NNTP.Auth.MySql
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Scope:</b> This type is an internal data-transfer object used by the MySQL credential validator and CRAM-MD5
-    /// secret store. It is not intended for public API consumption.
+    /// <b>Scope:</b> Assembly-internal data-transfer object used by the MySQL credential validator, SCRAM/CRAM credential
+    /// stores, and <see cref="INntpUserRecordStore"/>. Hosts integrate via
+    /// <see cref="Sockets.Authentication.INntpCredentialValidator"/>,
+    /// <see cref="Sockets.Authentication.IScramCredentialStore"/>, and
+    /// <see cref="Sockets.Authentication.ICramMd5CredentialStore"/> instead.
+    /// </para>
+    /// <para>
+    /// <b>Account type:</b> <see cref="AccountType"/> is stored as the database <c>char</c> flag (<c>'R'</c> reader,
+    /// <c>'B'</c> both). A dedicated enum mapped at materialisation time would remove magic characters but is deferred.
     /// </para>
     /// </remarks>
-    public sealed class MySqlUserRecord
+    internal sealed class MySqlUserRecord
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="MySqlUserRecord"/> class.
@@ -33,7 +40,9 @@ namespace Vector.NNTP.Auth.MySql
         /// <param name="srcIpLimit">Maximum concurrent sessions from a single source IP.</param>
         /// <param name="isEnabled">Indicates whether the account is enabled for logon.</param>
         /// <param name="customerId">Customer identifier associated with the account.</param>
-        public MySqlUserRecord(
+        /// <exception cref="ArgumentException">Thrown when <paramref name="accountName"/> is null or empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="scramIterations"/> is negative.</exception>
+        internal MySqlUserRecord(
             string accountName,
             string accountPassword,
             bool allowAuthPlain,
@@ -51,6 +60,8 @@ namespace Vector.NNTP.Auth.MySql
             string customerId)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountName);
+            ArgumentOutOfRangeException.ThrowIfNegative(scramIterations);
+
             AccountName = accountName;
             AccountPassword = accountPassword ?? string.Empty;
             AllowAuthPlain = allowAuthPlain;
@@ -97,6 +108,10 @@ namespace Vector.NNTP.Auth.MySql
         /// <summary>
         /// Gets the SCRAM PBKDF2 iteration count.
         /// </summary>
+        /// <remarks>
+        /// Zero indicates SCRAM material is not provisioned for the account; positive values are required before
+        /// <see cref="MySqlScramCredentialStore"/> will return stored keys.
+        /// </remarks>
         public int ScramIterations { get; }
 
         /// <summary>

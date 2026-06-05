@@ -6,9 +6,9 @@
 // Minimal UDP/TCP DNS TXT client for ACME DNS-01 propagation checks (RFC 1035, RFC 7766 TCP framing).
 
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using Vector.NNTP.Utilities.Dns;
 
 namespace Vector.NNTP.Encryption.Dns
@@ -29,24 +29,56 @@ namespace Vector.NNTP.Encryption.Dns
         private const int DnsHeaderSize = 12;
 
         /// <summary>
-        /// The size of the fixed fields for a resource record.
+        /// Maximum pooled UDP clients (aligned with propagation probe parallelism).
         /// </summary>
-        private const int RrFixedFieldsSize = 10;
-
-        /// <summary>
-        /// The maximum number of compression pointer hops.
-        /// </summary>
-        private const int MaxCompressionPointerHops = 128;
-
-        /// <summary>
-        /// The size of the question suffix.
-        /// </summary>
-        private const int QuestionSuffixSize = 4;
+        private const int UdpPoolMaxSize = 8;
 
         /// <summary>
         /// The DNS flag for truncated responses.
         /// </summary>
         private const ushort DnsFlagTruncated = 0x0200;
+
+        /// <summary>
+        /// Bounded pool of reusable <see cref="UdpClient"/> instances to amortise socket creation during poll loops.
+        /// </summary>
+        private static readonly ConcurrentBag<UdpClient> UdpPool = new();
+
+        /// <summary>
+        /// Queries TXT for <paramref name="recordName"/> at <paramref name="nameserver"/> and returns whether any answer
+        /// payload equals <paramref name="expectedTxt"/>.
+        /// </summary>
+        /// <param name="nameserver">The nameserver to query.</param>
+        /// <param name="recordName">The name of the record to query.</param>
+        /// <param name="expectedTxt">Expected TXT bytes (ASCII challenge digest).</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns><see langword="true"/> when a matching TXT record is present.</returns>
+        internal static async Task<bool> QueryTxtContainsAsync(
+            IPAddress nameserver,
+            string recordName,
+            ReadOnlyMemory<byte> expectedTxt,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(nameserver);
+            byte[] queryPacket = DnsWireQueryBuilder.Build(recordName, DnsWireRecordTypes.Txt, out ushort queryId);
+            byte[]? udpResponse = await TryUdpQueryAsync(nameserver, queryPacket, cancellationToken).ConfigureAwait(false);
+            if (udpResponse is not null &&
+                DnsWireTxtResponseParser.ResponseContainsTxt(udpResponse, queryId, expectedTxt.Span))
+            {
+                return true;
+            }
+
+            if (udpResponse is null || ShouldRetryTxtOverTcp(udpResponse))
+            {
+                byte[]? tcpResponse = await TryTcpQueryAsync(nameserver, queryPacket, cancellationToken).ConfigureAwait(false);
+                if (tcpResponse is not null &&
+                    DnsWireTxtResponseParser.ResponseContainsTxt(tcpResponse, queryId, expectedTxt.Span))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// Queries TXT for <paramref name="recordName"/> at <paramref name="nameserver"/> using UDP, then TCP if truncated or empty answers.
@@ -78,12 +110,22 @@ namespace Vector.NNTP.Encryption.Dns
         }
 
         /// <summary>
+        /// Parses TXT answers from a response (shared with recursive fallback path).
+        /// </summary>
+        /// <param name="buffer">The response buffer.</param>
+        /// <param name="expectedId">The expected ID of the response.</param>
+        /// <returns>The list of TXT records.</returns>
+        internal static List<string> ParseTxtResponse(byte[] buffer, ushort expectedId)
+        {
+            return DnsWireTxtResponseParser.ParseTxtResponseStrings(buffer, expectedId);
+        }
+
+        /// <summary>
         /// Determines if the TXT query should be retried over TCP.
         /// </summary>
         /// <param name="udpResponse">The UDP response.</param>
-        /// <param name="parsedTxt">The parsed TXT records.</param>
         /// <returns><see langword="true"/> if the TXT query should be retried over TCP; otherwise <see langword="false"/>.</returns>
-        private static bool ShouldRetryTxtOverTcp(byte[] udpResponse, List<string> parsedTxt)
+        private static bool ShouldRetryTxtOverTcp(byte[] udpResponse)
         {
             if (udpResponse.Length < DnsHeaderSize)
             {
@@ -91,8 +133,18 @@ namespace Vector.NNTP.Encryption.Dns
             }
 
             ushort flags = BinaryPrimitives.ReadUInt16BigEndian(udpResponse.AsSpan(2));
-            bool truncated = (flags & DnsFlagTruncated) != 0;
-            return truncated || parsedTxt.Count == 0;
+            return (flags & DnsFlagTruncated) != 0;
+        }
+
+        /// <summary>
+        /// Determines if the TXT query should be retried over TCP.
+        /// </summary>
+        /// <param name="udpResponse">The UDP response.</param>
+        /// <param name="parsedTxt">The parsed TXT records.</param>
+        /// <returns><see langword="true"/> if the TXT query should be retried over TCP; otherwise <see langword="false"/>.</returns>
+        private static bool ShouldRetryTxtOverTcp(byte[] udpResponse, List<string> parsedTxt)
+        {
+            return ShouldRetryTxtOverTcp(udpResponse) || parsedTxt.Count == 0;
         }
 
         /// <summary>
@@ -104,7 +156,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// <returns>The response from the nameserver; <see langword="null"/> if the query failed.</returns>
         private static async Task<byte[]?> TryUdpQueryAsync(IPAddress nameserver, byte[] queryPacket, CancellationToken cancellationToken)
         {
-            using UdpClient udp = new(nameserver.AddressFamily);
+            UdpClient udp = RentUdpClient(nameserver.AddressFamily);
             using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(ReceiveTimeoutMs);
 
@@ -125,6 +177,46 @@ namespace Vector.NNTP.Encryption.Dns
             catch (ObjectDisposedException)
             {
                 return null;
+            }
+            finally
+            {
+                ReturnUdpClient(udp);
+            }
+        }
+
+        /// <summary>
+        /// Rents a pooled UDP client for the given address family.
+        /// </summary>
+        /// <param name="family">Address family for the query.</param>
+        /// <returns>A UDP client ready for send/receive.</returns>
+        private static UdpClient RentUdpClient(AddressFamily family)
+        {
+            while (UdpPool.TryTake(out UdpClient? client))
+            {
+                if (client.Client.AddressFamily == family)
+                {
+                    return client;
+                }
+
+                client.Dispose();
+            }
+
+            return new UdpClient(family);
+        }
+
+        /// <summary>
+        /// Returns a UDP client to the bounded pool or disposes it when the pool is full.
+        /// </summary>
+        /// <param name="client">Client to return.</param>
+        private static void ReturnUdpClient(UdpClient client)
+        {
+            if (UdpPool.Count < UdpPoolMaxSize)
+            {
+                UdpPool.Add(client);
+            }
+            else
+            {
+                client.Dispose();
             }
         }
 
@@ -149,10 +241,10 @@ namespace Vector.NNTP.Encryption.Dns
                 await tcp.ConnectAsync(nameserver, 53, timeoutCts.Token).ConfigureAwait(false);
                 NetworkStream stream = tcp.GetStream();
                 int qLen = queryPacket.Length;
-                byte[] lengthPrefix = new byte[2 + qLen];
-                BinaryPrimitives.WriteUInt16BigEndian(lengthPrefix.AsSpan(0, 2), (ushort)qLen);
-                queryPacket.CopyTo(lengthPrefix.AsSpan(2));
-                await stream.WriteAsync(lengthPrefix.AsMemory(0, lengthPrefix.Length), timeoutCts.Token).ConfigureAwait(false);
+                byte[] lengthPrefix = new byte[2];
+                BinaryPrimitives.WriteUInt16BigEndian(lengthPrefix, (ushort)qLen);
+                await stream.WriteAsync(lengthPrefix.AsMemory(0, 2), timeoutCts.Token).ConfigureAwait(false);
+                await stream.WriteAsync(queryPacket, timeoutCts.Token).ConfigureAwait(false);
                 await stream.FlushAsync(timeoutCts.Token).ConfigureAwait(false);
 
                 byte[] lenBuf = new byte[2];
@@ -183,197 +275,6 @@ namespace Vector.NNTP.Encryption.Dns
             {
                 return null;
             }
-        }
-
-        /// <summary>
-        /// Parses TXT answers from a response (shared with recursive fallback path).
-        /// </summary>
-        /// <param name="buffer">The response buffer.</param>
-        /// <param name="expectedId">The expected ID of the response.</param>
-        /// <returns>The list of TXT records.</returns>
-        internal static List<string> ParseTxtResponse(byte[] buffer, ushort expectedId)
-        {
-            List<string> results = [];
-            if (buffer.Length < DnsHeaderSize)
-            {
-                return results;
-            }
-
-            ReadOnlySpan<byte> span = buffer;
-            ushort responseId = BinaryPrimitives.ReadUInt16BigEndian(span);
-            if (responseId != expectedId)
-            {
-                return results;
-            }
-
-            ushort flags = BinaryPrimitives.ReadUInt16BigEndian(span[2..]);
-            if ((flags & 0xFA0F) != 0x8000)
-            {
-                return results;
-            }
-
-            ushort qdCount = BinaryPrimitives.ReadUInt16BigEndian(span[4..]);
-            ushort anCount = BinaryPrimitives.ReadUInt16BigEndian(span[6..]);
-            int offset = DnsHeaderSize;
-
-            for (int q = 0; q < qdCount; q++)
-            {
-                if (!TrySkipName(span, ref offset))
-                {
-                    return results;
-                }
-
-                if (offset + QuestionSuffixSize > span.Length)
-                {
-                    return results;
-                }
-
-                offset += QuestionSuffixSize;
-            }
-
-            for (int a = 0; a < anCount; a++)
-            {
-                if (!TrySkipName(span, ref offset))
-                {
-                    return results;
-                }
-
-                if (offset + RrFixedFieldsSize > span.Length)
-                {
-                    return results;
-                }
-
-                ushort rrType = BinaryPrimitives.ReadUInt16BigEndian(span[offset..]);
-                ushort rrClass = BinaryPrimitives.ReadUInt16BigEndian(span[(offset + 2)..]);
-                ushort rdLength = BinaryPrimitives.ReadUInt16BigEndian(span[(offset + 8)..]);
-                offset += RrFixedFieldsSize;
-
-                if (offset + rdLength > span.Length)
-                {
-                    return results;
-                }
-
-                if (rrType == DnsWireRecordTypes.Txt && rrClass == DnsWireQueryBuilder.DnsClassIn)
-                {
-                    string? txtValue = ParseTxtRdata(span, ref offset, rdLength);
-                    if (txtValue is not null)
-                    {
-                        results.Add(txtValue);
-                    }
-                }
-                else
-                {
-                    offset += rdLength;
-                }
-            }
-
-            return results;
-        }
-
-        /// <summary>
-        /// Parses the TXT RDATA from a response.
-        /// </summary>
-        /// <param name="span">The response buffer.</param>
-        /// <param name="offset">The current offset in the response buffer.</param>
-        /// <param name="rdLength">The length of the RDATA.</param>
-        /// <returns>The TXT record; <see langword="null"/> if the RDATA is malformed.</returns>
-        private static string? ParseTxtRdata(ReadOnlySpan<byte> span, ref int offset, ushort rdLength)
-        {
-            int rdEnd = offset + rdLength;
-            if (offset >= rdEnd || offset >= span.Length)
-            {
-                offset = rdEnd;
-                return null;
-            }
-
-            int firstStrLen = span[offset++];
-            if (offset + firstStrLen > span.Length || offset + firstStrLen > rdEnd)
-            {
-                offset = rdEnd;
-                return null;
-            }
-
-            if (offset + firstStrLen == rdEnd)
-            {
-                string result = Encoding.ASCII.GetString(span.Slice(offset, firstStrLen));
-                offset = rdEnd;
-                return result;
-            }
-
-            StringBuilder sb = new(rdLength);
-            _ = sb.Append(Encoding.ASCII.GetString(span.Slice(offset, firstStrLen)));
-            offset += firstStrLen;
-
-            while (offset < rdEnd)
-            {
-                if (offset >= span.Length)
-                {
-                    break;
-                }
-
-                int strLen = span[offset++];
-                if (offset + strLen > span.Length || offset + strLen > rdEnd)
-                {
-                    break;
-                }
-
-                _ = sb.Append(Encoding.ASCII.GetString(span.Slice(offset, strLen)));
-                offset += strLen;
-            }
-
-            offset = rdEnd;
-            return sb.ToString();
-        }
-
-        /// <summary>
-        /// Tries to skip a name in a response.
-        /// </summary>
-        /// <param name="span">The response buffer.</param>
-        /// <param name="offset">The current offset in the response buffer.</param>
-        /// <returns><see langword="true"/> if the name was skipped; otherwise <see langword="false"/>.</returns>
-        private static bool TrySkipName(ReadOnlySpan<byte> span, ref int offset)
-        {
-            int hops = 0;
-            while (offset < span.Length)
-            {
-                if (++hops > MaxCompressionPointerHops)
-                {
-                    return false;
-                }
-
-                byte b = span[offset];
-                if (b == 0)
-                {
-                    offset++;
-                    return true;
-                }
-
-                if ((b & 0xC0) == 0xC0)
-                {
-                    if (offset + 2 > span.Length)
-                    {
-                        return false;
-                    }
-
-                    offset += 2;
-                    return true;
-                }
-
-                if ((b & 0xC0) != 0)
-                {
-                    return false;
-                }
-
-                int advance = 1 + b;
-                if (offset + advance > span.Length)
-                {
-                    return false;
-                }
-
-                offset += advance;
-            }
-
-            return false;
         }
     }
 }
