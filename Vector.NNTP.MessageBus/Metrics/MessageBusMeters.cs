@@ -62,7 +62,7 @@ namespace Vector.NNTP.MessageBus.Metrics
 
         /// <summary>Records a publish that received broker publisher confirmation.</summary>
         /// <remarks>Called from <see cref="Publishing.RabbitMqPublisherScope.PublishAsync"/> on successful await of
-        /// <see cref="RabbitMQ.Client.IChannel.BasicPublishAsync"/>.</remarks>
+        /// <c>IChannel.BasicPublishAsync</c>.</remarks>
         public static void RecordPublish()
         {
             PublishCounter.Add(1);

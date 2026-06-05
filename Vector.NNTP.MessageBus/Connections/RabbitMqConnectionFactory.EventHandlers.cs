@@ -145,7 +145,8 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <para><b>Allocation:</b> Each lambda allocates a single closure object at subscription time (capturing
         /// <c>this</c> and <c>options</c>).  No per-event allocations occur during handler execution except in the
         /// <see cref="IConnection.CallbackExceptionAsync"/> handler, which builds a
-        /// <see cref="System.Text.StringBuilder"/> via <see cref="FormattingUtilities.FormatKeyValuePairs"/> to format the
+        /// <see cref="System.Text.StringBuilder"/> via
+        /// <see cref="FormattingUtilities.FormatKeyValuePairs(IReadOnlyDictionary{string, object})"/> to format the
         /// callback detail dictionary -- this is acceptable because callback exceptions are error-level events that should
         /// be rare.</para>
         /// </remarks>

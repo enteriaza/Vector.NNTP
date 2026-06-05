@@ -90,7 +90,7 @@ namespace Vector.NNTP.MessageBus.Configuration
     /// <para><b>Consumers:</b></para>
     /// <list type="bullet">
     ///   <item><see cref="Connections.ConnectionPool"/> — pool sizing, lease timeouts, reconnect backoff.</item>
-    ///   <item><see cref="RabbitMqConnectionFactory"/> — transport, TLS, and endpoint construction.</item>
+    ///   <item><see cref="Connections.RabbitMqConnectionFactory"/> — transport, TLS, and endpoint construction.</item>
     ///   <item><see cref="Publishing.RabbitMqPublisherPool"/> — <see cref="ChannelPoolSize"/>,
     ///     <see cref="PublishConfirmTimeout"/>, and slot acquisition.</item>
     /// </list>
@@ -98,10 +98,10 @@ namespace Vector.NNTP.MessageBus.Configuration
     /// <para><b>Thread safety:</b> Mutable during validation (in-place normalisation). After startup validation, the
     /// options snapshot is read-only via <c>IOptions&lt;RabbitMQOptions&gt;</c>.</para>
     ///
-    /// <para><b>Cross-platform:</b> Fully portable.  All APIs used (<see cref="IPAddress.TryParse"/>,
+    /// <para><b>Cross-platform:</b> Fully portable.  All APIs used (<c>IPAddress.TryParse</c>,
     /// <see cref="IPAddress.IsLoopback"/>, <see cref="DnsValidationUtilities.ValidateHost"/>,
     /// <see cref="IPUtilities.Classify(IPAddress)"/>,
-    /// <see cref="HostParsingUtilities.HasPortSuffix"/>,
+    /// <c>HostParsingUtilities.HasPortSuffix</c>,
     /// <see cref="CredentialPlaceholderDetector.IsPlaceholder"/>) are BCL APIs available on all .NET 8
     /// runtimes (Windows x64, Linux x64).  No P/Invoke, no OS-specific APIs.</para>
     ///
@@ -267,7 +267,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// monitors (process is running, health-check port is open) but is functionally dead (no working AMQP
         /// connection).</para>
         ///
-        /// <para>When the consecutive failure count reaches this threshold, <see cref="RabbitMqConnectionFactory"/>
+        /// <para>When the consecutive failure count reaches this threshold, <see cref="Connections.RabbitMqConnectionFactory"/>
         /// logs at <see cref="LogLevel.Critical"/> and calls
         /// <see cref="IHostApplicationLifetime.StopApplication"/> to initiate a graceful shutdown.  The external process
         /// supervisor (systemd <c>Restart=always</c>, Kubernetes <c>restartPolicy: Always</c>) then restarts the process,
@@ -283,7 +283,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// behaviour where recovery retries indefinitely.  This is appropriate only if an external liveness probe (e.g.,
         /// Kubernetes liveness check against <c>IConnection.IsOpen</c>) handles the zombie-detection responsibility.</para>
         ///
-        /// <para><b>Consumer:</b> Read by <see cref="RabbitMqConnectionFactory.AttachConnectionEventHandlers"/> and
+        /// <para><b>Consumer:</b> Read by <c>RabbitMqConnectionFactory.AttachConnectionEventHandlers</c> and
         /// evaluated in the <see cref="RabbitMQ.Client.IConnection.ConnectionRecoveryErrorAsync"/> event handler.</para>
         /// </remarks>
         /// <value>Defaults to <c>10</c>.</value>
@@ -400,7 +400,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// heartbeat mechanism can detect the failure -- causing spurious disconnections during normal idle periods.
         /// This invariant is enforced in <see cref="ValidateTransportParameters"/>.</para>
         ///
-        /// <para><b>Consumer:</b> Read by <see cref="RabbitMqConnectionFactory"/> and applied to
+        /// <para><b>Consumer:</b> Read by <see cref="Connections.RabbitMqConnectionFactory"/> and applied to
         /// <see cref="RabbitMQ.Client.ConnectionFactory.RequestedHeartbeat"/>.</para>
         /// </remarks>
         /// <value>Defaults to <c>15</c> seconds (dead-connection timeout = 30 s).</value>
@@ -419,7 +419,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// <para>The RabbitMQ client library applies this delay uniformly between each reconnection attempt, cycling
         /// through all endpoints in <see cref="Hosts"/>.</para>
         ///
-        /// <para><b>Consumer:</b> Read by <see cref="RabbitMqConnectionFactory"/> and applied to
+        /// <para><b>Consumer:</b> Read by <see cref="Connections.RabbitMqConnectionFactory"/> and applied to
         /// <see cref="RabbitMQ.Client.ConnectionFactory.NetworkRecoveryInterval"/>.</para>
         /// </remarks>
         /// <value>Defaults to <c>5</c> seconds.</value>
@@ -439,7 +439,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// detection window (2x heartbeat).  If the socket timeout were shorter, idle connections would be torn down by
         /// the socket layer before the AMQP heartbeat mechanism could keep them alive.</para>
         ///
-        /// <para><b>Consumer:</b> Read by <see cref="RabbitMqConnectionFactory"/> and applied to
+        /// <para><b>Consumer:</b> Read by <see cref="Connections.RabbitMqConnectionFactory"/> and applied to
         /// <see cref="RabbitMQ.Client.ConnectionFactory.SocketReadTimeout"/> and
         /// <see cref="RabbitMQ.Client.ConnectionFactory.SocketWriteTimeout"/>.</para>
         /// </remarks>
@@ -456,7 +456,8 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// performed by <see cref="RabbitMQOptionsValidator"/>.
         /// </summary>
         /// <param name="logger">Logger for production-safety warnings during host validation.</param>
-        /// <param name="hostEnvironment">Host environment; production checks run when <see cref="IHostEnvironment.IsProduction"/>.</param>
+        /// <param name="hostEnvironment">Host environment; production checks run when
+        /// <see cref="HostEnvironmentEnvExtensions.IsProduction(IHostEnvironment)"/>.</param>
         /// <param name="errors">Accumulator for hard validation errors returned to the validator.</param>
         internal void RunCrossPropertyValidation(ILogger logger, IHostEnvironment? hostEnvironment, List<ValidationResult> errors)
         {
@@ -756,7 +757,8 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// <remarks>
         /// <para>Duplicate hosts are not invalid -- the RabbitMQ client library will simply try the same endpoint twice
         /// during failover, which is wasteful but not harmful.</para>
-        /// <para>Host entries are already trimmed in-place by the normalisation step in <see cref="Validate"/> before this
+        /// <para>Host entries are already trimmed in-place by the normalisation step in
+        /// <see cref="RunCrossPropertyValidation"/> before this
         /// method is called by <see cref="RunCrossPropertyValidation"/>, so no additional trimming is needed here.</para>
         ///
         /// <para><b>Warning deduplication:</b> Called at most once per process by <see cref="RabbitMQOptionsValidator"/>.</para>

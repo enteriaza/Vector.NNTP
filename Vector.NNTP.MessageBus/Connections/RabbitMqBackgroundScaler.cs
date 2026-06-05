@@ -30,34 +30,21 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>Failure handling:</b> Exceptions are logged; the scaler continues processing signals.</para>
     /// <para><b>Thread safety:</b> Single reader on the scale-up channel; pool mutations are synchronized internally.</para>
     /// </remarks>
-    public sealed partial class RabbitMqBackgroundScaler : BackgroundService
+    /// <param name="pool">Connection pool to scale.</param>
+    /// <param name="options">RabbitMQ options (max connections, channel pool size).</param>
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="pool"/> or <paramref name="options"/> is
+    /// <see langword="null"/>.</exception>
+    public sealed partial class RabbitMqBackgroundScaler(
+        ConnectionPool pool,
+        IOptions<RabbitMQOptions> options,
+        ILogger<RabbitMqBackgroundScaler> logger) : BackgroundService
     {
         /// <summary>Connection pool to scale.</summary>
-        private readonly ConnectionPool _pool;
+        private readonly ConnectionPool _pool = pool ?? throw new ArgumentNullException(nameof(pool));
 
         /// <summary>RabbitMQ configuration snapshot.</summary>
-        private readonly IOptions<RabbitMQOptions> _options;
-
-        /// <summary>Logger for scale events.</summary>
-        private readonly ILogger<RabbitMqBackgroundScaler> _logger;
-
-        /// <summary>Initializes a new instance of the <see cref="RabbitMqBackgroundScaler"/> class.</summary>
-        /// <param name="pool">Connection pool to scale.</param>
-        /// <param name="options">RabbitMQ options (max connections, channel pool size).</param>
-        /// <param name="logger">Logger.</param>
-        /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
-        public RabbitMqBackgroundScaler(
-            ConnectionPool pool,
-            IOptions<RabbitMQOptions> options,
-            ILogger<RabbitMqBackgroundScaler> logger)
-        {
-            ArgumentNullException.ThrowIfNull(pool);
-            ArgumentNullException.ThrowIfNull(options);
-            ArgumentNullException.ThrowIfNull(logger);
-            _pool = pool;
-            _options = options;
-            _logger = logger;
-        }
+        private readonly IOptions<RabbitMQOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
 
         /// <summary>
         /// Processes scale-up signals until host shutdown.

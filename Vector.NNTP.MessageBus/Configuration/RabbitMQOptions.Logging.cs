@@ -49,7 +49,8 @@ namespace Vector.NNTP.MessageBus.Configuration
     /// generator emits the implementation at compile time, providing zero-allocation logging when the log level is
     /// disabled and compile-time validation of message templates.</para>
     ///
-    /// <para><b>Null-safe invocation:</b> All callers pass the nullable <see cref="_logger"/> field.  The
+    /// <para><b>Null-safe invocation:</b> All callers pass the <see cref="ILogger"/> resolved by
+    /// <see cref="RabbitMQOptionsValidator"/>.  The
     /// source-generated implementation performs a null check on the <see cref="ILogger"/> parameter before
     /// invoking <see cref="ILogger.IsEnabled(LogLevel)"/>, so passing <see langword="null"/> is safe and
     /// results in a no-op.</para>
@@ -63,8 +64,8 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// Logs the successful validation summary with all effective RabbitMQ configuration values.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="Validate"/> -- emitted exactly once (guarded by <see cref="_successLogged"/>)
-        /// after all validation checks pass with zero errors.</para>
+        /// <para><b>Caller:</b> <see cref="RabbitMQOptionsValidator.Validate(string?, RabbitMQOptions)"/> -- emitted exactly once
+        /// (guarded by <see cref="RabbitMQOptionsValidator"/>'s one-shot success flag) after all validation checks pass with zero errors.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Information"/> because successful
         /// configuration validation is a startup banner event per CONTRIBUTING.md log levels.</para>
@@ -103,7 +104,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="WarnOnPortSslMismatch"/> -- emitted exactly once (guarded by
-        /// <see cref="_warningsLogged"/>) when the SSL flag and port are inconsistent.</para>
+        /// <see cref="RabbitMQOptionsValidator"/>'s one-shot warning flag) when the SSL flag and port are inconsistent.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Warning"/> because the TLS handshake
         /// will likely fail on the plaintext port, but non-standard configurations are valid in some environments.</para>
@@ -122,7 +123,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="WarnOnPortSslMismatch"/> -- emitted exactly once (guarded by
-        /// <see cref="_warningsLogged"/>) when the SSL flag and port are inconsistent.</para>
+        /// <see cref="RabbitMQOptionsValidator"/>'s one-shot warning flag) when the SSL flag and port are inconsistent.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Warning"/> because a plaintext connection
         /// to the TLS port will likely fail, but non-standard configurations are valid in some environments.</para>
@@ -144,7 +145,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="WarnOnDuplicateHosts"/> -- emitted exactly once per duplicate (guarded by
-        /// <see cref="_warningsLogged"/>) when the same host appears more than once.</para>
+        /// <see cref="RabbitMQOptionsValidator"/>'s one-shot warning flag) when the same host appears more than once.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Warning"/> because duplicate hosts
         /// reduce effective failover capacity but are not technically invalid.</para>
@@ -185,7 +186,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="ValidateHostProductionSafety"/> -- emitted when the host parses as an IPv4
-        /// address that <see cref="Utilities.IPUtilities.Classify(System.Net.IPAddress)"/> classifies as
+        /// address that <see cref="Utilities.Networking.IPUtilities.Classify(System.Net.IPAddress)"/> classifies as
         /// private or reserved.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Warning"/> because private ranges

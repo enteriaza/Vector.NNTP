@@ -8,10 +8,12 @@
 // MaximumShutdownDrainTimeout.
 //
 // Thread safety:
-//   Source-generated methods use the DI-injected _logger field; ILogger is thread-safe by contract.
+//   Source-generated methods use the primary-constructor logger parameter; ILogger is thread-safe by contract.
 //
 // Cross-platform:
 //   Fully portable on .NET 8 (Windows x64, Linux x64).  No OS-specific APIs.
+
+using Vector.NNTP.MessageBus.Configuration;
 
 namespace Vector.NNTP.MessageBus.Connections
 {
@@ -23,7 +25,7 @@ namespace Vector.NNTP.MessageBus.Connections
     ///
     /// <para><b>Pattern:</b> Each method is a <see langword="private"/> <see langword="partial"/> method annotated with
     /// <see cref="LoggerMessageAttribute"/>.  The source generator emits the implementation at compile time using the
-    /// <c>_logger</c> field from the primary partial file.</para>
+    /// <c>logger</c> primary-constructor parameter from the primary partial file.</para>
     ///
     /// <para><b>ASCII compliance:</b> All <c>Message</c> strings contain only ASCII characters per CONTRIBUTING.md.</para>
     /// </remarks>

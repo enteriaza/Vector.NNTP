@@ -30,41 +30,26 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>Related services:</b> <see cref="RabbitMqBackgroundScaler"/> and
     /// <see cref="RabbitMqPoolFlowControlMonitor"/> run independently as hosted services.</para>
     /// </remarks>
-    public sealed partial class RabbitMqPoolSupervisor : IHostedService
+    /// <param name="pool">Connection pool to start and dispose.</param>
+    /// <param name="health">Pool health aggregator.</param>
+    /// <param name="options">RabbitMQ options (minimum connections, shutdown drain timeout).</param>
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="pool"/>, <paramref name="health"/>, or
+    /// <paramref name="options"/> is <see langword="null"/>.</exception>
+    public sealed partial class RabbitMqPoolSupervisor(
+        ConnectionPool pool,
+        IRabbitMqPoolHealth health,
+        IOptions<RabbitMQOptions> options,
+        ILogger<RabbitMqPoolSupervisor> logger) : IHostedService
     {
         /// <summary>Managed connection pool.</summary>
-        private readonly ConnectionPool _pool;
+        private readonly ConnectionPool _pool = pool ?? throw new ArgumentNullException(nameof(pool));
 
         /// <summary>Aggregate pool health surface updated at startup.</summary>
-        private readonly IRabbitMqPoolHealth _health;
+        private readonly IRabbitMqPoolHealth _health = health ?? throw new ArgumentNullException(nameof(health));
 
         /// <summary>RabbitMQ configuration snapshot.</summary>
-        private readonly IOptions<RabbitMQOptions> _options;
-
-        /// <summary>Logger for supervisor lifecycle events.</summary>
-        private readonly ILogger<RabbitMqPoolSupervisor> _logger;
-
-        /// <summary>Initializes a new instance of the <see cref="RabbitMqPoolSupervisor"/> class.</summary>
-        /// <param name="pool">Connection pool to start and dispose.</param>
-        /// <param name="health">Pool health aggregator.</param>
-        /// <param name="options">RabbitMQ options (minimum connections, shutdown drain timeout).</param>
-        /// <param name="logger">Logger.</param>
-        /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
-        public RabbitMqPoolSupervisor(
-            ConnectionPool pool,
-            IRabbitMqPoolHealth health,
-            IOptions<RabbitMQOptions> options,
-            ILogger<RabbitMqPoolSupervisor> logger)
-        {
-            ArgumentNullException.ThrowIfNull(pool);
-            ArgumentNullException.ThrowIfNull(health);
-            ArgumentNullException.ThrowIfNull(options);
-            ArgumentNullException.ThrowIfNull(logger);
-            _pool = pool;
-            _health = health;
-            _options = options;
-            _logger = logger;
-        }
+        private readonly IOptions<RabbitMQOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
 
         /// <summary>
         /// Starts the connection pool and records initial health.

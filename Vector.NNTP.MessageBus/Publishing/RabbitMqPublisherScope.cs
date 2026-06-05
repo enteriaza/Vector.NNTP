@@ -24,7 +24,7 @@ namespace Vector.NNTP.MessageBus.Publishing
     /// </summary>
     /// <remarks>
     /// <para><b>Confirms:</b> RabbitMQ.Client 7 completes publisher confirms when
-    /// <see cref="IChannel.BasicPublishAsync"/> is awaited. <see cref="Configuration.RabbitMQOptions.PublishConfirmTimeout"/>
+    /// <c>IChannel.BasicPublishAsync</c> is awaited. <see cref="Configuration.RabbitMQOptions.PublishConfirmTimeout"/>
     /// bounds the wait via a linked <see cref="CancellationTokenSource"/>.</para>
     ///
     /// <para><b>Thread safety:</b> Not thread-safe — serialize <see cref="PublishAsync"/> within one scope.</para>

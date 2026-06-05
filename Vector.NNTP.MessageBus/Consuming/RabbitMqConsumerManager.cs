@@ -40,13 +40,15 @@ namespace Vector.NNTP.MessageBus.Consuming
     /// <para><b>Thread safety:</b> <see cref="_registrations"/> mutations are serialised; handlers must be non-blocking on
     /// the client I/O thread.</para>
     /// </remarks>
-    public sealed partial class RabbitMqConsumerManager : IRabbitMqConsumerManager, IAsyncDisposable
+    /// <param name="pool">Connection pool providing <see cref="IConnection"/> instances.</param>
+    /// <param name="logger">Logger for registration events; consumed by source-generated <c>[LoggerMessage]</c> methods.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="pool"/> is <see langword="null"/>.</exception>
+    public sealed partial class RabbitMqConsumerManager(
+        ConnectionPool pool,
+        ILogger<RabbitMqConsumerManager> logger) : IRabbitMqConsumerManager, IAsyncDisposable
     {
         /// <summary>Pooled TCP connections used to open consumer channels.</summary>
-        private readonly ConnectionPool _pool;
-
-        /// <summary>Logger for subscription lifecycle events.</summary>
-        private readonly ILogger<RabbitMqConsumerManager> _logger;
+        private readonly ConnectionPool _pool = pool ?? throw new ArgumentNullException(nameof(pool));
 
         /// <summary>Active subscriptions keyed by opaque subscription id.</summary>
         private readonly Dictionary<Guid, ConsumerRegistration> _registrations = [];
@@ -56,18 +58,6 @@ namespace Vector.NNTP.MessageBus.Consuming
 
         /// <summary>When true, <see cref="RegisterSubscriptionAsync"/> rejects new work.</summary>
         private bool _stopped;
-
-        /// <summary>Initializes a new instance of the <see cref="RabbitMqConsumerManager"/> class.</summary>
-        /// <param name="pool">Connection pool providing <see cref="IConnection"/> instances.</param>
-        /// <param name="logger">Logger for registration events.</param>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="pool"/> or <paramref name="logger"/> is null.</exception>
-        public RabbitMqConsumerManager(ConnectionPool pool, ILogger<RabbitMqConsumerManager> logger)
-        {
-            ArgumentNullException.ThrowIfNull(pool);
-            ArgumentNullException.ThrowIfNull(logger);
-            _pool = pool;
-            _logger = logger;
-        }
 
         /// <inheritdoc />
         /// <exception cref="MessageBusUnavailableException">
@@ -89,7 +79,7 @@ namespace Vector.NNTP.MessageBus.Consuming
             consumer.ReceivedAsync += handler;
             string consumerTag = await channel.BasicConsumeAsync(queue: queue, autoAck: false, consumer: consumer, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            ConsumerRegistration registration = new(subscriptionId, queue, handler, channel, consumerTag);
+            ConsumerRegistration registration = new(channel, consumerTag);
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
@@ -103,7 +93,12 @@ namespace Vector.NNTP.MessageBus.Consuming
             return subscriptionId;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Stops the consumer manager.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that completes when the consumer manager is stopped.</returns>
+        /// <exception cref="OperationCanceledException">Thrown when the cancellation token is canceled.</exception>
         public async Task StopAsync(CancellationToken cancellationToken)
         {
             _stopped = true;
@@ -120,13 +115,19 @@ namespace Vector.NNTP.MessageBus.Consuming
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Disposes the consumer manager.
+        /// </summary>
+        /// <returns>A task that completes when the consumer manager is disposed.</returns>
+        /// <exception cref="OperationCanceledException">Thrown when the cancellation token is canceled.</exception>
         public async ValueTask DisposeAsync()
         {
             await StopAsync(CancellationToken.None).ConfigureAwait(false);
         }
 
-        /// <summary>Owns one consumer channel and cancels the consumer tag on disposal.</summary>
+        /// <summary>
+        /// Owns one consumer channel and cancels the consumer tag on disposal.
+        /// </summary>
         private sealed class ConsumerRegistration : IAsyncDisposable
         {
             /// <summary>AMQP channel hosting the consumer.</summary>
@@ -136,33 +137,13 @@ namespace Vector.NNTP.MessageBus.Consuming
             private readonly string _consumerTag;
 
             /// <summary>Initializes registration state for one subscription.</summary>
-            /// <param name="subscriptionId">Opaque subscription id.</param>
-            /// <param name="queue">Queue name (retained for diagnostics).</param>
-            /// <param name="handler">Delivery handler reference (retained for lifetime).</param>
             /// <param name="channel">Open consumer channel.</param>
             /// <param name="consumerTag">Broker consumer tag.</param>
-            internal ConsumerRegistration(
-                Guid subscriptionId,
-                string queue,
-                AsyncEventHandler<BasicDeliverEventArgs> handler,
-                IChannel channel,
-                string consumerTag)
+            internal ConsumerRegistration(IChannel channel, string consumerTag)
             {
-                SubscriptionId = subscriptionId;
-                Queue = queue;
-                Handler = handler;
                 _channel = channel;
                 _consumerTag = consumerTag;
             }
-
-            /// <summary>Subscription identifier returned to callers.</summary>
-            internal Guid SubscriptionId { get; }
-
-            /// <summary>Queue name bound to the consumer.</summary>
-            internal string Queue { get; }
-
-            /// <summary>Registered delivery handler.</summary>
-            internal AsyncEventHandler<BasicDeliverEventArgs> Handler { get; }
 
             /// <inheritdoc />
             public async ValueTask DisposeAsync()

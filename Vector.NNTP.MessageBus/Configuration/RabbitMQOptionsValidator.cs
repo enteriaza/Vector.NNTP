@@ -30,7 +30,9 @@ namespace Vector.NNTP.MessageBus.Configuration
     /// </remarks>
     /// <param name="logger">Logger for validation warnings and the startup success summary.</param>
     /// <param name="hostEnvironment">
-    /// Optional host environment; when <see cref="IHostEnvironment.IsProduction"/> is <see langword="true"/>, production
+    /// Optional host environment; when
+    /// <see cref="HostEnvironmentEnvExtensions.IsProduction(IHostEnvironment)"/>
+    /// is <see langword="true"/>, production
     /// host safety checks are enabled. When <see langword="null"/>, production checks are skipped.
     /// </param>
     public sealed class RabbitMQOptionsValidator(ILogger<RabbitMQOptionsValidator> logger, IHostEnvironment? hostEnvironment = null)

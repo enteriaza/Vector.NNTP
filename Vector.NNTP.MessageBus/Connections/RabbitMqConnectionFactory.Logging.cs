@@ -132,7 +132,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="ConnectWithLoggingAsync"/> -- success path after
-        /// <see cref="RabbitMQ.Client.ConnectionFactory.CreateConnectionAsync(IEnumerable{AmqpTcpEndpoint}, CancellationToken)"/>
+        /// <c>ConnectionFactory.CreateConnectionAsync</c>
         /// completes.</para>
         ///
         /// <para>The endpoint identifies which specific broker node accepted the connection from the multi-host endpoint
@@ -171,7 +171,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// unreachable.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Error"/> because all configured broker endpoints failed --
-        /// the connection attempt is exhausted.  The caller (<see cref="ConnectionPool.StartingAsync"/>) will retry
+        /// the connection attempt is exhausted.  The caller (<see cref="ConnectionPool.StartAsync"/>) will retry
         /// with exponential back-off; this log entry provides the per-attempt failure detail.</para>
         /// </remarks>
         [LoggerMessage(EventId = 103, Level = LogLevel.Error,
@@ -220,8 +220,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="AttachConnectionEventHandlers"/> --
         /// <see cref="RabbitMQ.Client.IConnection.ConnectionShutdownAsync"/> handler when
-        /// <see cref="Client.ShutdownEventArgs.Initiator"/> is
-        /// <see cref="RabbitMQ.Client.ShutdownInitiator.Application"/>.</para>
+        /// <c>ShutdownEventArgs.Initiator</c> is <see cref="RabbitMQ.Client.ShutdownInitiator.Application"/>.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Information"/> because application-initiated shutdowns are
         /// expected (host stopping, graceful drain).  The AMQP reply code and text provide the shutdown reason for
@@ -237,8 +236,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="AttachConnectionEventHandlers"/> --
         /// <see cref="RabbitMQ.Client.IConnection.ConnectionShutdownAsync"/> handler when
-        /// <see cref="Client.ShutdownEventArgs.Initiator"/> is not
-        /// <see cref="RabbitMQ.Client.ShutdownInitiator.Application"/>.</para>
+        /// <c>ShutdownEventArgs.Initiator</c> is not <see cref="RabbitMQ.Client.ShutdownInitiator.Application"/>.</para>
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Warning"/> because broker-initiated shutdowns indicate an
         /// external event requiring operator awareness (maintenance drain, resource limit, node failure).  Automatic
@@ -306,7 +304,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <see cref="RabbitMQ.Client.IConnection.RecoverySucceededAsync"/> handler.</para>
         ///
         /// <para>The connection name is the <see cref="RabbitMQ.Client.IConnection.ClientProvidedName"/> set by
-        /// <see cref="CreateFactory"/> via <see cref="ApplicationName"/>.  In multi-service deployments sharing the same
+        /// <see cref="CreateFactory"/> via <see cref="Utilities.Diagnostics.AssemblyInfoUtilities.ApplicationName"/>.  In multi-service deployments sharing the same
         /// broker cluster, this value identifies which service instance recovered.</para>
         ///
         /// <para>The endpoint identifies which broker node the connection recovered to -- this may differ from the

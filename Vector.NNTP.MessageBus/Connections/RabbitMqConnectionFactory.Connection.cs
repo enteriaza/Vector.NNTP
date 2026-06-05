@@ -13,7 +13,7 @@
 // Caller:
 //   RabbitMqConnectionFactory.cs -- CreateConnectionAsync delegates to ConnectWithLoggingAsync after constructing
 //   the factory and endpoint list.
-//   ConnectionPool.StartingAsync -- retry loop with exponential back-off (2s base, 30s cap, 1s jitter).
+//   ConnectionPool.StartAsync -- retry loop with exponential back-off (2s base, 30s cap, 1s jitter).
 //
 // Resource safety:
 //   If AttachConnectionEventHandlers throws after a successful connect, the open IConnection is disposed via
@@ -73,7 +73,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// elapsed time.</para>
     ///
     /// <para><b>Thread safety:</b> Called exactly once per application lifetime by
-    /// <see cref="ConnectionPool.StartingAsync"/>.  All mutable state (the connection being established) is
+    /// <see cref="ConnectionPool.StartAsync"/>.  All mutable state (the connection being established) is
     /// local to this method's async state machine.  The injected logger is thread-safe by contract.</para>
     ///
     /// <para><b>Cross-platform:</b> Fully portable.  All APIs used are BCL types available on all .NET 8 runtimes
@@ -114,19 +114,19 @@ namespace Vector.NNTP.MessageBus.Connections
         ///
         /// <para><b>Cancellation path:</b> <see cref="OperationCanceledException"/> is caught separately and logged at
         /// <see cref="LogLevel.Information"/> -- cancellation during host shutdown is expected behaviour, not an error.
-        /// The exception is rethrown to propagate to <see cref="ConnectionPool.StartingAsync"/>.  No
+        /// The exception is rethrown to propagate to <see cref="ConnectionPool.StartAsync"/>.  No
         /// <c>when (cancellationToken.IsCancellationRequested)</c> filter is applied because any
         /// <see cref="OperationCanceledException"/> -- whether triggered by the caller's token or by the RabbitMQ client
         /// library's internal timeout -- is a cancellation, not a connection failure.</para>
         ///
         /// <para><b>Failure path:</b> All other exceptions (typically
         /// <see cref="RabbitMQ.Client.Exceptions.BrokerUnreachableException"/>) are logged at
-        /// <see cref="LogLevel.Error"/> and rethrown so the caller (<see cref="ConnectionPool.StartingAsync"/>) can
+        /// <see cref="LogLevel.Error"/> and rethrown so the caller (<see cref="ConnectionPool.StartAsync"/>) can
         /// apply exponential back-off and retry.</para>
         ///
         /// <para><b>Elapsed time measurement:</b> A local function <c>ElapsedMs()</c> captures the
         /// <paramref name="connectStart"/> timestamp and computes elapsed milliseconds via
-        /// <see cref="Stopwatch.GetElapsedTime"/>.  This is evaluated at the point of each log call -- not eagerly -- so
+        /// <c>Stopwatch.GetElapsedTime</c>.  This is evaluated at the point of each log call -- not eagerly -- so
         /// the measurement reflects the actual time of the success, cancellation, or failure event.</para>
         /// </remarks>
         /// <param name="factory">Configured connection factory.</param>

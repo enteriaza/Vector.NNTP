@@ -29,22 +29,27 @@ namespace Vector.NNTP.MessageBus.Connections
     /// tracks TCP connections and slot counts. <see cref="Publishing.RabbitMqPublisherPool"/> opens ephemeral channels
     /// after acquiring a <see cref="PublisherSlotLease"/>.</para>
     /// <para><b>Snapshot model:</b> Active connections are stored in a copy-on-write <see cref="PooledConnection"/> array.
-    /// Readers use <see cref="Volatile.Read(ref PooledConnection[])"/>; writers hold <see cref="_snapshotLock"/>.</para>
+    /// Readers use <see cref="M:System.Threading.Volatile.Read``1(``0@)"/>; writers hold <see cref="_snapshotLock"/>.</para>
     /// <para><b>Waiters:</b> When no slot is immediately available, acquirers wait on <see cref="_slotReleasedSignal"/> until
     /// <see cref="RabbitMQOptions.ChannelLeaseTimeout"/>, bounded by <see cref="RabbitMQOptions.MaxPendingLeaseWaiters"/>.</para>
     /// <para><b>Thread safety:</b> Slot accounting is per-connection via <see cref="Interlocked"/>; snapshot mutations are
     /// lock-protected; waiter count uses <see cref="Interlocked"/> compare-exchange.</para>
     /// </remarks>
-    public sealed partial class ConnectionPool : IAsyncDisposable
+    /// <param name="connectionFactory">Factory that creates <see cref="IConnection"/> instances.</param>
+    /// <param name="options">Bound RabbitMQ options.</param>
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="connectionFactory"/> or <paramref name="options"/> is
+    /// <see langword="null"/>.</exception>
+    public sealed partial class ConnectionPool(
+        RabbitMqConnectionFactory connectionFactory,
+        IOptions<RabbitMQOptions> options,
+        ILogger<ConnectionPool> logger) : IAsyncDisposable
     {
         /// <summary>Factory used to open new AMQP TCP connections.</summary>
-        private readonly RabbitMqConnectionFactory _connectionFactory;
+        private readonly RabbitMqConnectionFactory _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
 
         /// <summary>Validated RabbitMQ options snapshot.</summary>
-        private readonly IOptions<RabbitMQOptions> _options;
-
-        /// <summary>Logger for pool lifecycle events.</summary>
-        private readonly ILogger<ConnectionPool> _logger;
+        private readonly IOptions<RabbitMQOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
 
         /// <summary>Serializes copy-on-write updates to <see cref="_snapshot"/>.</summary>
         private readonly object _snapshotLock = new();
@@ -76,24 +81,6 @@ namespace Vector.NNTP.MessageBus.Connections
 
         /// <summary>Whether <see cref="DisposeAsync"/> has completed.</summary>
         private bool _disposed;
-
-        /// <summary>Initializes a new instance of the <see cref="ConnectionPool"/> class.</summary>
-        /// <param name="connectionFactory">Factory that creates <see cref="IConnection"/> instances.</param>
-        /// <param name="options">Bound RabbitMQ options.</param>
-        /// <param name="logger">Logger for connection add/remove events.</param>
-        /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
-        public ConnectionPool(
-            RabbitMqConnectionFactory connectionFactory,
-            IOptions<RabbitMQOptions> options,
-            ILogger<ConnectionPool> logger)
-        {
-            ArgumentNullException.ThrowIfNull(connectionFactory);
-            ArgumentNullException.ThrowIfNull(options);
-            ArgumentNullException.ThrowIfNull(logger);
-            _connectionFactory = connectionFactory;
-            _options = options;
-            _logger = logger;
-        }
 
         /// <summary>
         /// Reader for coalesced scale-up signals consumed by <see cref="RabbitMqBackgroundScaler"/>.

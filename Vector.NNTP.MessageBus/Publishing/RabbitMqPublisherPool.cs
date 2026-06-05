@@ -31,7 +31,7 @@ namespace Vector.NNTP.MessageBus.Publishing
     ///
     /// <para><b>Confirms:</b> Channels are created with <c>publisherConfirmationsEnabled</c> and
     /// <c>publisherConfirmationTrackingEnabled</c>. RabbitMQ.Client 7 completes confirms when
-    /// <see cref="IChannel.BasicPublishAsync"/> is awaited.</para>
+    /// <c>IChannel.BasicPublishAsync</c> is awaited.</para>
     ///
     /// <para><b>Failure handling:</b> Channel creation exceptions dispose the acquired lease before throwing
     /// <see cref="MessageBusConnectionFaultException"/> so slots are not leaked.</para>

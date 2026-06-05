@@ -1,6 +1,6 @@
 // RabbitMqConnectionFactory.cs -- creates and configures the shared RabbitMQ IConnection from RabbitMQOptions.
 //
-// Called by ConnectionPool.StartingAsync during the host's "starting" lifecycle phase.  The returned IConnection
+// Called by ConnectionPool.StartAsync during the host's "starting" lifecycle phase.  The returned IConnection
 // is stored in ConnectionPool and multiplexed across all NntpWorker instances (each creates its own IChannel).
 //
 // Responsibility summary:
@@ -35,7 +35,7 @@
 //   119  RecoveryFatal                    -- Consecutive recovery threshold reached, shutting down (Critical)
 //
 // Caller:
-//   ConnectionPool.StartingAsync -- retry loop with exponential back-off (2s base, 30s cap, 1s jitter).
+//   ConnectionPool.StartAsync -- retry loop with exponential back-off (2s base, 30s cap, 1s jitter).
 //
 // Security:
 //   Credentials (Username, Password) are set on the RabbitMQ.Client.ConnectionFactory for SASL PLAIN authentication
@@ -58,6 +58,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Security.Authentication;
 using System.Text;
 using Vector.NNTP.MessageBus.Configuration;
 using RabbitMQ.Client;
@@ -141,7 +142,7 @@ namespace Vector.NNTP.MessageBus.Connections
     ///
     /// <para><b>Thread safety:</b> All methods read only from <c>static readonly</c> fields, the <c>options</c> parameter,
     /// and the injected logger.  The class is safe to call concurrently, though in practice it is called exactly once per
-    /// application lifetime by <see cref="ConnectionPool.StartingAsync"/>.</para>
+    /// application lifetime by <see cref="ConnectionPool.StartAsync"/>.</para>
     ///
     /// <para><b>Partial class files:</b></para>
     /// <list type="bullet">
@@ -205,9 +206,9 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <para>Applied per-endpoint in <see cref="BuildEndpoints"/> via <see cref="SslOption.Version"/>.  Declared as a
         /// constant to avoid recreating the bitwise-OR value on every endpoint construction.</para>
         /// </remarks>
-        private const System.Security.Authentication.SslProtocols AllowedTlsProtocols =
-            System.Security.Authentication.SslProtocols.Tls12 |
-            System.Security.Authentication.SslProtocols.Tls13;
+        private const SslProtocols AllowedTlsProtocols =
+            SslProtocols.Tls12 |
+            SslProtocols.Tls13;
 
         /// <summary>
         /// Maximum byte length of an AMQP client property value that will be decoded for log output.  Values exceeding
@@ -237,7 +238,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// the interlocked operations are a defensive measure rather than a strict necessity.</para>
         ///
         /// <para><b>Lifecycle:</b> This field is meaningful only for the lifetime of the single connection created by
-        /// <see cref="ConnectionPool.StartingAsync"/>.  The <see cref="RabbitMqConnectionFactory"/> singleton is never
+        /// <see cref="ConnectionPool.StartAsync"/>.  The <see cref="RabbitMqConnectionFactory"/> singleton is never
         /// reused for a second connection within the same process.</para>
         /// </remarks>
         private int _consecutiveRecoveryFailures;
@@ -319,16 +320,16 @@ namespace Vector.NNTP.MessageBus.Connections
         ///
         /// <para><b>Cancellation:</b> The <paramref name="cancellationToken"/> is forwarded to
         /// <see cref="ConnectionFactory.CreateConnectionAsync(IEnumerable{AmqpTcpEndpoint}, CancellationToken)"/>,
-        /// allowing the caller (typically <see cref="ConnectionPool.StartingAsync"/>) to abort a long-running DNS
+        /// allowing the caller (typically <see cref="ConnectionPool.StartAsync"/>) to abort a long-running DNS
         /// resolution or TCP handshake during host shutdown.</para>
         ///
         /// <para><b>Input contract:</b> <paramref name="options"/> must have passed
-        /// <see cref="RabbitMQOptions.Validate"/> -- all properties are validated, hosts are normalised (trimmed,
+        /// <see cref="RabbitMQOptionsValidator.Validate"/> -- all properties are validated, hosts are normalised (trimmed,
         /// bracket-stripped), and cross-property invariants (e.g., socket timeout >= 2x heartbeat) are enforced.  No
         /// defensive re-validation is performed here.</para>
         /// </remarks>
         /// <param name="options">Strongly-typed RabbitMQ configuration bound from <c>host configuration (IOptions)</c>.  Must have
-        /// passed <see cref="RabbitMQOptions.Validate"/>.</param>
+        /// passed <see cref="RabbitMQOptionsValidator.Validate"/>.</param>
         /// <param name="cancellationToken">Cancellation token propagated to the underlying connection attempt.  Cancelled
         /// when the host is shutting down or the startup timeout expires.</param>
         /// <returns>A <see cref="Task{IConnection}"/> that resolves to an open AMQP connection with automatic recovery
@@ -372,7 +373,7 @@ namespace Vector.NNTP.MessageBus.Connections
         ///     2x.</description></item>
         ///   <item><description><see cref="MaxFrameSize"/> -- 128 KB maximum AMQP frame.</description></item>
         ///   <item><description><see cref="RabbitMQOptions.SocketTimeoutSeconds"/> -- TCP read/write timeout.  Guaranteed
-        ///     >= 2x heartbeat by <see cref="RabbitMQOptions.Validate"/>.</description></item>
+        ///     >= 2x heartbeat by <see cref="RabbitMQOptionsValidator.Validate"/>.</description></item>
         ///   <item><description>Client properties -- diagnostic metadata for the RabbitMQ Management UI via
         ///     <see cref="PopulateClientProperties"/>.</description></item>
         /// </list>
@@ -484,7 +485,7 @@ namespace Vector.NNTP.MessageBus.Connections
         ///
         /// <para><b>Input contract:</b> <see cref="RabbitMQOptions.Hosts"/> entries are guaranteed to be normalised
         /// (trimmed, bracket-stripped, validated for format and DNS resolution) by
-        /// <see cref="RabbitMQOptions.Validate"/>.  <see cref="RabbitMQOptions.Hosts"/> is guaranteed non-empty by
+        /// <see cref="RabbitMQOptionsValidator.Validate"/>.  <see cref="RabbitMQOptions.Hosts"/> is guaranteed non-empty by
         /// <see cref="System.ComponentModel.DataAnnotations.MinLengthAttribute"/> on the property.</para>
         ///
         /// <para><b>Per-host SNI:</b> When <see cref="RabbitMQOptions.EnableSsl"/> is <c>true</c>, each endpoint receives

@@ -30,7 +30,17 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>Failure handling:</b> Scan exceptions are logged; the loop continues after
     /// <see cref="MinimumScanInterval"/>.</para>
     /// </remarks>
-    public sealed partial class RabbitMqPoolFlowControlMonitor : BackgroundService
+    /// <param name="pool">Connection pool to monitor.</param>
+    /// <param name="health">Health surface to refresh after each scan.</param>
+    /// <param name="options">RabbitMQ options (<see cref="RabbitMQOptions.ConnectionBlockedTimeout"/>).</param>
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="pool"/>, <paramref name="health"/>, or
+    /// <paramref name="options"/> is <see langword="null"/>.</exception>
+    public sealed partial class RabbitMqPoolFlowControlMonitor(
+        ConnectionPool pool,
+        IRabbitMqPoolHealth health,
+        IOptions<RabbitMQOptions> options,
+        ILogger<RabbitMqPoolFlowControlMonitor> logger) : BackgroundService
     {
         /// <summary>Lower bound for periodic scan delay.</summary>
         private static readonly TimeSpan MinimumScanInterval = TimeSpan.FromSeconds(1);
@@ -39,38 +49,13 @@ namespace Vector.NNTP.MessageBus.Connections
         private static readonly TimeSpan MaximumScanInterval = TimeSpan.FromSeconds(30);
 
         /// <summary>Connection pool to inspect.</summary>
-        private readonly ConnectionPool _pool;
+        private readonly ConnectionPool _pool = pool ?? throw new ArgumentNullException(nameof(pool));
 
         /// <summary>Pool health aggregator.</summary>
-        private readonly IRabbitMqPoolHealth _health;
+        private readonly IRabbitMqPoolHealth _health = health ?? throw new ArgumentNullException(nameof(health));
 
         /// <summary>RabbitMQ configuration snapshot.</summary>
-        private readonly IOptions<RabbitMQOptions> _options;
-
-        /// <summary>Logger for quarantine and scan failures.</summary>
-        private readonly ILogger<RabbitMqPoolFlowControlMonitor> _logger;
-
-        /// <summary>Initializes a new instance of the <see cref="RabbitMqPoolFlowControlMonitor"/> class.</summary>
-        /// <param name="pool">Connection pool to monitor.</param>
-        /// <param name="health">Health surface to refresh after each scan.</param>
-        /// <param name="options">RabbitMQ options (<see cref="RabbitMQOptions.ConnectionBlockedTimeout"/>).</param>
-        /// <param name="logger">Logger.</param>
-        /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
-        public RabbitMqPoolFlowControlMonitor(
-            ConnectionPool pool,
-            IRabbitMqPoolHealth health,
-            IOptions<RabbitMQOptions> options,
-            ILogger<RabbitMqPoolFlowControlMonitor> logger)
-        {
-            ArgumentNullException.ThrowIfNull(pool);
-            ArgumentNullException.ThrowIfNull(health);
-            ArgumentNullException.ThrowIfNull(options);
-            ArgumentNullException.ThrowIfNull(logger);
-            _pool = pool;
-            _health = health;
-            _options = options;
-            _logger = logger;
-        }
+        private readonly IOptions<RabbitMQOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
 
         /// <summary>
         /// Periodically enforces stalled quarantine and updates pool health until shutdown.

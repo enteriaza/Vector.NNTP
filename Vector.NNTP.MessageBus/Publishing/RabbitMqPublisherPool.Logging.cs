@@ -18,7 +18,9 @@ namespace Vector.NNTP.MessageBus.Publishing
 
         #region Logging -- Publisher Scopes (1)
 
-        /// <summary>Logs debug scope creation after successful channel open.</summary>
+        /// <summary>
+        /// Logs debug scope creation after successful channel open.
+        /// </summary>
         [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "Created publisher scope.")]
         private partial void LogScopeCreated();
 

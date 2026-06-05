@@ -10,6 +10,7 @@
 //   Slot and flag mutations use Interlocked and volatile reads; Connection reference set during pool add/remove.
 
 using RabbitMQ.Client;
+using Vector.NNTP.MessageBus.Configuration;
 
 namespace Vector.NNTP.MessageBus.Connections
 {
@@ -68,7 +69,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <summary>Current lifecycle state in the pool finite-state machine.</summary>
         public PooledConnectionState State { get; private set; }
         /// <summary>Count of publisher slots currently held by active scopes.</summary>
-        /// <remarks>Read via <see cref="Volatile.Read(ref int)"/> for cross-thread visibility.</remarks>
+        /// <remarks>Read via <see cref="M:System.Threading.Volatile.Read(System.Int32@)"/> for cross-thread visibility.</remarks>
         public int ActivePublisherSlots => Volatile.Read(ref _activePublisherSlots);
 
         /// <summary>Monotonic epoch incremented on each <see cref="Transition"/>.</summary>

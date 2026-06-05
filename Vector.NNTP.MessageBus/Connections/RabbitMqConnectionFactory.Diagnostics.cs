@@ -36,6 +36,7 @@
 //   formatting.  There are no contiguous memory buffers, byte-level pattern searches, or bulk numeric
 //   operations that would benefit from vector instructions.
 
+using RabbitMQ.Client;
 using Vector.NNTP.Utilities.Diagnostics;
 
 namespace Vector.NNTP.MessageBus.Connections
@@ -98,7 +99,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <see cref="PopulateClientProperties"/> and the library's defaults.  No credentials are present.</para>
         /// </remarks>
         /// <param name="factory">The configured factory whose properties to log.</param>
-        private void LogClientProperties(RabbitMQ.Client.ConnectionFactory factory)
+        private void LogClientProperties(ConnectionFactory factory)
         {
             if (!Logger.IsEnabled(LogLevel.Debug))
                 return;
