@@ -3,7 +3,6 @@
 // </copyright>
 using System.Diagnostics;
 using StackExchange.Redis;
-using Vector.NNTP.Session.Utilities;
 
 namespace Vector.NNTP.Session.Redis.Coordination
 {

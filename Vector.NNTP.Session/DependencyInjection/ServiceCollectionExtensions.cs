@@ -8,8 +8,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Vector.NNTP.Session.Configuration;
-using Vector.NNTP.Session.Coordination;
 
 namespace Vector.NNTP.Session.DependencyInjection
 {

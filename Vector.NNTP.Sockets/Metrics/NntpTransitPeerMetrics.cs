@@ -4,7 +4,6 @@
 // COLD PATH: OpenTelemetry instruments for trusted transit peer admission and DNS refresh.
 
 using System.Diagnostics.Metrics;
-using Vector.NNTP.Session.Coordination;
 using Vector.NNTP.Sockets.Configuration;
 
 namespace Vector.NNTP.Sockets.Metrics

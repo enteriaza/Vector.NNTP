@@ -2,11 +2,6 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-using Vector.NNTP.Session.Configuration;
-using Vector.NNTP.Session.Coordination;
-using Vector.NNTP.Session.Database;
-using Vector.NNTP.Session.Policy;
-
 namespace Vector.NNTP.Session.Redis.HostedServices
 {
     /// <summary>

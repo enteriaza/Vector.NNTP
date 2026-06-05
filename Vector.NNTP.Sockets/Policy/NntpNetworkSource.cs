@@ -3,8 +3,6 @@
 // </copyright>
 // COLD PATH: parsed IP or CIDR network source for transit peer matching.
 
-using System.Globalization;
-
 namespace Vector.NNTP.Sockets.Policy
 {
     /// <summary>

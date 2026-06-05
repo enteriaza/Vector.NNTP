@@ -3,8 +3,6 @@
 // </copyright>
 // COLD PATH: trusted source parsing for HAProxy PROXY protocol.
 
-using System.Buffers.Binary;
-
 namespace Vector.NNTP.Sockets.Proxy
 {
     /// <summary>

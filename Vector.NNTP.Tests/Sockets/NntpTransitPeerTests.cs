@@ -3,7 +3,6 @@
 // </copyright>
 
 using Microsoft.Extensions.Options;
-using Vector.NNTP.Session.Coordination;
 using Vector.NNTP.Sockets.Configuration;
 
 namespace Vector.NNTP.Tests.Sockets

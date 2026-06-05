@@ -3,8 +3,6 @@
 // </copyright>
 // COLD PATH: authentication state CAS transitions.
 
-using System.Net;
-
 namespace Vector.NNTP.Tests.Session
 {
     /// <summary>

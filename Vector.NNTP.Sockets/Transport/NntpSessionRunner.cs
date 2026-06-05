@@ -5,7 +5,6 @@
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Vector.NNTP.Session.Coordination;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
 using Vector.NNTP.Sockets.Metrics;

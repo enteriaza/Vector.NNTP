@@ -9,8 +9,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Vector.NNTP.Session.Configuration;
-using Vector.NNTP.Session.Coordination;
 using Vector.NNTP.Session.DependencyInjection;
 using Vector.NNTP.Session.Redis.Connections;
 using Vector.NNTP.Session.Redis.Health;

@@ -1,9 +1,6 @@
 // <copyright file="RedisSessionHeartbeatHostedService.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-using Vector.NNTP.Session.Coordination;
-using Vector.NNTP.Session.Utilities;
-
 namespace Vector.NNTP.Session.Redis.HostedServices
 {
     /// <summary>

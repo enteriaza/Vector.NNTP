@@ -3,8 +3,6 @@
 // </copyright>
 // COLD PATH: verifies password comparison and policy mapping logic without a real MySQL instance.
 
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
 using Vector.NNTP.Auth.MySql;
 using Vector.NNTP.Sockets.Authentication;

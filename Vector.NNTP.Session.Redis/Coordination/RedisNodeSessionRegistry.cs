@@ -4,9 +4,6 @@
 
 using System.Diagnostics;
 using StackExchange.Redis;
-using Vector.NNTP.Session.Coordination;
-using Vector.NNTP.Session.Policy;
-using Vector.NNTP.Session.Redis.Configuration;
 using Vector.NNTP.Session.Redis.Metrics;
 
 namespace Vector.NNTP.Session.Redis.Coordination

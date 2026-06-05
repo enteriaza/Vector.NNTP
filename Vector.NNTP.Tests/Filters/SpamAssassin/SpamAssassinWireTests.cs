@@ -3,8 +3,6 @@
 // </copyright>
 // SpamAssassinWireTests.cs -- In-process TCP mock of spamd for protocol framing tests.
 
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using Vector.NNTP.Filters.SpamAssassin;
 

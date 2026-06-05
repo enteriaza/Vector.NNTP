@@ -6,9 +6,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
-using Vector.NNTP.Session.Coordination;
-using Vector.NNTP.Session.Database;
-using Vector.NNTP.Session.Policy;
 using Vector.NNTP.Session.Redis.Configuration;
 using Vector.NNTP.Session.Redis.Coordination;
 

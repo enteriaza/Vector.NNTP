@@ -4,7 +4,6 @@
 // COLD PATH: block quota and rate refresh behavior for NntpQuotaEnforcer.
 
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace Vector.NNTP.Tests.Session
 {

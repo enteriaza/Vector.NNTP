@@ -16,6 +16,7 @@ global using System.Security.Cryptography;
 global using System.Text;
 global using System.Threading;
 global using System.Threading.Tasks;
+global using Vector.NNTP.HistoryDB.Abstractions;
 global using Vector.NNTP.Session.Configuration;
 global using Vector.NNTP.Session.Context;
 global using Vector.NNTP.Session.Coordination;

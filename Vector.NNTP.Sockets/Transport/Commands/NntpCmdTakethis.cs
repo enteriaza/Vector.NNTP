@@ -3,9 +3,7 @@
 // </copyright>
 // COLD PATH: TAKETHIS command handler (RFC 4644).
 
-using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Protocol;
-using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Storage;
 
@@ -92,7 +90,8 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                     cancellationToken).ConfigureAwait(false);
                 if (read.Status == NntpArticleBodyReadStatus.ExceededMaxSize)
                 {
-                    await NntpDotStuffingReader.DrainBodyAsync(lineReader, cancellationToken).ConfigureAwait(false);
+                    await NntpDotStuffingReader.DrainBodyAsync(lineReader, cancellationToken)
+                        .ConfigureAwait(false);
                     await session.Writer.WriteLineAsync("439 Transfer failed", cancellationToken).ConfigureAwait(false);
                     return true;
                 }

@@ -3,7 +3,6 @@
 // </copyright>
 // COLD PATH: CHECK and IHAVE command handlers (RFC 4644).
 
-using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Protocol;
 using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;

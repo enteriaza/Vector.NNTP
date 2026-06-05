@@ -3,7 +3,6 @@
 // </copyright>
 // COLD PATH: RFC-aligned golden transcript protocol tests over in-memory pipes.
 
-using System.Net;
 using Vector.NNTP.Tests.Session;
 using Vector.NNTP.Tests.Sockets.Fakes;
 

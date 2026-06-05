@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
-using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Storage;
 using Vector.NNTP.Sockets.Tls;
 using Vector.NNTP.Sockets.Transport.Commands;
