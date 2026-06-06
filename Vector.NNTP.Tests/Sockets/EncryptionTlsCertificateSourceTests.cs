@@ -12,7 +12,9 @@ using Moq;
 using Vector.NNTP.Encryption.Certificates;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.Dns;
+using Vector.NNTP.Encryption.Telemetry;
 using Vector.NNTP.Sockets.Tls;
+using Vector.NNTP.Tests.Encryption;
 
 namespace Vector.NNTP.Tests.Sockets
 {
@@ -23,7 +25,7 @@ namespace Vector.NNTP.Tests.Sockets
     internal sealed class EncryptionTlsCertificateSourceTests
     {
         /// <summary>
-        /// <see cref="EncryptionTlsCertificateSource"/> returns the same certificate as <see cref="CertificateRenewalService.GetCurrentCertificate"/>.
+        /// <see cref="EncryptionTlsCertificateSource"/> returns the same certificate as <see cref="ICertificateRenewalPublisher.GetCurrentCertificate"/>.
         /// </summary>
         /// <returns>A task that completes when assertions finish.</returns>
         [Test]
@@ -66,9 +68,9 @@ namespace Vector.NNTP.Tests.Sockets
             var environment = new Mock<IHostEnvironment>();
             environment.Setup(e => e.EnvironmentName).Returns(Environments.Development);
 
-            var dns = new Mock<IDnsTxtPropagationProbe>();
+            var dns = new NoOpDnsTxtPropagationProbe();
             ServiceProvider serviceProvider = new ServiceCollection()
-                .AddSingleton(dns.Object)
+                .AddSingleton<IDnsTxtPropagationProbe>(dns)
                 .BuildServiceProvider();
 
             return new CertificateRenewalService(
@@ -77,8 +79,9 @@ namespace Vector.NNTP.Tests.Sockets
                 Options.Create(new NntpServerOptions { NodeName = "test-node" }),
                 lifetime.Object,
                 environment.Object,
-                dns.Object,
-                serviceProvider);
+                dns,
+                serviceProvider,
+                new EncryptionMetrics());
         }
 
         /// <summary>

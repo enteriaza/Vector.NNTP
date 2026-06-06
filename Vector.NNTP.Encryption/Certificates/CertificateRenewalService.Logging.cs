@@ -116,6 +116,29 @@ namespace Vector.NNTP.Encryption.Certificates
         private partial void LogForcingStagingDirectory();
 
         /// <summary>
+        /// Logs a concise encryption configuration summary at startup for deployment verification.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Caller:</b> <see cref="ExecuteAsync"/> after options validation and environment enforcement when
+        /// <see cref="LetsEncryptOptions.Enabled"/> is true.</para>
+        /// <para><b>Security:</b> Emits only public DNS names, mode, cluster flag, node identity, and certificate store
+        /// path. Never logs API tokens, signing secrets, account keys, or passwords.</para>
+        /// </remarks>
+        /// <param name="domain">Comma-separated domain summary.</param>
+        /// <param name="mode">Effective ACME directory mode (<c>Production</c> or <c>Staging</c>).</param>
+        /// <param name="clusterEnabled">Whether cluster certificate sync is enabled.</param>
+        /// <param name="node">Configured node name.</param>
+        /// <param name="certificateStore">Certificate storage directory path.</param>
+        [LoggerMessage(EventId = 105, Level = LogLevel.Information,
+            Message = "Certificates: Encryption initialized -- Domain={Domain} Mode={Mode} ClusterEnabled={ClusterEnabled} Node={Node} CertificateStore={CertificateStore}")]
+        private partial void LogEncryptionInitialized(
+            string domain,
+            string mode,
+            bool clusterEnabled,
+            string node,
+            string certificateStore);
+
+        /// <summary>
         /// Logs a startup retry after a failed certificate acquisition attempt, including the exponential back-off delay.
         /// </summary>
         /// <remarks>
@@ -264,7 +287,7 @@ namespace Vector.NNTP.Encryption.Certificates
         private partial void LogWithinThreshold(double days);
 
         /// <summary>
-        /// Logs that a <see cref="CertificateChanged"/> event subscriber threw an exception.
+        /// Logs that a <see cref="ICertificateRenewalPublisher.CertificateChanged"/> event subscriber threw an exception.
         /// </summary>
         /// <remarks>
         /// <para><b>Caller:</b> <see cref="RaiseCertificateChanged"/> — in the per-subscriber <c>catch (Exception)</c>

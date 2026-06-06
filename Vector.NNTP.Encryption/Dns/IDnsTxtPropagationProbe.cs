@@ -1,8 +1,7 @@
-//-----------------------------------------------------------------------
 // <copyright file="IDnsTxtPropagationProbe.cs" company="Usenet Ninja">
-// Copyright (c) Chris Knipe <cknipe@opticnetworks.net>. Licensed under the Apache License, Version 2.0 (see LICENSE).
+// Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-//-----------------------------------------------------------------------
+// COLD PATH: assembly-internal DNS TXT propagation contract for ACME DNS-01.
 
 using Vector.NNTP.Encryption.Configuration;
 
@@ -11,7 +10,7 @@ namespace Vector.NNTP.Encryption.Dns
     /// <summary>
     /// Waits until challenge TXT records are visible to enough authoritative name servers (quorum, not unanimity).
     /// </summary>
-    public interface IDnsTxtPropagationProbe
+    internal interface IDnsTxtPropagationProbe
     {
         /// <summary>
         /// Polls until every <paramref name="records"/> entry satisfies the configured quorum ratio against authoritative NS

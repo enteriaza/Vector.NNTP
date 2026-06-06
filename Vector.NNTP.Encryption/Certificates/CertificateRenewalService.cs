@@ -42,10 +42,10 @@
 
 using System.Security.Cryptography.X509Certificates;
 using Vector.NNTP.Encryption.Certificates.Acme;
+using Vector.NNTP.Encryption.Telemetry;
 using Vector.NNTP.Encryption.Cluster;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.Dns;
-using Vector.NNTP.Utilities.Disposal;
 using Vector.NNTP.Utilities.Retry;
 
 namespace Vector.NNTP.Encryption.Certificates
@@ -98,12 +98,12 @@ namespace Vector.NNTP.Encryption.Certificates
     /// <para><b>Thread safety:</b> The current certificate is swapped atomically via
     /// <see cref="Interlocked.Exchange{T}(ref T, T)"/>.  <c>NntpListener</c> reads it via
     /// <see cref="GetCurrentCertificate"/> which uses <see cref="M:System.Threading.Volatile.Read``1(``0@)"/> for cross-thread visibility.
-    /// The <see cref="CertificateChanged"/> event is invoked with per-subscriber exception isolation so a faulting
+    /// The <see cref="ICertificateRenewalPublisher.CertificateChanged"/> event is invoked with per-subscriber exception isolation so a faulting
     /// subscriber cannot break the renewal pipeline.</para>
     ///
     /// <para><b>Ownership model:</b> This service is the sole owner of certificate disposal.  When
     /// <see cref="ActivateCertificate"/> swaps the current certificate, the superseded certificate is scheduled for
-    /// deferred disposal via <see cref="DeferCertificateDisposal"/>.  Subscribers of <see cref="CertificateChanged"/>
+    /// deferred disposal via <see cref="DeferCertificateDisposal"/>.  Subscribers of <see cref="ICertificateRenewalPublisher.CertificateChanged"/>
     /// receive the <em>new</em> certificate and must <b>not</b> dispose the old certificate they swap out of their own
     /// fields -- it is the same object reference that <see cref="ActivateCertificate"/> already captured and scheduled for
     /// disposal.  Double-disposing an <see cref="X509Certificate2"/> is safe on .NET 8, but on Windows the second
@@ -150,7 +150,8 @@ namespace Vector.NNTP.Encryption.Certificates
         IHostApplicationLifetime hostLifetime,
         IHostEnvironment hostEnvironment,
         IDnsTxtPropagationProbe dnsTxtProbe,
-        IServiceProvider serviceProvider) : BackgroundService
+        IServiceProvider serviceProvider,
+        EncryptionMetrics metrics) : BackgroundService, ICertificateRenewalPublisher
     {
         #region Constants
 
@@ -244,55 +245,59 @@ namespace Vector.NNTP.Encryption.Certificates
         /// </summary>
         private CertificateClusterSync? _clusterSync;
 
-        #endregion
-
-        #region Public Methods
+        /// <summary>
+        /// OpenTelemetry-style metrics for renewal outcomes and durations.
+        /// </summary>
+        private readonly EncryptionMetrics _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
 
         /// <summary>
-        /// Returns the current TLS certificate, or <see langword="null"/> if none has been provisioned yet.  Thread-safe
-        /// for concurrent access from <c>NntpListener</c> and internal validity-check methods.
+        /// Correlation identifier for the active certificate issuance attempt.
         /// </summary>
+        private string? _renewalCorrelationId;
+
+        /// <summary>
+        /// Subscribers notified when a new certificate is activated.
+        /// </summary>
+        private event Action<X509Certificate2>? _certificateChanged;
+
+        #endregion
+
+        #region ICertificateRenewalPublisher
+
+        /// <summary>
+        /// Returns the current TLS certificate, or <see langword="null"/> if none has been provisioned yet.
+        /// </summary>
+        /// <returns>Active server certificate or <see langword="null"/>.</returns>
         /// <remarks>
-        /// <para>Uses <see cref="M:System.Threading.Volatile.Read``1(``0@)"/> to guarantee that the value written by
-        /// <see cref="ActivateCertificate"/> (via <see cref="Interlocked.Exchange{T}(ref T, T)"/>) on one thread is
-        /// visible to reader threads -- the acquire fence prevents the CPU or compiler from reordering subsequent reads
-        /// before this one.  Reference reads are atomic on all .NET platforms, so <see cref="M:System.Threading.Volatile.Read``1(``0@)"/>
-        /// adds only the memory-ordering guarantee.</para>
+        /// Uses <see cref="M:System.Threading.Volatile.Read``1(``0@)"/> for cross-thread visibility after
+        /// <see cref="ActivateCertificate"/> swaps the reference.
         /// </remarks>
-        public X509Certificate2? GetCurrentCertificate()
+        X509Certificate2? ICertificateRenewalPublisher.GetCurrentCertificate()
         {
-            return Volatile.Read(ref _currentCertificate);
+            return GetCurrentCertificate();
         }
 
         /// <summary>
-        /// Fired when a new certificate is activated -- either loaded from disk or renewed via ACME.  Subscribers are
-        /// invoked with per-subscriber exception isolation so a faulting subscriber cannot break the renewal pipeline.
+        /// Fired when a new certificate is activated -- either loaded from disk or renewed via ACME.
         /// </summary>
-        /// <remarks>
-        /// <para><b>Ownership contract:</b> The event passes the <em>new</em> certificate to subscribers.  Subscribers
-        /// that maintain their own certificate reference (e.g. <c>NntpListener</c> TLS certificate field) should
-        /// atomically swap it via <see cref="Interlocked.Exchange{T}(ref T, T)"/> but must <b>not</b> dispose the old
-        /// certificate they swap out.  Disposal of superseded certificates is handled exclusively by this service via
-        /// <see cref="DeferCertificateDisposal"/> -- the old certificate reference captured in
-        /// <see cref="ActivateCertificate"/> is the same object that subscribers are swapping out of their own fields.
-        /// Disposing it from a subscriber would cause a double-dispose.</para>
-        ///
-        /// <para><b>Subscribers:</b></para>
-        /// <list type="bullet">
-        ///   <item><description><c>NntpListener</c> -- atomically swaps the TLS certificate for subsequent
-        ///     client-facing NNTPS handshakes and, on first arrival, late-binds the NNTPS listening
-        ///     socket.</description></item>
-        ///   <item><description><c>PeerFetchListener</c> -- atomically swaps the TLS certificate for
-        ///     subsequent peer-to-peer cache-fetch handshakes and, on first arrival, builds the shared
-        ///     <see cref="System.Net.Security.SslServerAuthenticationOptions"/> and signals the certificate-ready
-        ///     <see cref="TaskCompletionSource"/> so <c>ExecuteAsync</c> can proceed to bind the peer listening
-        ///     socket.</description></item>
-        /// </list>
-        ///
-        /// <para><b>Disposal:</b> The event delegate is cleared to <see langword="null"/> during <see cref="Dispose"/>
-        /// to release subscriber references and prevent post-disposal invocations.</para>
-        /// </remarks>
-        public event Action<X509Certificate2>? CertificateChanged;
+        event Action<X509Certificate2>? ICertificateRenewalPublisher.CertificateChanged
+        {
+            add => _certificateChanged += value;
+            remove => _certificateChanged -= value;
+        }
+
+        #endregion
+
+        #region Internal Certificate Access
+
+        /// <summary>
+        /// Returns the current TLS certificate for internal validity checks and activation paths.
+        /// </summary>
+        /// <returns>Active server certificate or <see langword="null"/>.</returns>
+        private X509Certificate2? GetCurrentCertificate()
+        {
+            return Volatile.Read(ref _currentCertificate);
+        }
 
         #endregion
 
@@ -310,7 +315,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///
         /// <para><b>Disposal order:</b></para>
         /// <list type="number">
-        ///   <item><description>Clear the <see cref="CertificateChanged"/> event delegate to release subscriber references
+        ///   <item><description>Clear the <see cref="ICertificateRenewalPublisher.CertificateChanged"/> event delegate to release subscriber references
         ///     and prevent post-disposal invocations from any code path that races with
         ///     shutdown.</description></item>
         ///   <item><description>Atomically null and dispose <see cref="_currentCertificate"/> via
@@ -343,7 +348,7 @@ namespace Vector.NNTP.Encryption.Certificates
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
-            CertificateChanged = null;
+            _certificateChanged = null;
 
             X509Certificate2? cert = Interlocked.Exchange(ref _currentCertificate, null);
             if (cert is not null)

@@ -78,7 +78,7 @@ namespace Vector.NNTP.Encryption.Certificates
 
         /// <summary>
         /// Atomically swaps the current certificate, performs synchronous CNG key cleanup of the superseded certificate on
-        /// Windows, raises <see cref="CertificateChanged"/>, and defers disposal of the superseded certificate.
+        /// Windows, raises <see cref="ICertificateRenewalPublisher.CertificateChanged"/>, and defers disposal of the superseded certificate.
         /// </summary>
         /// <remarks>
         /// <para><b>Disposed-state guard:</b> If <see cref="_disposed"/> is non-zero (set by <see cref="Dispose"/>),
@@ -108,7 +108,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///     structured log with the certificate's subject, thumbprint, and expiry — providing a single diagnostic
         ///     record for all activation paths (cache load, ACME renewal).</description></item>
         ///   <item><description><b>Event notification:</b> <see cref="RaiseCertificateChanged"/> invokes each
-        ///     <see cref="CertificateChanged"/> subscriber with per-subscriber exception isolation.</description></item>
+        ///     <see cref="ICertificateRenewalPublisher.CertificateChanged"/> subscriber with per-subscriber exception isolation.</description></item>
         ///   <item><description><b>Synchronous CNG key cleanup:</b> <see cref="CleanupCngKeyImmediately"/> deletes the
         ///     superseded certificate's persisted CNG key from the Windows key store immediately — before the deferred
         ///     disposal timer.  This prevents orphaned CNG keys from accumulating in
@@ -140,8 +140,8 @@ namespace Vector.NNTP.Encryption.Certificates
         /// disposed only when it is superseded by a future <see cref="ActivateCertificate"/> call (deferred disposal) or
         /// during <see cref="Dispose"/> (immediate disposal).  The superseded certificate (returned by
         /// <see cref="Interlocked.Exchange{T}(ref T, T)"/>) is scheduled for deferred disposal and must not be disposed
-        /// by any other code path — including <see cref="CertificateChanged"/> subscribers.  See the ownership contract
-        /// documented on <see cref="CertificateChanged"/>.</para>
+        /// by any other code path — including <see cref="ICertificateRenewalPublisher.CertificateChanged"/> subscribers.  See the ownership contract
+        /// documented on <see cref="ICertificateRenewalPublisher.CertificateChanged"/>.</para>
         ///
         /// <para><b>First activation:</b> When called for the first time (no previous certificate),
         /// <see cref="Interlocked.Exchange{T}(ref T, T)"/> returns <see langword="null"/>.
@@ -267,7 +267,7 @@ namespace Vector.NNTP.Encryption.Certificates
         #region Private Methods — Event Raising
 
         /// <summary>
-        /// Raises <see cref="CertificateChanged"/> with per-subscriber exception isolation.
+        /// Raises <see cref="ICertificateRenewalPublisher.CertificateChanged"/> with per-subscriber exception isolation.
         /// </summary>
         /// <remarks>
         /// <para><b>Exception isolation:</b> Each subscriber is invoked in its own <c>try/catch</c> block so that a
@@ -307,7 +307,7 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <param name="cert">The newly activated certificate to broadcast to subscribers.</param>
         private void RaiseCertificateChanged(X509Certificate2 cert)
         {
-            Action<X509Certificate2>? handler = CertificateChanged;
+            Action<X509Certificate2>? handler = _certificateChanged;
             if (handler is null)
                 return;
 
@@ -442,8 +442,8 @@ namespace Vector.NNTP.Encryption.Certificates
         /// called to release the in-memory handle.  This is the expected sequence.</para>
         ///
         /// <para><b>Sole ownership:</b> Only this method (and <see cref="Dispose"/> for final cleanup) may dispose
-        /// certificates owned by this service.  <see cref="CertificateChanged"/> subscribers must not dispose the old
-        /// certificate they swap out — see the ownership contract documented on <see cref="CertificateChanged"/> and the
+        /// certificates owned by this service.  <see cref="ICertificateRenewalPublisher.CertificateChanged"/> subscribers must not dispose the old
+        /// certificate they swap out — see the ownership contract documented on <see cref="ICertificateRenewalPublisher.CertificateChanged"/> and the
         /// class-level remarks in the primary partial.</para>
         ///
         /// <para><b>Null guard:</b> <see cref="CertificateStore.DeferDisposal"/> returns immediately if

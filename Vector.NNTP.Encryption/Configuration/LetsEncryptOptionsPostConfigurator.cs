@@ -8,9 +8,6 @@ namespace Vector.NNTP.Encryption.Configuration
     /// <summary>
     /// Hydrates Let's Encrypt options from disk and applies development fallbacks before <c>ValidateOnStart</c>.
     /// </summary>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="LetsEncryptOptionsPostConfigurator"/> class.
-    /// </remarks>
     /// <param name="hostEnvironment">Hosting environment (Development vs Production).</param>
     /// <param name="logger">Logger.</param>
     internal sealed partial class LetsEncryptOptionsPostConfigurator(
@@ -27,11 +24,11 @@ namespace Vector.NNTP.Encryption.Configuration
         /// </summary>
         /// <param name="name">The name of the options.</param>
         /// <param name="options">The options to post configure.</param>
-        public void PostConfigure(string? name, LetsEncryptOptions options)
+        void IPostConfigureOptions<LetsEncryptOptions>.PostConfigure(string? name, LetsEncryptOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);
 
-            LetsEncryptOptionsConfiguration.HydrateAccountKeyFromCertDir(options);
+            LetsEncryptOptionsConfiguration.HydrateAccountKeyFromCertDir(options, logger);
 
             if (!options.Enabled || !string.IsNullOrWhiteSpace(options.AccountKeyPem))
             {

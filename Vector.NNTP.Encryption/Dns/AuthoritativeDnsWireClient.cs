@@ -5,6 +5,7 @@
 //-----------------------------------------------------------------------
 // Minimal UDP/TCP DNS TXT client for ACME DNS-01 propagation checks (RFC 1035, RFC 7766 TCP framing).
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Net;
@@ -16,7 +17,7 @@ namespace Vector.NNTP.Encryption.Dns
     /// <summary>
     /// Stateless helpers to send TXT queries directly to one authoritative nameserver (UDP, then TCP when needed).
     /// </summary>
-    internal static class AuthoritativeDnsWireClient
+    internal static partial class AuthoritativeDnsWireClient
     {
         /// <summary>
         /// The receive timeout in milliseconds.
@@ -41,7 +42,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// <summary>
         /// Bounded pool of reusable <see cref="UdpClient"/> instances to amortise socket creation during poll loops.
         /// </summary>
-        private static readonly ConcurrentBag<UdpClient> UdpPool = new();
+        private static readonly ConcurrentBag<UdpClient> UdpPool = [];
 
         /// <summary>
         /// Queries TXT for <paramref name="recordName"/> at <paramref name="nameserver"/> and returns whether any answer
@@ -50,17 +51,20 @@ namespace Vector.NNTP.Encryption.Dns
         /// <param name="nameserver">The nameserver to query.</param>
         /// <param name="recordName">The name of the record to query.</param>
         /// <param name="expectedTxt">Expected TXT bytes (ASCII challenge digest).</param>
+        /// <param name="logger">Optional logger for wire client diagnostics.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns><see langword="true"/> when a matching TXT record is present.</returns>
         internal static async Task<bool> QueryTxtContainsAsync(
             IPAddress nameserver,
             string recordName,
             ReadOnlyMemory<byte> expectedTxt,
+            ILogger? logger,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(nameserver);
             byte[] queryPacket = DnsWireQueryBuilder.Build(recordName, DnsWireRecordTypes.Txt, out ushort queryId);
-            byte[]? udpResponse = await TryUdpQueryAsync(nameserver, queryPacket, cancellationToken).ConfigureAwait(false);
+            byte[]? udpResponse = await TryUdpQueryAsync(nameserver, recordName, queryPacket, logger, cancellationToken)
+                .ConfigureAwait(false);
             if (udpResponse is not null &&
                 DnsWireTxtResponseParser.ResponseContainsTxt(udpResponse, queryId, expectedTxt.Span))
             {
@@ -69,7 +73,8 @@ namespace Vector.NNTP.Encryption.Dns
 
             if (udpResponse is null || ShouldRetryTxtOverTcp(udpResponse))
             {
-                byte[]? tcpResponse = await TryTcpQueryAsync(nameserver, queryPacket, cancellationToken).ConfigureAwait(false);
+                byte[]? tcpResponse = await TryTcpQueryAsync(nameserver, recordName, queryPacket, logger, cancellationToken)
+                    .ConfigureAwait(false);
                 if (tcpResponse is not null &&
                     DnsWireTxtResponseParser.ResponseContainsTxt(tcpResponse, queryId, expectedTxt.Span))
                 {
@@ -91,11 +96,13 @@ namespace Vector.NNTP.Encryption.Dns
         {
             ArgumentNullException.ThrowIfNull(nameserver);
             byte[] queryPacket = DnsWireQueryBuilder.Build(recordName, DnsWireRecordTypes.Txt, out ushort queryId);
-            byte[]? udpResponse = await TryUdpQueryAsync(nameserver, queryPacket, cancellationToken).ConfigureAwait(false);
+            byte[]? udpResponse = await TryUdpQueryAsync(nameserver, recordName, queryPacket, null, cancellationToken)
+                .ConfigureAwait(false);
             List<string> results = udpResponse is null ? [] : ParseTxtResponse(udpResponse, queryId);
             if (udpResponse is null || ShouldRetryTxtOverTcp(udpResponse, results))
             {
-                byte[]? tcpResponse = await TryTcpQueryAsync(nameserver, queryPacket, cancellationToken).ConfigureAwait(false);
+                byte[]? tcpResponse = await TryTcpQueryAsync(nameserver, recordName, queryPacket, null, cancellationToken)
+                    .ConfigureAwait(false);
                 if (tcpResponse is not null)
                 {
                     List<string> tcpParsed = ParseTxtResponse(tcpResponse, queryId);
@@ -151,10 +158,17 @@ namespace Vector.NNTP.Encryption.Dns
         /// Tries to send a UDP query to the nameserver.
         /// </summary>
         /// <param name="nameserver">The nameserver to query.</param>
+        /// <param name="recordName">The name of the record to query.</param>
         /// <param name="queryPacket">The query packet to send.</param>
+        /// <param name="logger">Optional logger for wire client diagnostics.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The response from the nameserver; <see langword="null"/> if the query failed.</returns>
-        private static async Task<byte[]?> TryUdpQueryAsync(IPAddress nameserver, byte[] queryPacket, CancellationToken cancellationToken)
+        private static async Task<byte[]?> TryUdpQueryAsync(
+            IPAddress nameserver,
+            string recordName,
+            byte[] queryPacket,
+            ILogger? logger,
+            CancellationToken cancellationToken)
         {
             UdpClient udp = RentUdpClient(nameserver.AddressFamily);
             using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -168,6 +182,11 @@ namespace Vector.NNTP.Encryption.Dns
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                if (logger is not null)
+                {
+                    LogAuthoritativeDnsUdpTimeout(logger, nameserver.ToString(), recordName);
+                }
+
                 return null;
             }
             catch (SocketException)
@@ -224,18 +243,23 @@ namespace Vector.NNTP.Encryption.Dns
         /// Tries to send a TCP query to the nameserver.
         /// </summary>
         /// <param name="nameserver">The nameserver to query.</param>
+        /// <param name="recordName">The name of the record to query.</param>
         /// <param name="queryPacket">The query packet to send.</param>
+        /// <param name="logger">Optional logger for wire client diagnostics.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The response from the nameserver; <see langword="null"/> if the query failed.</returns>
         private static async Task<byte[]?> TryTcpQueryAsync(
             IPAddress nameserver,
+            string recordName,
             byte[] queryPacket,
+            ILogger? logger,
             CancellationToken cancellationToken)
         {
             using TcpClient tcp = new();
             using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(ReceiveTimeoutMs);
 
+            byte[]? rentedResponse = null;
             try
             {
                 await tcp.ConnectAsync(nameserver, 53, timeoutCts.Token).ConfigureAwait(false);
@@ -255,12 +279,19 @@ namespace Vector.NNTP.Encryption.Dns
                     return null;
                 }
 
+                rentedResponse = ArrayPool<byte>.Shared.Rent(msgLen);
+                await stream.ReadExactlyAsync(rentedResponse.AsMemory(0, msgLen), timeoutCts.Token).ConfigureAwait(false);
                 byte[] response = new byte[msgLen];
-                await stream.ReadExactlyAsync(response.AsMemory(0, msgLen), timeoutCts.Token).ConfigureAwait(false);
+                rentedResponse.AsSpan(0, msgLen).CopyTo(response);
                 return response;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                if (logger is not null)
+                {
+                    LogAuthoritativeDnsTcpTimeout(logger, nameserver.ToString(), recordName);
+                }
+
                 return null;
             }
             catch (SocketException)
@@ -274,6 +305,13 @@ namespace Vector.NNTP.Encryption.Dns
             catch (IOException)
             {
                 return null;
+            }
+            finally
+            {
+                if (rentedResponse is not null)
+                {
+                    ArrayPool<byte>.Shared.Return(rentedResponse);
+                }
             }
         }
     }

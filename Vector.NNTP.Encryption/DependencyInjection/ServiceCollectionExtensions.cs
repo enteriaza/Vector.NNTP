@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Vector.NNTP.Encryption.Certificates;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.Dns;
+using Vector.NNTP.Encryption.Telemetry;
 
 namespace Vector.NNTP.Encryption.DependencyInjection
 {
@@ -37,10 +38,15 @@ namespace Vector.NNTP.Encryption.DependencyInjection
         /// </remarks>
         public static IServiceCollection AddEncryption(this IServiceCollection services)
         {
-            _ = services.AddSingleton<IDnsTxtPropagationProbe, AuthoritativeDnsTxtPropagationProbe>();
+            _ = services.AddSingleton<IValidateOptions<LetsEncryptOptions>, LetsEncryptOptionsValidator>();
+            _ = services.AddSingleton(static _ => new EncryptionMetrics());
+            _ = services.AddSingleton<IDnsTxtPropagationProbe>(static sp => new AuthoritativeDnsTxtPropagationProbe(
+                sp.GetRequiredService<ILogger<AuthoritativeDnsTxtPropagationProbe>>(),
+                sp.GetRequiredService<EncryptionMetrics>()));
             _ = services.AddSingleton<IPostConfigureOptions<LetsEncryptOptions>, LetsEncryptOptionsPostConfigurator>();
             _ = services.AddSingleton<CertificateRenewalService>();
-            _ = services.AddHostedService(provider => provider.GetRequiredService<CertificateRenewalService>());
+            _ = services.AddSingleton<ICertificateRenewalPublisher>(static sp => sp.GetRequiredService<CertificateRenewalService>());
+            _ = services.AddHostedService(static provider => provider.GetRequiredService<CertificateRenewalService>());
             return services;
         }
 

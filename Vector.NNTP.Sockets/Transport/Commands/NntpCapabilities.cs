@@ -3,6 +3,7 @@
 // </copyright>
 // COLD PATH: CAPABILITIES command handler.
 
+using Vector.NNTP.Encryption.Certificates;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Commands;
 using Vector.NNTP.Sockets.HostProfile;
@@ -170,7 +171,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         /// <returns><see langword="true"/> when a server certificate is available and TLS is not already active.</returns>
         /// <remarks>
         /// <see cref="Tls.ITlsCertificateSource.GetServerCertificateAsync"/> is expected to return an in-process cached
-        /// certificate (for example via <c>CertificateRenewalService.GetCurrentCertificate</c>), not reload from disk on
+        /// certificate (for example via <see cref="ICertificateRenewalPublisher.GetCurrentCertificate"/>), not reload from disk on
         /// every CAPABILITIES invocation.
         /// </remarks>
         private static async ValueTask<bool> ShouldAdvertiseStartTlsAsync(NntpSession session, CancellationToken cancellationToken)

@@ -42,7 +42,6 @@
 
 using Certes.Acme.Resource;
 using Vector.NNTP.Encryption.Acme;
-using Vector.NNTP.Encryption.Dns;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {

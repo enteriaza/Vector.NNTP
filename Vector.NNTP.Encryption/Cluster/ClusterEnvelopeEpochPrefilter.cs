@@ -9,7 +9,7 @@ namespace Vector.NNTP.Encryption.Cluster
     /// <summary>
     /// Cheap UTF-8 scan of cluster envelope JSON for <c>payloadType</c> and nested <c>payload.epoch</c>.
     /// </summary>
-    internal static class ClusterEnvelopeEpochPrefilter
+    internal static partial class ClusterEnvelopeEpochPrefilter
     {
         /// <summary>
         /// Tries to read <c>payloadType</c> and optionally <c>payload.epoch</c> without full deserialization.
@@ -18,12 +18,14 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <param name="payloadType">Wire payload type string, or null when absent.</param>
         /// <param name="epochPresent">True when a numeric epoch was read under payload.</param>
         /// <param name="epochValue">Epoch value when <paramref name="epochPresent"/> is true.</param>
+        /// <param name="logger">Optional logger for malformed JSON diagnostics.</param>
         /// <returns>False when JSON is not a well-formed root object for this scan.</returns>
         internal static bool TryReadEnvelopePayloadTypeAndClusterEpoch(
             ReadOnlySpan<byte> utf8Json,
             out string? payloadType,
             out bool epochPresent,
-            out long epochValue)
+            out long epochValue,
+            ILogger? logger = null)
         {
             payloadType = null;
             epochPresent = false;
@@ -107,8 +109,13 @@ namespace Vector.NNTP.Encryption.Cluster
 
                 return true;
             }
-            catch (JsonException)
+            catch (JsonException ex)
             {
+                if (logger is not null)
+                {
+                    LogEnvelopePrefilterJsonFailed(logger, ex.GetType().Name, ex);
+                }
+
                 return false;
             }
         }

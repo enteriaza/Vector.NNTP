@@ -38,10 +38,11 @@
 // Callers (all within other AcmeCertificateProvider partials):
 //   RequestCertificateAsync -> CreateCloudflareTxtRecordAsync, CleanupTxtRecordsAsync
 
-using System.Net;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Vector.NNTP.Encryption.Acme;
+using Vector.NNTP.Encryption.Telemetry;
 using Vector.NNTP.Utilities.IO;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
@@ -429,6 +430,11 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <exception cref="OperationCanceledException">Thrown when <paramref name="ct"/> is cancelled.</exception>
         private async Task<JsonDocument> SendCloudflareRequestAsync(HttpRequestMessage request, string operation, CancellationToken ct)
         {
+            using Activity? activity = EncryptionTelemetry.ActivitySource.StartActivity(
+                "encryption.acme.cloudflare",
+                ActivityKind.Client);
+            _ = activity?.SetTag("encryption.acme.operation", operation);
+
             request.Headers.Authorization = new("Bearer", options.CloudflareApiToken);
 
             HttpResponseMessage? response = null;

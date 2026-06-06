@@ -7,11 +7,12 @@ namespace Vector.NNTP.Encryption.Acme
     /// <summary>
     /// Validates local clock skew against the ACME directory HTTP <c>Date</c> header.
     /// </summary>
-    internal static class ClockSkewGuard
+    internal static partial class ClockSkewGuard
     {
         /// <summary>
         /// Throws when the absolute skew between UTC now and the ACME directory <c>Date</c> header exceeds <paramref name="maxSkew"/>.
         /// </summary>
+        /// <param name="logger">Logger for ACME clock skew diagnostics.</param>
         /// <param name="http">HTTP client used for the directory HEAD request.</param>
         /// <param name="directoryUri">ACME directory URI.</param>
         /// <param name="maxSkew">Maximum tolerated skew.</param>
@@ -19,11 +20,13 @@ namespace Vector.NNTP.Encryption.Acme
         /// <returns>A task that completes when validation succeeds.</returns>
         /// <exception cref="InvalidOperationException">Thrown when skew exceeds <paramref name="maxSkew"/>.</exception>
         public static async Task AssertSkewAcceptableAsync(
+            ILogger logger,
             HttpClient http,
             Uri directoryUri,
             TimeSpan maxSkew,
             CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(logger);
             ArgumentNullException.ThrowIfNull(http);
             ArgumentNullException.ThrowIfNull(directoryUri);
 
@@ -39,6 +42,7 @@ namespace Vector.NNTP.Encryption.Acme
                 TimeSpan skew = (serverUtc - DateTimeOffset.UtcNow).Duration();
                 if (skew > maxSkew)
                 {
+                    LogClockSkewExceeded(logger, skew, maxSkew);
                     throw new InvalidOperationException(
                         $"System clock skew ({skew}) exceeds the configured maximum ({maxSkew}). Synchronize time (NTP) before using ACME.");
                 }

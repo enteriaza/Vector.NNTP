@@ -152,6 +152,13 @@ namespace Vector.NNTP.Encryption.Certificates
                 LogForcingStagingDirectory();
             }
 
+            LogEncryptionInitialized(
+                FormatDomainSummary(_options.DomainNames),
+                _options.UseStagingDirectory ? "Staging" : "Production",
+                _options.ClusterEnabled,
+                _nodeName,
+                _options.CertDir);
+
             // Phase 2: Subsystem creation.
             _stoppingToken = stoppingToken;
             _store = new CertificateStore(logger, _options.CertDir, _options.PfxExportPassword);
@@ -179,7 +186,8 @@ namespace Vector.NNTP.Encryption.Certificates
                         {
                             ActivateCertificate(cert);
                             return Task.CompletedTask;
-                        });
+                        },
+                        _metrics);
 
                     await _clusterSync.StartAsync(stoppingToken).ConfigureAwait(false);
                 }
@@ -212,12 +220,22 @@ namespace Vector.NNTP.Encryption.Certificates
                 }
                 catch (Exception ex)
                 {
-                    startupAttempt++;
-                    int delayMs = RetryUtilities.CalculateBackOff(startupAttempt, StartupRetryBaseDelayMs, StartupRetryMaxDelayMs);
+                    using Activity? startupActivity = EncryptionTelemetry.ActivitySource.StartActivity(
+                        "encryption.startup.retry",
+                        ActivityKind.Internal);
+                    _ = startupActivity?.SetTag("encryption.startup.attempt", startupAttempt + 1);
+                    using (logger.BeginScope(new Dictionary<string, object?>
+                    {
+                        ["FailureReason"] = EncryptionFailureClassifier.Classify(ex),
+                    }))
+                    {
+                        startupAttempt++;
+                        int delayMs = RetryUtilities.CalculateBackOff(startupAttempt, StartupRetryBaseDelayMs, StartupRetryMaxDelayMs);
 
-                    LogStartupRetry(ex, startupAttempt, delayMs / 1_000);
+                        LogStartupRetry(ex, startupAttempt, delayMs / 1_000);
 
-                    await Task.Delay(delayMs, stoppingToken).ConfigureAwait(false);
+                        await Task.Delay(delayMs, stoppingToken).ConfigureAwait(false);
+                    }
                 }
             }
 
@@ -237,6 +255,9 @@ namespace Vector.NNTP.Encryption.Certificates
                 using Activity? activity = EncryptionTelemetry.ActivitySource.StartActivity(
                     "encryption.renewal.check",
                     ActivityKind.Internal);
+                _ = activity?.SetTag("encryption.node_name", _nodeName);
+                _ = activity?.SetTag("encryption.staging", _options.UseStagingDirectory);
+                _ = activity?.SetTag("encryption.domain", FormatDomainSummary(_options.DomainNames));
 
                 try
                 {
@@ -248,7 +269,14 @@ namespace Vector.NNTP.Encryption.Certificates
                 }
                 catch (Exception ex)
                 {
-                    LogRenewalCheckFailed(ex, _options.RenewalCheckIntervalHours);
+                    _metrics.RecordRenewalCheck("failed");
+                    using (logger.BeginScope(new Dictionary<string, object?>
+                    {
+                        ["FailureReason"] = EncryptionFailureClassifier.Classify(ex),
+                    }))
+                    {
+                        LogRenewalCheckFailed(ex, _options.RenewalCheckIntervalHours);
+                    }
                 }
             }
         }
@@ -351,7 +379,10 @@ namespace Vector.NNTP.Encryption.Certificates
             // Delegate the threshold check to the shared helper -- avoids duplicating the expiry arithmetic and the
             // atomic read of _currentCertificate.  On the happy path (certificate still valid), this is the only read.
             if (IsCertificateValidBeyondThreshold())
+            {
+                _metrics.RecordRenewalCheck("skipped");
                 return;
+            }
 
             if (_options.ClusterEnabled && _clusterSync is not null)
             {
@@ -368,9 +399,16 @@ namespace Vector.NNTP.Encryption.Certificates
         /// <param name="ct">Cancellation token for host shutdown.</param>
         private async Task PerformRenewalAsync(CancellationToken ct)
         {
+            _renewalCorrelationId = Guid.NewGuid().ToString("N");
+            Stopwatch issueStopwatch = Stopwatch.StartNew();
+
             using Activity? activity = EncryptionTelemetry.ActivitySource.StartActivity(
                 "encryption.certificate.issue",
                 ActivityKind.Client);
+            _ = activity?.SetTag("encryption.renewal_id", _renewalCorrelationId);
+            _ = activity?.SetTag("encryption.node_name", _nodeName);
+            _ = activity?.SetTag("encryption.staging", _options.UseStagingDirectory);
+            _ = activity?.SetTag("encryption.domain", FormatDomainSummary(_options.DomainNames));
 
             // Renewal is needed.  Read the certificate once to determine the appropriate Information-level log message.
             X509Certificate2? current = GetCurrentCertificate();
@@ -385,38 +423,77 @@ namespace Vector.NNTP.Encryption.Certificates
                 LogNoCertificate();
             }
 
-            X509Certificate2? newCert = await _acmeProvider!.RequestCertificateAsync(_store!, ct).ConfigureAwait(false);
-
-            try
+            using (logger.BeginScope(new Dictionary<string, object?> { ["RenewalId"] = _renewalCorrelationId }))
             {
-                ActivateCertificate(newCert);
-                newCert = null;
-
-                if (_clusterSync is not null)
+                try
                 {
-                    byte[]? pfxBytes = await _store!.TryLoadCertificateBytesAsync(ct).ConfigureAwait(false);
-                    if (pfxBytes is null || pfxBytes.Length == 0)
+                    X509Certificate2? newCert = await _acmeProvider!.RequestCertificateAsync(_store!, ct).ConfigureAwait(false);
+
+                    try
                     {
-                        throw new InvalidOperationException(
-                            "Cluster broadcast requires certificate.pfx on disk after renewal, but the file could not be read.");
+                        ActivateCertificate(newCert);
+                        newCert = null;
+
+                        if (_clusterSync is not null)
+                        {
+                            byte[]? pfxBytes = await _store!.TryLoadCertificateBytesAsync(ct).ConfigureAwait(false);
+                            if (pfxBytes is null || pfxBytes.Length == 0)
+                            {
+                                throw new InvalidOperationException(
+                                    "Cluster broadcast requires certificate.pfx on disk after renewal, but the file could not be read.");
+                            }
+
+                            X509Certificate2? activated = GetCurrentCertificate();
+                            if (activated is not null)
+                            {
+                                await _clusterSync.PublishAndRecordAsync(activated, pfxBytes, ct).ConfigureAwait(false);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        if (newCert is not null)
+                        {
+                            CertificateStore.DisposeCertificate(newCert, logger);
+                        }
                     }
 
-                    X509Certificate2? activated = GetCurrentCertificate();
-                    if (activated is not null)
+                    X509Certificate2? activatedCert = GetCurrentCertificate();
+                    if (activatedCert is not null)
                     {
-                        await _clusterSync.PublishAndRecordAsync(activated, pfxBytes, ct).ConfigureAwait(false);
+                        LogNewCertificateActive(activatedCert.Subject, activatedCert.Thumbprint, activatedCert.NotAfter);
                     }
+
+                    _metrics.RecordCertificateIssue("success");
+                    _metrics.RecordRenewalCheck("renewed");
+                }
+                catch (OperationCanceledException)
+                {
+                    _metrics.RecordCertificateIssue("cancelled");
+                    throw;
+                }
+                catch (Exception)
+                {
+                    _metrics.RecordCertificateIssue("transient_failure");
+                    throw;
+                }
+                finally
+                {
+                    issueStopwatch.Stop();
+                    _metrics.RecordCertificateIssueDuration(issueStopwatch.Elapsed.TotalMilliseconds);
+                    _renewalCorrelationId = null;
                 }
             }
-            finally
-            {
-                if (newCert is not null)
-                    CertificateStore.DisposeCertificate(newCert, logger);
-            }
+        }
 
-            X509Certificate2? activatedCert = GetCurrentCertificate();
-            if (activatedCert is not null)
-                LogNewCertificateActive(activatedCert.Subject, activatedCert.Thumbprint, activatedCert.NotAfter);
+        /// <summary>
+        /// Formats configured domain names for structured logging without exposing secrets.
+        /// </summary>
+        /// <param name="domainNames">Configured ACME domain names.</param>
+        /// <returns>Comma-separated domain summary or empty when unset.</returns>
+        private static string FormatDomainSummary(string[] domainNames)
+        {
+            return domainNames.Length == 0 ? string.Empty : string.Join(',', domainNames);
         }
 
         #endregion

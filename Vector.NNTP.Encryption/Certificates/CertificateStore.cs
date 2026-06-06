@@ -332,7 +332,7 @@ namespace Vector.NNTP.Encryption.Certificates
         ///     after <see cref="Interlocked.Exchange{T}"/>.</description></item>
         ///   <item><description><c>NntpSocketAcceptor.OnCertificateChanged</c> — the previous
         ///     <c>_tlsCertificate</c> swapped out when the
-        ///     <see cref="CertificateRenewalService.CertificateChanged"/> event fires.</description></item>
+        ///     <see cref="ICertificateRenewalPublisher.CertificateChanged"/> event fires.</description></item>
         /// </list>
         /// </remarks>
         /// <param name="old">The certificate to dispose.  If <see langword="null"/>, no action is taken.</param>

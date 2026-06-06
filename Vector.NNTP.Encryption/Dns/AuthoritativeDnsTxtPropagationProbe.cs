@@ -1,12 +1,13 @@
-//-----------------------------------------------------------------------
 // <copyright file="AuthoritativeDnsTxtPropagationProbe.cs" company="Usenet Ninja">
-// Copyright (c) Chris Knipe <cknipe@opticnetworks.net>. Licensed under the Apache License, Version 2.0 (see LICENSE).
+// Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-//-----------------------------------------------------------------------
+// COLD PATH: authoritative DNS TXT propagation polling for ACME DNS-01 challenges.
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using Vector.NNTP.Encryption.Configuration;
+using Vector.NNTP.Encryption.Telemetry;
 using Vector.NNTP.Utilities.Encoding;
 
 namespace Vector.NNTP.Encryption.Dns
@@ -18,12 +19,14 @@ namespace Vector.NNTP.Encryption.Dns
     /// <remarks>
     /// <para><b>Logging:</b> <see cref="LoggerMessageAttribute"/> partial methods in
     /// <c>AuthoritativeDnsTxtPropagationProbe.Logging.cs</c>.</para>
+    /// <para><b>Construction:</b> Primary constructor receives the logger used for propagation diagnostics and optional
+    /// <see cref="EncryptionMetrics"/> for propagation duration recording.</para>
     /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="AuthoritativeDnsTxtPropagationProbe"/> class.
-    /// </remarks>
-    /// <param name="logger">Logger.</param>
-    public sealed partial class AuthoritativeDnsTxtPropagationProbe(ILogger<AuthoritativeDnsTxtPropagationProbe> logger) : IDnsTxtPropagationProbe
+    /// <param name="logger">Logger for propagation polling diagnostics.</param>
+    /// <param name="metrics">Optional metrics recorder for DNS propagation duration.</param>
+    internal sealed partial class AuthoritativeDnsTxtPropagationProbe(
+        ILogger<AuthoritativeDnsTxtPropagationProbe> logger,
+        EncryptionMetrics? metrics = null) : IDnsTxtPropagationProbe
     {
         /// <summary>
         /// The maximum number of parallel name servers to check.
@@ -43,7 +46,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// <param name="options">The options.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>A task that completes when the TXT records reach quorum.</returns>
-        public async Task WaitForTxtRecordsAsync(
+        async Task IDnsTxtPropagationProbe.WaitForTxtRecordsAsync(
             IReadOnlyList<(string RecordName, string ExpectedTxt)> records,
             LetsEncryptOptions options,
             CancellationToken cancellationToken)
@@ -55,6 +58,11 @@ namespace Vector.NNTP.Encryption.Dns
                 return;
             }
 
+            using Activity? activity = EncryptionTelemetry.ActivitySource.StartActivity(
+                "encryption.dns.propagation",
+                ActivityKind.Client);
+            _ = activity?.SetTag("encryption.dns.record_count", records.Count);
+
             int minDelay = Math.Clamp(options.DnsPropagationDelaySeconds, 0, 300);
             if (minDelay > 0)
             {
@@ -65,8 +73,11 @@ namespace Vector.NNTP.Encryption.Dns
             TimeSpan budget = TimeSpan.FromSeconds(Math.Clamp(options.DnsTxtPollTimeoutSeconds, 5, 3600));
             double quorum = Math.Clamp(options.DnsAuthoritativeQuorumRatio, 0.5, 1.0);
             TimeSpan nsCacheTtl = TimeSpan.FromMinutes(Math.Clamp(options.DnsAuthoritativeNsCacheMinutes, 1, 60));
+            int budgetSeconds = (int)budget.TotalSeconds;
 
             DateTimeOffset deadline = DateTimeOffset.UtcNow + budget;
+            DateTimeOffset propagationStart = DateTimeOffset.UtcNow;
+            int pollIteration = 0;
 
             Dictionary<string, IReadOnlyList<IPAddress>> nsByRecord = new(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, byte[]> expectedBytesByRecord = new(StringComparer.OrdinalIgnoreCase);
@@ -79,6 +90,7 @@ namespace Vector.NNTP.Encryption.Dns
                             recordName,
                             _authoritativeNsByZone,
                             nsCacheTtl,
+                            logger,
                             cancellationToken)
                         .ConfigureAwait(false);
                     nsByRecord[recordName] = ns;
@@ -88,6 +100,10 @@ namespace Vector.NNTP.Encryption.Dns
             while (DateTimeOffset.UtcNow < deadline)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                pollIteration++;
+                int remainingSeconds = Math.Max(0, (int)Math.Ceiling((deadline - DateTimeOffset.UtcNow).TotalSeconds));
+                LogDnsTxtPollIteration(pollIteration, records.Count, remainingSeconds);
+
                 bool allOk = true;
                 foreach ((string recordName, _) in records)
                 {
@@ -103,12 +119,14 @@ namespace Vector.NNTP.Encryption.Dns
                 if (allOk)
                 {
                     LogDnsTxtQuorumSatisfied(records.Count);
+                    metrics?.RecordDnsPropagationDuration((DateTimeOffset.UtcNow - propagationStart).TotalMilliseconds);
                     return;
                 }
 
                 await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
             }
 
+            LogDnsTxtPropagationTimeout(quorum, budgetSeconds);
             throw new TimeoutException(
                 $"DNS TXT propagation did not reach quorum ({quorum:P0}) for all records within {budget}.");
         }
@@ -122,7 +140,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// <param name="quorumRatio">The quorum ratio.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns><see langword="true"/> if the quorum of name servers shows the expected TXT record; otherwise <see langword="false"/>.</returns>
-        private static async Task<bool> QuorumShowsTxtAsync(
+        private async Task<bool> QuorumShowsTxtAsync(
             string recordName,
             byte[] expectedTxt,
             IReadOnlyList<IPAddress> nameServers,
@@ -131,7 +149,8 @@ namespace Vector.NNTP.Encryption.Dns
         {
             if (nameServers.Count == 0)
             {
-                List<string> txts = await DnsWireRecursiveResolver.QueryTxtRecursiveAsync(recordName, cancellationToken).ConfigureAwait(false);
+                List<string> txts = await DnsWireRecursiveResolver.QueryTxtRecursiveAsync(recordName, logger, cancellationToken)
+                    .ConfigureAwait(false);
                 return TxtListContains(txts, expectedTxt);
             }
 
@@ -154,7 +173,8 @@ namespace Vector.NNTP.Encryption.Dns
 
                 try
                 {
-                    if (await AuthoritativeDnsWireClient.QueryTxtContainsAsync(ip, recordName, expectedMemory, ct).ConfigureAwait(false))
+                    if (await AuthoritativeDnsWireClient.QueryTxtContainsAsync(ip, recordName, expectedMemory, logger, ct)
+                            .ConfigureAwait(false))
                     {
                         int newOk = Interlocked.Increment(ref ok);
                         if (newOk >= required)
@@ -162,10 +182,14 @@ namespace Vector.NNTP.Encryption.Dns
                             Volatile.Write(ref doneGate, 1);
                         }
                     }
+                    else
+                    {
+                        LogDnsTxtNameserverMiss(recordName, ip.ToString(), "no matching TXT");
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // treat as miss
+                    LogDnsTxtNameserverMiss(recordName, ip.ToString(), ex.GetType().Name);
                 }
             }).ConfigureAwait(false);
 

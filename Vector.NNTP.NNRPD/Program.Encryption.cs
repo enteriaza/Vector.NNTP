@@ -2,7 +2,6 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-using Microsoft.Extensions.Options;
 using Vector.NNTP.Encryption.Configuration;
 using Vector.NNTP.Encryption.DependencyInjection;
 using EncryptionNntpServerOptions = Vector.NNTP.Encryption.Configuration.NntpServerOptions;
@@ -21,8 +20,6 @@ namespace Vector.NNTP.NNRPD
         private static void ConfigureEncryption(HostApplicationBuilder builder)
         {
             ArgumentNullException.ThrowIfNull(builder);
-
-            _ = builder.Services.AddSingleton<IValidateOptions<LetsEncryptOptions>, LetsEncryptOptionsValidator>();
 
             _ = builder.Services
                 .AddOptions<LetsEncryptOptions>()

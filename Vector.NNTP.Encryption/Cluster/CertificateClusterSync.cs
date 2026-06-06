@@ -2,6 +2,7 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -11,6 +12,7 @@ using RabbitMQ.Client.Events;
 using Vector.NNTP.Encryption.Acme;
 using Vector.NNTP.Encryption.Certificates;
 using Vector.NNTP.Encryption.Configuration;
+using Vector.NNTP.Encryption.Telemetry;
 using Vector.NNTP.Utilities.IO;
 using Vector.NNTP.Utilities.Security;
 using Vector.NNTP.MessageBus.Connections;
@@ -27,9 +29,6 @@ namespace Vector.NNTP.Encryption.Cluster
     /// <para><b>Logging:</b> <see cref="LoggerMessageAttribute"/> partial methods in
     /// <c>CertificateClusterSync.Logging.cs</c>.</para>
     /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="CertificateClusterSync"/> class.
-    /// </remarks>
     /// <param name="logger">Logger scoped to the renewal service.</param>
     /// <param name="getOptions">Accessor for current Let's Encrypt options.</param>
     /// <param name="hostEnvironment">Hosting environment for exchange/queue naming.</param>
@@ -39,6 +38,7 @@ namespace Vector.NNTP.Encryption.Cluster
     /// <param name="consumerManager">Long-lived consumer manager for follower adoption.</param>
     /// <param name="store">Local certificate persistence.</param>
     /// <param name="activateCertificateAsync">Callback to activate an adopted certificate for TLS.</param>
+    /// <param name="metrics">Optional metrics recorder for cluster message outcomes.</param>
     internal sealed partial class CertificateClusterSync(
         ILogger logger,
         Func<LetsEncryptOptions> getOptions,
@@ -48,7 +48,8 @@ namespace Vector.NNTP.Encryption.Cluster
         IRabbitMqPublisherPool publisherPool,
         IRabbitMqConsumerManager consumerManager,
         CertificateStore store,
-        Func<X509Certificate2, Task> activateCertificateAsync) : IAsyncDisposable
+        Func<X509Certificate2, Task> activateCertificateAsync,
+        EncryptionMetrics? metrics = null) : IAsyncDisposable
     {
         /// <summary>
         /// Wire payload type for cluster certificate broadcasts.
@@ -185,7 +186,10 @@ namespace Vector.NNTP.Encryption.Cluster
                         _ = sender;
                         _ = shutdownArgs;
                         try { connectionShutdownCts.Cancel(); }
-                        catch (ObjectDisposedException) { }
+                        catch (ObjectDisposedException)
+                        {
+                            LogLeaderConnectionCtsDisposed();
+                        }
 
                         return Task.CompletedTask;
                     }
@@ -215,6 +219,11 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <returns>A task that completes when publish and local state update finish.</returns>
         internal async Task PublishAndRecordAsync(X509Certificate2 certificate, byte[] pfxBytes, CancellationToken cancellationToken)
         {
+            using Activity? activity = EncryptionTelemetry.ActivitySource.StartActivity(
+                "encryption.cluster.publish",
+                ActivityKind.Producer);
+            _ = activity?.SetTag("encryption.thumbprint", certificate.Thumbprint);
+
             LetsEncryptOptions options = _getOptions();
             long epoch = await IncrementEpochAsync(options, cancellationToken).ConfigureAwait(false);
             string sha256Hex = Convert.ToHexString(SHA256.HashData(certificate.RawData));
@@ -260,6 +269,7 @@ namespace Vector.NNTP.Encryption.Cluster
                 }
 
                 LogClusterCertificatePublished(epoch, exchange);
+                metrics?.RecordClusterMessage("published");
             }
 
             await RecordClusterAdoptionAsync(options, epoch, sha256Hex, cancellationToken).ConfigureAwait(false);
@@ -330,13 +340,23 @@ namespace Vector.NNTP.Encryption.Cluster
         private async Task OnClusterMessageAsync(object sender, BasicDeliverEventArgs args)
         {
             _ = sender;
+            using Activity? activity = EncryptionTelemetry.ActivitySource.StartActivity(
+                "encryption.cluster.consume",
+                ActivityKind.Consumer);
+
             IChannel? channel = args.BasicProperties?.Headers is null ? null : (sender as AsyncEventingBasicConsumer)?.Channel;
             try
             {
                 ReadOnlyMemory<byte> body = args.Body;
-                if (!ClusterEnvelopeEpochPrefilter.TryReadEnvelopePayloadTypeAndClusterEpoch(body.Span, out string? wirePayloadType, out bool epochPresent, out long dtoEpoch))
+                if (!ClusterEnvelopeEpochPrefilter.TryReadEnvelopePayloadTypeAndClusterEpoch(
+                        body.Span,
+                        out string? wirePayloadType,
+                        out bool epochPresent,
+                        out long dtoEpoch,
+                        logger))
                 {
                     LogClusterInvalidEnvelope();
+                    metrics?.RecordClusterMessage("rejected");
                     if (channel is not null)
                         await channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false).ConfigureAwait(false);
                     return;
@@ -361,6 +381,7 @@ namespace Vector.NNTP.Encryption.Cluster
                 if (dto is null || !string.Equals(envelope?.PayloadType, ClusterPayloadType, StringComparison.Ordinal))
                 {
                     LogClusterInvalidPayload();
+                    metrics?.RecordClusterMessage("rejected");
                     if (channel is not null)
                         await channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false).ConfigureAwait(false);
                     return;
@@ -377,6 +398,7 @@ namespace Vector.NNTP.Encryption.Cluster
                 if (!TryVerifyClusterCertificateSignature(dto, options))
                 {
                     LogClusterHmacVerificationFailed();
+                    metrics?.RecordClusterMessage("invalid_hmac");
                     if (channel is not null)
                         await channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false).ConfigureAwait(false);
                     return;
@@ -386,6 +408,7 @@ namespace Vector.NNTP.Encryption.Cluster
                 if (!ClusterCertificateDomainBinding.OrderDomainsMatch(expectedDomains, dto.Domains))
                 {
                     LogClusterDomainMismatch();
+                    metrics?.RecordClusterMessage("rejected");
                     if (channel is not null)
                         await channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false).ConfigureAwait(false);
                     return;
@@ -457,6 +480,8 @@ namespace Vector.NNTP.Encryption.Cluster
 
                     await RecordClusterAdoptionAsync(options, dto.Epoch, candidateSha256, CancellationToken.None).ConfigureAwait(false);
                     LogClusterCertificateAdopted(dto.Epoch);
+                    metrics?.RecordClusterMessage("accepted");
+                    _ = activity?.SetTag("encryption.thumbprint", candidateSha256);
                 }
                 finally
                 {
@@ -468,6 +493,7 @@ namespace Vector.NNTP.Encryption.Cluster
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                metrics?.RecordClusterMessage("rejected");
                 LogClusterMessageHandlingFailed(ex);
                 if (sender is AsyncEventingBasicConsumer consumer && consumer.Channel.IsOpen)
                     await consumer.Channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false).ConfigureAwait(false);

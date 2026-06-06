@@ -1,8 +1,7 @@
-//-----------------------------------------------------------------------
 // <copyright file="DnsWireRecursiveResolver.cs" company="Usenet Ninja">
-// Copyright (c) Chris Knipe <cknipe@opticnetworks.net>. Licensed under the Apache License, Version 2.0 (see LICENSE).
+// Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-//-----------------------------------------------------------------------
+// COLD PATH: recursive DNS wire resolver for authoritative NS discovery.
 
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
@@ -16,7 +15,7 @@ namespace Vector.NNTP.Encryption.Dns
     /// <summary>
     /// Discovers NS names via UDP to public recursive resolvers, resolves NS hostnames from glue, wire recursive A/AAAA, then OS stub resolver.
     /// </summary>
-    internal static class DnsWireRecursiveResolver
+    internal static partial class DnsWireRecursiveResolver
     {
         /// <summary>
         /// The UDP timeout in milliseconds.
@@ -34,9 +33,29 @@ namespace Vector.NNTP.Encryption.Dns
         private const int QuestionSuffixSize = 4;
 
         /// <summary>
+        /// Maximum pooled UDP clients (aligned with propagation probe parallelism).
+        /// </summary>
+        private const int UdpPoolMaxSize = 8;
+
+        /// <summary>
+        /// Bounded pool of reusable <see cref="UdpClient"/> instances to amortise socket creation during resolver queries.
+        /// </summary>
+        private static readonly ConcurrentBag<UdpClient> UdpPool = new();
+
+        /// <summary>
         /// The recursive resolvers.
         /// </summary>
         private static readonly IPAddress[] RecursiveResolvers = ResolveRecursiveResolvers();
+
+        /// <summary>
+        /// Exception observed when OS recursive resolver discovery fails; logged once when a caller supplies a logger.
+        /// </summary>
+        private static Exception? _recursiveResolverDiscoveryException;
+
+        /// <summary>
+        /// Ensures fallback resolver discovery is logged at most once per process.
+        /// </summary>
+        private static int _loggedRecursiveResolverFallback;
 
         /// <summary>
         /// Resolves the recursive resolvers.
@@ -86,9 +105,9 @@ namespace Vector.NNTP.Encryption.Dns
                     return [.. servers];
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort: fall back to a small public resolver set below.
+                _recursiveResolverDiscoveryException = ex;
             }
 
             return
@@ -102,10 +121,16 @@ namespace Vector.NNTP.Encryption.Dns
         /// TXT lookup via recursive resolvers (RD=1), used when no authoritative NS list is available.
         /// </summary>
         /// <param name="recordName">The name of the record to resolve.</param>
+        /// <param name="logger">Optional logger for resolver diagnostics.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The TXT records of the resolved record.</returns>
-        public static async Task<List<string>> QueryTxtRecursiveAsync(string recordName, CancellationToken cancellationToken)
+        public static async Task<List<string>> QueryTxtRecursiveAsync(
+            string recordName,
+            ILogger? logger,
+            CancellationToken cancellationToken)
         {
+            LogRecursiveResolverFallbackIfNeeded(logger);
+
             foreach (IPAddress resolver in RecursiveResolvers)
             {
                 byte[] query = DnsWireQueryBuilder.Build(recordName, DnsWireRecordTypes.Txt, out ushort queryId, recursionDesired: true);
@@ -131,7 +156,7 @@ namespace Vector.NNTP.Encryption.Dns
             string recordFqdn,
             CancellationToken cancellationToken)
         {
-            return ResolveAuthoritativeNameServerAddressesAsync(recordFqdn, null, TimeSpan.Zero, cancellationToken);
+            return ResolveAuthoritativeNameServerAddressesAsync(recordFqdn, null, TimeSpan.Zero, null, cancellationToken);
         }
 
         /// <summary>
@@ -142,16 +167,38 @@ namespace Vector.NNTP.Encryption.Dns
         /// <param name="zoneCacheTtl">TTL for cache entries; <see cref="TimeSpan.Zero"/> disables writes.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Distinct authoritative NS addresses for the zone that serves <paramref name="recordFqdn"/>.</returns>
-        public static async Task<IReadOnlyList<IPAddress>> ResolveAuthoritativeNameServerAddressesAsync(
+        public static Task<IReadOnlyList<IPAddress>> ResolveAuthoritativeNameServerAddressesAsync(
             string recordFqdn,
             ConcurrentDictionary<string, (IReadOnlyList<IPAddress> Ips, DateTimeOffset ExpiresUtc)>? zoneNsCache,
             TimeSpan zoneCacheTtl,
             CancellationToken cancellationToken)
         {
+            return ResolveAuthoritativeNameServerAddressesAsync(recordFqdn, zoneNsCache, zoneCacheTtl, null, cancellationToken);
+        }
+
+        /// <summary>
+        /// Resolves distinct authoritative nameserver IPs for the zone that serves <paramref name="recordFqdn"/>.
+        /// </summary>
+        /// <param name="recordFqdn">Challenge record or hostname.</param>
+        /// <param name="zoneNsCache">Optional cache keyed by normalized delegation label (e.g. example.com).</param>
+        /// <param name="zoneCacheTtl">TTL for cache entries; <see cref="TimeSpan.Zero"/> disables writes.</param>
+        /// <param name="logger">Optional logger for resolver diagnostics.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Distinct authoritative NS addresses for the zone that serves <paramref name="recordFqdn"/>.</returns>
+        public static async Task<IReadOnlyList<IPAddress>> ResolveAuthoritativeNameServerAddressesAsync(
+            string recordFqdn,
+            ConcurrentDictionary<string, (IReadOnlyList<IPAddress> Ips, DateTimeOffset ExpiresUtc)>? zoneNsCache,
+            TimeSpan zoneCacheTtl,
+            ILogger? logger,
+            CancellationToken cancellationToken)
+        {
+            LogRecursiveResolverFallbackIfNeeded(logger);
+
             (string _, IReadOnlyList<IPAddress> addresses) = await ResolveAuthoritativeZoneAndAddressesAsync(
                 recordFqdn,
                 zoneNsCache,
                 zoneCacheTtl,
+                logger,
                 cancellationToken).ConfigureAwait(false);
             return addresses;
         }
@@ -162,12 +209,14 @@ namespace Vector.NNTP.Encryption.Dns
         /// <param name="recordFqdn">The FQDN of the record to resolve.</param>
         /// <param name="zoneNsCache">The cache of zone NS addresses.</param>
         /// <param name="zoneCacheTtl">The TTL for the cache entries.</param>
+        /// <param name="logger">Optional logger for resolver diagnostics.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The zone name and the addresses of the authoritative NS servers.</returns>
         public static async Task<(string ZoneName, IReadOnlyList<IPAddress> Addresses)> ResolveAuthoritativeZoneAndAddressesAsync(
             string recordFqdn,
             ConcurrentDictionary<string, (IReadOnlyList<IPAddress> Ips, DateTimeOffset ExpiresUtc)>? zoneNsCache,
             TimeSpan zoneCacheTtl,
+            ILogger? logger,
             CancellationToken cancellationToken)
         {
             string cursor = recordFqdn.TrimEnd('.');
@@ -213,7 +262,8 @@ namespace Vector.NNTP.Encryption.Dns
                         }
                         else
                         {
-                            IReadOnlyList<IPAddress> resolved = await ResolveNsHostnameViaWireThenOsAsync(ns, cancellationToken).ConfigureAwait(false);
+                            IReadOnlyList<IPAddress> resolved = await ResolveNsHostnameViaWireThenOsAsync(ns, logger, cancellationToken)
+                                .ConfigureAwait(false);
                             foreach (IPAddress ip in resolved)
                             {
                                 AddUnique(result, ip);
@@ -237,7 +287,32 @@ namespace Vector.NNTP.Encryption.Dns
                 cursor = cursor[(dot + 1)..];
             }
 
+            if (logger is not null)
+            {
+                LogAuthoritativeNsDiscoveryFailed(logger, recordFqdn);
+            }
+
             return (string.Empty, Array.Empty<IPAddress>());
+        }
+
+        /// <summary>
+        /// Logs recursive resolver discovery fallback at most once when OS enumeration failed.
+        /// </summary>
+        /// <param name="logger">Optional logger for resolver diagnostics.</param>
+        private static void LogRecursiveResolverFallbackIfNeeded(ILogger? logger)
+        {
+            if (logger is null || _recursiveResolverDiscoveryException is null)
+            {
+                return;
+            }
+
+            if (Interlocked.CompareExchange(ref _loggedRecursiveResolverFallback, 1, 0) != 0)
+            {
+                return;
+            }
+
+            Exception ex = _recursiveResolverDiscoveryException;
+            LogRecursiveResolverDiscoveryFallback(logger, ex.GetType().Name, ex);
         }
 
         /// <summary>
@@ -258,6 +333,11 @@ namespace Vector.NNTP.Encryption.Dns
             list.Add(ip);
         }
 
+        /// <summary>
+        /// Normalizes a DNS name.
+        /// </summary>
+        /// <param name="name">The name to normalize.</param>
+        /// <returns>The normalized name.</returns>
         private static string NormalizeDnsName(string name)
         {
             return name.TrimEnd('.').ToLowerInvariant();
@@ -267,9 +347,13 @@ namespace Vector.NNTP.Encryption.Dns
         /// Resolves an NS hostname: glue-equivalent via recursive wire A/AAAA, then OS stub resolver.
         /// </summary>
         /// <param name="host">The hostname to resolve.</param>
+        /// <param name="logger">Optional logger for resolver diagnostics.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The IP addresses of the resolved hostname; <see langword="null"/> if the hostname was not resolved.</returns>
-        private static async Task<IReadOnlyList<IPAddress>> ResolveNsHostnameViaWireThenOsAsync(string host, CancellationToken cancellationToken)
+        private static async Task<IReadOnlyList<IPAddress>> ResolveNsHostnameViaWireThenOsAsync(
+            string host,
+            ILogger? logger,
+            CancellationToken cancellationToken)
         {
             List<IPAddress> wire = [];
             foreach (IPAddress resolver in RecursiveResolvers)
@@ -294,7 +378,7 @@ namespace Vector.NNTP.Encryption.Dns
                 }
             }
 
-            return await ResolveHostAddressesAsync(host, cancellationToken).ConfigureAwait(false);
+            return await ResolveHostAddressesAsync(host, logger, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -405,9 +489,10 @@ namespace Vector.NNTP.Encryption.Dns
         /// Resolves a hostname via the OS stub resolver (last resort).
         /// </summary>
         /// <param name="host">The hostname to resolve.</param>
+        /// <param name="logger">Optional logger for resolver diagnostics.</param>
         /// <param name="ct">The cancellation token.</param>
         /// <returns>The IP addresses of the resolved hostname; <see langword="null"/> if the hostname was not resolved.</returns>
-        private static async Task<IReadOnlyList<IPAddress>> ResolveHostAddressesAsync(string host, CancellationToken ct)
+        private static async Task<IReadOnlyList<IPAddress>> ResolveHostAddressesAsync(string host, ILogger? logger, CancellationToken ct)
         {
             try
             {
@@ -432,8 +517,13 @@ namespace Vector.NNTP.Encryption.Dns
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                if (logger is not null)
+                {
+                    LogNsHostnameOsResolveFailed(logger, host, ex.GetType().Name, ex);
+                }
+
                 return [];
             }
         }
@@ -447,7 +537,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// <returns>The response from the resolver; <see langword="null"/> if the query was not successful.</returns>
         private static async Task<byte[]?> SendUdpQueryAsync(IPAddress resolver, byte[] query, CancellationToken ct)
         {
-            using UdpClient udp = new(resolver.AddressFamily);
+            UdpClient udp = RentUdpClient(resolver.AddressFamily);
             using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(UdpTimeoutMs);
 
@@ -468,6 +558,46 @@ namespace Vector.NNTP.Encryption.Dns
             catch (ObjectDisposedException)
             {
                 return null;
+            }
+            finally
+            {
+                ReturnUdpClient(udp);
+            }
+        }
+
+        /// <summary>
+        /// Rents a pooled UDP client for the given address family.
+        /// </summary>
+        /// <param name="family">Address family for the query.</param>
+        /// <returns>A UDP client ready for send/receive.</returns>
+        private static UdpClient RentUdpClient(AddressFamily family)
+        {
+            while (UdpPool.TryTake(out UdpClient? client))
+            {
+                if (client.Client.AddressFamily == family)
+                {
+                    return client;
+                }
+
+                client.Dispose();
+            }
+
+            return new UdpClient(family);
+        }
+
+        /// <summary>
+        /// Returns a UDP client to the bounded pool or disposes it when the pool is full.
+        /// </summary>
+        /// <param name="client">Client to return.</param>
+        private static void ReturnUdpClient(UdpClient client)
+        {
+            if (UdpPool.Count < UdpPoolMaxSize)
+            {
+                UdpPool.Add(client);
+            }
+            else
+            {
+                client.Dispose();
             }
         }
 

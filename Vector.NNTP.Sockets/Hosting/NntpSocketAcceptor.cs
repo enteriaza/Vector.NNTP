@@ -29,7 +29,7 @@ namespace Vector.NNTP.Sockets.Hosting
         private readonly INntpHostProfile _profile;
         private readonly IOptions<NntpServerOptions> _options;
         private readonly ITlsCertificateSource _tlsCertificateSource;
-        private readonly CertificateRenewalService? _renewalService;
+        private readonly ICertificateRenewalPublisher? _renewalPublisher;
         private readonly NntpInFlightSessionTracker _inFlight;
         private readonly INntpTransitPeerMatcher _transitPeerMatcher;
         private readonly INntpTransitPeerCoordinator _transitPeerCoordinator;
@@ -47,7 +47,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <param name="profile">Host profile.</param>
         /// <param name="options">Server options.</param>
         /// <param name="tlsCertificateSource">TLS certificate source.</param>
-        /// <param name="renewalService">Optional renewal service for certificate hot reload.</param>
+        /// <param name="renewalPublisher">Optional renewal publisher for certificate hot reload.</param>
         /// <param name="inFlight">In-flight session tracker.</param>
         /// <param name="transitPeerMatcher">Transit peer address matcher.</param>
         /// <param name="transitPeerCoordinator">Cluster transit peer admission.</param>
@@ -58,7 +58,7 @@ namespace Vector.NNTP.Sockets.Hosting
             INntpHostProfile profile,
             IOptions<NntpServerOptions> options,
             ITlsCertificateSource tlsCertificateSource,
-            CertificateRenewalService? renewalService,
+            ICertificateRenewalPublisher? renewalPublisher,
             NntpInFlightSessionTracker inFlight,
             INntpTransitPeerMatcher transitPeerMatcher,
             INntpTransitPeerCoordinator transitPeerCoordinator,
@@ -69,17 +69,17 @@ namespace Vector.NNTP.Sockets.Hosting
             _profile = profile ?? throw new ArgumentNullException(nameof(profile));
             _options = options ?? throw new ArgumentNullException(nameof(options));
             _tlsCertificateSource = tlsCertificateSource ?? throw new ArgumentNullException(nameof(tlsCertificateSource));
-            _renewalService = renewalService;
+            _renewalPublisher = renewalPublisher;
             _inFlight = inFlight ?? throw new ArgumentNullException(nameof(inFlight));
             _transitPeerMatcher = transitPeerMatcher ?? throw new ArgumentNullException(nameof(transitPeerMatcher));
             _transitPeerCoordinator = transitPeerCoordinator ?? throw new ArgumentNullException(nameof(transitPeerCoordinator));
             _idleOptions = idleOptions ?? throw new ArgumentNullException(nameof(idleOptions));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _trustedProxySources = ParseTrustedProxySources(_options.Value.ProxyProtocolTrustedSources);
-            _handshakeCertificate = _renewalService?.GetCurrentCertificate();
-            if (_renewalService is not null)
+            _handshakeCertificate = _renewalPublisher?.GetCurrentCertificate();
+            if (_renewalPublisher is not null)
             {
-                _renewalService.CertificateChanged += OnCertificateChanged;
+                _renewalPublisher.CertificateChanged += OnCertificateChanged;
             }
         }
 
@@ -453,9 +453,9 @@ namespace Vector.NNTP.Sockets.Hosting
         /// </summary>
         public void Dispose()
         {
-            if (_renewalService is not null)
+            if (_renewalPublisher is not null)
             {
-                _renewalService.CertificateChanged -= OnCertificateChanged;
+                _renewalPublisher.CertificateChanged -= OnCertificateChanged;
             }
         }
 

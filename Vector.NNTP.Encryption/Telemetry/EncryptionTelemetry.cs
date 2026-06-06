@@ -9,16 +9,16 @@ namespace Vector.NNTP.Encryption.Telemetry
     /// <summary>
     /// OpenTelemetry-compatible <see cref="ActivitySource"/> for ACME and renewal operations.
     /// </summary>
-    public static class EncryptionTelemetry
+    internal static class EncryptionTelemetry
     {
         /// <summary>
         /// Activity source name for host SDK registration.
         /// </summary>
-        public const string SourceName = "Vector.NNTP.Encryption";
+        internal const string SourceName = "Vector.NNTP.Encryption";
 
         /// <summary>
         /// Shared activity source for certificate renewal and issuance.
         /// </summary>
-        public static ActivitySource ActivitySource { get; } = new(SourceName, Utilities.Diagnostics.AssemblyInfoUtilities.ApplicationVersion);
+        internal static ActivitySource ActivitySource { get; } = new(SourceName, Utilities.Diagnostics.AssemblyInfoUtilities.ApplicationVersion);
     }
 }

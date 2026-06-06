@@ -11,7 +11,7 @@ namespace Vector.NNTP.Encryption.Configuration
     /// <summary>
     /// Validates <see cref="LetsEncryptOptions"/> when Let's Encrypt is enabled.
     /// </summary>
-    public sealed class LetsEncryptOptionsValidator : IValidateOptions<LetsEncryptOptions>
+    internal sealed class LetsEncryptOptionsValidator : IValidateOptions<LetsEncryptOptions>
     {
         /// <summary>
         /// Validates the <see cref="LetsEncryptOptions"/> when Let's Encrypt is enabled.

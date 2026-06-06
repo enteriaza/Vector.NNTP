@@ -8,15 +8,16 @@ using Vector.NNTP.Encryption.Certificates;
 namespace Vector.NNTP.Sockets.Tls
 {
     /// <summary>
-    /// Supplies the current TLS certificate from <see cref="CertificateRenewalService"/>.
+    /// Supplies the current TLS certificate from <see cref="ICertificateRenewalPublisher"/>.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="EncryptionTlsCertificateSource"/> class.
+    /// <para><b>Bridge:</b> Resolves the active server certificate from the Encryption renewal publisher without
+    /// referencing implementation types.</para>
     /// </remarks>
-    /// <param name="renewalService">Certificate renewal hosted service.</param>
-    internal sealed class EncryptionTlsCertificateSource(CertificateRenewalService renewalService) : ITlsCertificateSource
+    /// <param name="renewalPublisher">Certificate renewal publisher.</param>
+    internal sealed class EncryptionTlsCertificateSource(ICertificateRenewalPublisher renewalPublisher) : ITlsCertificateSource
     {
-        private readonly CertificateRenewalService _renewalService = renewalService ?? throw new ArgumentNullException(nameof(renewalService));
+        private readonly ICertificateRenewalPublisher _renewalPublisher = renewalPublisher ?? throw new ArgumentNullException(nameof(renewalPublisher));
 
         /// <summary>
         /// Gets the server certificate for SslStream authentication.
@@ -27,7 +28,7 @@ namespace Vector.NNTP.Sockets.Tls
             CancellationToken cancellationToken)
         {
             _ = cancellationToken;
-            return ValueTask.FromResult(_renewalService.GetCurrentCertificate());
+            return ValueTask.FromResult(_renewalPublisher.GetCurrentCertificate());
         }
     }
 }

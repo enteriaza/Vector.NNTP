@@ -70,7 +70,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
             {
                 try
                 {
-                    await ClockSkewGuard.AssertSkewAcceptableAsync(AcmeDirectoryHttpClient, directoryUri, maxSkew, ct)
+                    await ClockSkewGuard.AssertSkewAcceptableAsync(logger, AcmeDirectoryHttpClient, directoryUri, maxSkew, ct)
                         .ConfigureAwait(false);
                     ClockSkewTtlCache.RecordSuccess(directoryUri);
                     return;

@@ -8,14 +8,15 @@ namespace Vector.NNTP.Encryption.Configuration
     /// <summary>
     /// Helpers that populate <see cref="LetsEncryptOptions"/> from files under <see cref="LetsEncryptOptions.CertDir"/>.
     /// </summary>
-    public static class LetsEncryptOptionsConfiguration
+    internal static partial class LetsEncryptOptionsConfiguration
     {
         /// <summary>
         /// Loads <see cref="LetsEncryptOptions.AccountKeyPem"/> from
         /// <c>{CertDir}/letsencrypt.pem</c> when the property is empty and the file exists.
         /// </summary>
         /// <param name="options">Bound options instance (mutated in place).</param>
-        public static void HydrateAccountKeyFromCertDir(LetsEncryptOptions options)
+        /// <param name="logger">Optional logger for hydration failures.</param>
+        public static void HydrateAccountKeyFromCertDir(LetsEncryptOptions options, ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(options);
 
@@ -40,9 +41,12 @@ namespace Vector.NNTP.Encryption.Configuration
             {
                 options.AccountKeyPem = File.ReadAllText(accountKeyPath);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Leave AccountKeyPem empty; validation or development fallback will handle the outcome.
+                if (logger is not null)
+                {
+                    LogAccountKeyHydrationFailed(logger, accountKeyPath, ex);
+                }
             }
         }
     }

@@ -23,7 +23,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
     /// <para><b>Allocation:</b> Methods allocate byte arrays and certificate objects as required by the BCL export APIs;
     /// not intended for hot-path per-packet use.</para>
     /// </remarks>
-    public static class CertificateKeyUtilities
+    internal static class CertificateKeyUtilities
     {
         /// <summary>
         /// Imports a Certes <see cref="IKey"/> into a new <see cref="ECDsa"/> instance.
@@ -32,7 +32,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <returns>A new <see cref="ECDsa"/> instance containing the imported key material.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="certesKey"/> is <see langword="null"/>.</exception>
         /// <exception cref="CryptographicException">Thrown when the key bytes are invalid.</exception>
-        public static ECDsa ImportEcdsaPrivateKey(IKey certesKey)
+        internal static ECDsa ImportEcdsaPrivateKey(IKey certesKey)
         {
             ArgumentNullException.ThrowIfNull(certesKey);
 
@@ -60,7 +60,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="chain"/> or <paramref name="privateKey"/> is
         /// <see langword="null"/>.</exception>
         /// <exception cref="InvalidOperationException">Thrown when export returns <see langword="null"/>.</exception>
-        public static byte[] BuildPfxFromChain(CertificateChain chain, IKey privateKey, string? password = null)
+        internal static byte[] BuildPfxFromChain(CertificateChain chain, IKey privateKey, string? password = null)
         {
             ArgumentNullException.ThrowIfNull(chain);
             ArgumentNullException.ThrowIfNull(privateKey);
@@ -100,7 +100,7 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="domainNames"/> or <paramref name="privateKey"/> is
         /// <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">Thrown when <paramref name="domainNames"/> is empty.</exception>
-        public static byte[] CreateCsr(string[] domainNames, IKey privateKey)
+        internal static byte[] CreateCsr(string[] domainNames, IKey privateKey)
         {
             ArgumentNullException.ThrowIfNull(domainNames);
             ArgumentNullException.ThrowIfNull(privateKey);
