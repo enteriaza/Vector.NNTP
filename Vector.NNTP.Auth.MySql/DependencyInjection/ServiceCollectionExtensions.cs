@@ -103,7 +103,9 @@ namespace Vector.NNTP.Auth.MySql.DependencyInjection
             _ = services.AddSingleton<IScramCredentialStore>(static sp => new MySqlScramCredentialStore(
                 sp.GetRequiredService<INntpUserRecordStore>(),
                 sp.GetRequiredService<ILogger<MySqlScramCredentialStore>>()));
-            _ = services.AddHostedService<MySqlAuthConnectivityValidator>();
+            _ = services.AddHostedService(static sp => new MySqlAuthConnectivityValidator(
+                sp.GetRequiredService<MySqlAuthOptions>(),
+                sp.GetRequiredService<ILogger<MySqlAuthConnectivityValidator>>()));
 
             return services;
         }

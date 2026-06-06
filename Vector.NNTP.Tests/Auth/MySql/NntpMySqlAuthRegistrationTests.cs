@@ -5,8 +5,10 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Vector.NNTP.Auth.MySql.Credentials;
 using Vector.NNTP.Auth.MySql.DependencyInjection;
+using Vector.NNTP.Auth.MySql.HostedServices;
 using Vector.NNTP.Auth.MySql.Records;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Hosting;
@@ -66,6 +68,22 @@ namespace Vector.NNTP.Tests.Auth.MySql
             INntpUserRecordStore store = provider.GetRequiredService<INntpUserRecordStore>();
             Assert.That(store, Is.InstanceOf<CachingMySqlUserRecordStore>());
             Assert.That(provider.GetService<MySqlUserRecordStore>(), Is.Not.Null);
+        }
+
+        /// <summary>
+        /// Verifies startup connectivity validation is registered as a hosted service.
+        /// </summary>
+        [Test]
+        public void AddNntpMySqlAuth_RegistersConnectivityValidatorHostedService()
+        {
+            ServiceCollection services = new ServiceCollection();
+            services.AddLogging();
+            services.AddNntpMySqlAuth("Server=127.0.0.1;Database=nntp;User ID=test;Password=test");
+
+            using ServiceProvider provider = services.BuildServiceProvider();
+            IEnumerable<IHostedService> hostedServices = provider.GetServices<IHostedService>();
+
+            Assert.That(hostedServices.Any(static s => s is MySqlAuthConnectivityValidator), Is.True);
         }
 
         /// <summary>
