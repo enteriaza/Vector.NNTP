@@ -71,9 +71,10 @@ namespace Vector.NNTP.Sockets.Transport
             CancellationToken cancellationToken)
         {
             string line = Encoding.ASCII.GetString(lineBytes.Span);
+            session.Connection.BeginCommandDispatch();
             if (!session.State.MultiLineBodyPending && !session.State.IsCompressionActive)
             {
-                LogCommandReceived(FormatLineForLog(lineBytes));
+                LogCommandReceived(session.Connection.ConnectionLogPrefix, FormatLineForLog(lineBytes));
             }
             if (session.State.AuthenticationState == Session.AuthenticationState.SaslInProgress &&
                 !line.StartsWith("AUTHINFO", StringComparison.OrdinalIgnoreCase))
@@ -259,7 +260,7 @@ namespace Vector.NNTP.Sockets.Transport
         {
             foreach (byte value in span)
             {
-                if (value is (byte)'\t' or >= 0x20 and <= 0x7E)
+                if (value is (byte)'\t' or (>= 0x20 and <= 0x7E))
                 {
                     continue;
                 }

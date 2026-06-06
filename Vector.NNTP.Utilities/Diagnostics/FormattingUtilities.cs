@@ -11,6 +11,7 @@
 //   All methods are static and stateless. Safe for concurrent use from any thread.
 
 using System.Net;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -62,6 +63,62 @@ namespace Vector.NNTP.Utilities.Diagnostics
         {
             ArgumentNullException.ThrowIfNull(address);
             return address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+        }
+
+        /// <summary>
+        /// Formats an IP address and port for human-readable endpoint display (RFC 3986 host:port syntax).
+        /// </summary>
+        /// <param name="address">IP address (IPv4-mapped IPv6 addresses are normalised to IPv4).</param>
+        /// <param name="port">TCP or UDP port number.</param>
+        /// <returns>
+        /// IPv4: <c>a.b.c.d:port</c>; IPv6: <c>[addr]:port</c> with brackets around the address literal only.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="address"/> is <see langword="null"/>.</exception>
+        public static string FormatHostPort(IPAddress address, int port)
+        {
+            ArgumentNullException.ThrowIfNull(address);
+            IPAddress normalised = NormaliseAddress(address);
+            if (normalised.AddressFamily == AddressFamily.InterNetwork)
+            {
+                return $"{normalised}:{port}";
+            }
+
+            return $"[{normalised}]:{port}";
+        }
+
+        /// <summary>
+        /// Formats an <see cref="IPEndPoint"/> for human-readable endpoint display.
+        /// </summary>
+        /// <param name="endPoint">Socket endpoint.</param>
+        /// <returns>Formatted <c>host:port</c> string per <see cref="FormatHostPort(IPAddress, int)"/>.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="endPoint"/> is <see langword="null"/>.</exception>
+        public static string FormatIPEndPoint(IPEndPoint endPoint)
+        {
+            ArgumentNullException.ThrowIfNull(endPoint);
+            return FormatHostPort(endPoint.Address, endPoint.Port);
+        }
+
+        /// <summary>
+        /// Formats a connection-scoped log prefix bracketing the client endpoint for RX/TX correlation.
+        /// </summary>
+        /// <param name="endPoint">Effective client endpoint (post-PROXY).</param>
+        /// <returns>
+        /// IPv4: <c>[a.b.c.d:port]</c>; IPv6: <c>[addr]:port</c> without double-bracketing the address.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="endPoint"/> is <see langword="null"/>.</exception>
+        /// <remarks>
+        /// IPv6 uses RFC 3986 <c>[addr]:port</c> form directly as the log prefix; IPv4 wraps <c>addr:port</c> in brackets.
+        /// </remarks>
+        public static string FormatConnectionLogPrefix(IPEndPoint endPoint)
+        {
+            ArgumentNullException.ThrowIfNull(endPoint);
+            IPAddress normalised = NormaliseAddress(endPoint.Address);
+            if (normalised.AddressFamily == AddressFamily.InterNetwork)
+            {
+                return $"[{normalised}:{endPoint.Port}]";
+            }
+
+            return $"[{normalised}]:{endPoint.Port}";
         }
 
         /// <summary>

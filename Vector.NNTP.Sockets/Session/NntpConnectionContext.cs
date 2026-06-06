@@ -3,7 +3,9 @@
 // </copyright>
 // COLD PATH: per-connection identity, byte accounting, and authentication flags.
 
+using System.Diagnostics;
 using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Utilities.Diagnostics;
 
 namespace Vector.NNTP.Sockets.Session
 {
@@ -14,6 +16,7 @@ namespace Vector.NNTP.Sockets.Session
     {
         private long _rxBytes;
         private long _txBytes;
+        private long _commandDispatchStartTimestamp;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NntpConnectionContext"/> class.
@@ -46,6 +49,7 @@ namespace Vector.NNTP.Sockets.Session
             TransitPeerId = transitPeerId;
             TransitPeerDisplayName = transitPeerDisplayName;
             SessionStartedUtc = DateTimeOffset.UtcNow;
+            ConnectionLogPrefix = FormattingUtilities.FormatConnectionLogPrefix(clientRemoteEndPoint);
         }
 
         /// <summary>
@@ -57,6 +61,15 @@ namespace Vector.NNTP.Sockets.Session
         /// Gets the effective client endpoint after PROXY resolution.
         /// </summary>
         public IPEndPoint ClientRemoteEndPoint { get; }
+
+        /// <summary>
+        /// Gets the bracketed <c>[ip:port]</c> prefix used to correlate RX/TX log lines for this connection.
+        /// </summary>
+        /// <remarks>
+        /// Computed once at construction from <see cref="ClientRemoteEndPoint"/> via
+        /// <see cref="FormattingUtilities.FormatConnectionLogPrefix(IPEndPoint)"/>.
+        /// </remarks>
+        public string ConnectionLogPrefix { get; }
 
         /// <summary>
         /// Gets the TCP remote endpoint (load balancer or direct client).
@@ -122,6 +135,39 @@ namespace Vector.NNTP.Sockets.Session
         /// Gets total bytes sent on the wire including CRLF.
         /// </summary>
         public long TxBytes => Interlocked.Read(ref _txBytes);
+
+        /// <summary>
+        /// Marks the start of command dispatch for elapsed-time measurement on subsequent TX logs.
+        /// </summary>
+        /// <remarks>
+        /// Called at the beginning of each <c>DispatchBytesAsync</c> invocation. The session loop is single-threaded per
+        /// connection; no locking is required.
+        /// </remarks>
+        public void BeginCommandDispatch()
+        {
+            _commandDispatchStartTimestamp = Stopwatch.GetTimestamp();
+        }
+
+        /// <summary>
+        /// Attempts to compute elapsed milliseconds since the most recent <see cref="BeginCommandDispatch"/> call.
+        /// </summary>
+        /// <param name="milliseconds">Elapsed time in milliseconds when this method returns <see langword="true"/>.</param>
+        /// <returns>
+        /// <see langword="false"/> when no command dispatch has started (for example before the first client command);
+        /// otherwise <see langword="true"/>.
+        /// </returns>
+        public bool TryGetCommandDispatchElapsedMilliseconds(out double milliseconds)
+        {
+            long start = _commandDispatchStartTimestamp;
+            if (start == 0)
+            {
+                milliseconds = 0;
+                return false;
+            }
+
+            milliseconds = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+            return true;
+        }
 
         /// <summary>
         /// Records received bytes toward <see cref="RxBytes"/>.

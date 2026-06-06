@@ -36,7 +36,7 @@ namespace Vector.NNTP.Sockets.Responses
                 string? firstLine = ExtractFirstLineFromBytes(payload);
                 if (firstLine is not null)
                 {
-                    _logger.LogResponseLine(firstLine);
+                    LogTxStatusLine(firstLine);
                 }
             }
 
@@ -55,7 +55,7 @@ namespace Vector.NNTP.Sockets.Responses
         public async ValueTask WriteLineAsync(string line, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(line);
-            _logger?.LogResponseLine(line);
+            LogTxStatusLine(line);
             int byteCount = Encoding.ASCII.GetByteCount(line) + 2;
             _context.AddTxBytes(byteCount);
             byte[] buffer = ArrayPool<byte>.Shared.Rent(byteCount);
@@ -83,7 +83,7 @@ namespace Vector.NNTP.Sockets.Responses
         /// <returns>A <see cref="ValueTask"/> that completes when flushed.</returns>
         public async ValueTask WriteMultiLineAsync(string initialLine, IReadOnlyList<string> bodyLines, CancellationToken cancellationToken)
         {
-            _logger?.LogResponseLine(initialLine);
+            LogTxStatusLine(initialLine);
             WriteLineNoFlush(initialLine);
             foreach (string line in bodyLines)
             {
@@ -217,6 +217,27 @@ namespace Vector.NNTP.Sockets.Responses
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Logs a TX status line with connection prefix and optional command-processing duration.
+        /// </summary>
+        /// <param name="line">Response status line without CRLF.</param>
+        private void LogTxStatusLine(string line)
+        {
+            if (_logger is null)
+            {
+                return;
+            }
+
+            if (_context.TryGetCommandDispatchElapsedMilliseconds(out double elapsedMs))
+            {
+                _logger.LogResponseLine(_context.ConnectionLogPrefix, line, elapsedMs);
+            }
+            else
+            {
+                _logger.LogResponseLineWithoutDuration(_context.ConnectionLogPrefix, line);
+            }
         }
 
         private async ValueTask FlushAsync(CancellationToken cancellationToken)

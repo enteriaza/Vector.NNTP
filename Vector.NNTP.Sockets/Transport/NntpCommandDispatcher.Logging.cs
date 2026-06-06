@@ -15,12 +15,13 @@ namespace Vector.NNTP.Sockets.Transport
         /// <summary>
         /// Logs a command received from the client.
         /// </summary>
+        /// <param name="connectionPrefix">Bracketed client endpoint prefix for log correlation.</param>
         /// <param name="command">Redacted command line.</param>
         [LoggerMessage(
             EventId = 0,
             Level = LogLevel.Debug,
-            Message = "RX: {Command}")]
-        private partial void LogCommandReceived(string command);
+            Message = "{ConnectionPrefix} RX: {Command}")]
+        private partial void LogCommandReceived(string connectionPrefix, string command);
 
         /// <summary>
         /// Logs an unrecognized client command after redaction of sensitive substrings.
