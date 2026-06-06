@@ -21,14 +21,8 @@ namespace Vector.NNTP.HistoryDB.Services
     /// before CHECK accepts traffic, independent of generic-host background-service scheduling order.
     /// </para>
     /// </remarks>
-    /// <param name="rocks">Rocks store.</param>
-    /// <param name="metrics">Metrics.</param>
-    /// <param name="options">History options.</param>
     /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
     internal sealed partial class HistoryRocksPersistPump(
-        RocksHistoryStore rocks,
-        HistoryMetrics metrics,
-        IOptions<HistoryDbOptions> options,
         ILogger<HistoryRocksPersistPump> logger)
     {
         /// <summary>
@@ -39,17 +33,36 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <summary>
         /// The RocksDB store.
         /// </summary>
-        private readonly RocksHistoryStore _rocks = rocks;
+        private readonly RocksHistoryStore _rocks = null!;
 
         /// <summary>
         /// The metrics.
         /// </summary>
-        private readonly HistoryMetrics _metrics = metrics;
+        private readonly HistoryMetrics _metrics = null!;
 
         /// <summary>
         /// The options.
         /// </summary>
-        private readonly HistoryDbOptions _options = options.Value;
+        private readonly HistoryDbOptions _options = null!;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HistoryRocksPersistPump"/> class.
+        /// </summary>
+        /// <param name="rocks">Rocks store.</param>
+        /// <param name="metrics">Metrics.</param>
+        /// <param name="options">History options.</param>
+        /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+        public HistoryRocksPersistPump(
+            RocksHistoryStore rocks,
+            HistoryMetrics metrics,
+            IOptions<HistoryDbOptions> options,
+            ILogger<HistoryRocksPersistPump> logger)
+            : this(logger)
+        {
+            _rocks = rocks;
+            _metrics = metrics;
+            _options = options.Value;
+        }
 
         /// <summary>
         /// Whether the pump has started.

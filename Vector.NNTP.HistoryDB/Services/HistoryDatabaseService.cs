@@ -20,47 +20,42 @@ namespace Vector.NNTP.HistoryDB.Services
     /// <summary>
     /// Transit history: read-only CHECK probe and TAKETHIS/IHAVE record with async Rocks backfill.
     /// </summary>
-    internal sealed partial class HistoryDatabaseService : IHistoryDatabase
+    internal sealed partial class HistoryDatabaseService(ILogger<HistoryDatabaseService> logger) : IHistoryDatabase
     {
         /// <summary>
         /// The options.
         /// </summary>
-        private readonly HistoryDbOptions _options;
+        private readonly HistoryDbOptions _options = null!;
 
         /// <summary>
         /// The memory cache.
         /// </summary>
-        private readonly HistoryMemoryCache _memory;
+        private readonly HistoryMemoryCache _memory = null!;
 
         /// <summary>
         /// The Redis store.
         /// </summary>
-        private readonly HistoryRedisStore _redis;
+        private readonly HistoryRedisStore _redis = null!;
 
         /// <summary>
         /// The metrics.
         /// </summary>
-        private readonly HistoryMetrics _metrics;
+        private readonly HistoryMetrics _metrics = null!;
 
         /// <summary>
         /// The persist pump.
         /// </summary>
-        private readonly HistoryRocksPersistPump _persistPump;
+        private readonly HistoryRocksPersistPump _persistPump = null!;
 
         /// <summary>
         /// The persist queue.
         /// </summary>
-        private readonly Channel<HistoryPersistItem> _queue;
+        private readonly Channel<HistoryPersistItem> _queue = null!;
 
         /// <summary>
         /// The host lifetime.
         /// </summary>
-        private readonly IHostApplicationLifetime _lifetime;
-
-        /// <summary>
-        /// The logger.
-        /// </summary>
-        private readonly ILogger<HistoryDatabaseService> _logger;
+        private readonly IHostApplicationLifetime _lifetime = null!;
 
         /// <summary>
         /// Whether the database is operational.
@@ -82,7 +77,7 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <param name="persistPump">Rocks persist pump.</param>
         /// <param name="lifetime">Host lifetime for queue completion on shutdown.</param>
         /// <param name="logger">Logger.</param>
-        internal HistoryDatabaseService(
+        public HistoryDatabaseService(
             IOptions<HistoryDbOptions> options,
             HistoryMemoryCache memory,
             HistoryRedisStore redis,
@@ -90,6 +85,7 @@ namespace Vector.NNTP.HistoryDB.Services
             HistoryRocksPersistPump persistPump,
             IHostApplicationLifetime lifetime,
             ILogger<HistoryDatabaseService> logger)
+            : this(logger)
         {
             _options = options.Value;
             _memory = memory;
@@ -97,7 +93,6 @@ namespace Vector.NNTP.HistoryDB.Services
             _metrics = metrics;
             _persistPump = persistPump;
             _lifetime = lifetime;
-            _logger = logger;
             BoundedChannelOptions channelOptions = new(_options.QueueCapacity)
             {
                 FullMode = BoundedChannelFullMode.DropWrite,

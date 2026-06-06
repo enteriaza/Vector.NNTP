@@ -190,7 +190,7 @@ namespace Vector.NNTP.HistoryDB.Metrics
         /// <summary>
         /// Initializes metric instruments for the HistoryDB assembly.
         /// </summary>
-        internal HistoryMetrics()
+        public HistoryMetrics()
         {
             _checkTotal = Meter.CreateCounter<long>("history.check.total");
             _checkMemoryHit = Meter.CreateCounter<long>("history.check.memory_hit");

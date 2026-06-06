@@ -20,58 +20,75 @@ namespace Vector.NNTP.HistoryDB.HostedServices
     /// <summary>
     /// Runs full Rocks→Redis rebuild on every process start before HistoryDB accepts CHECK.
     /// </summary>
-    /// <param name="history">History service.</param>
-    /// <param name="rocks">Rocks store.</param>
-    /// <param name="redis">Redis store.</param>
-    /// <param name="memory">Memory cache.</param>
-    /// <param name="options">Options.</param>
-    /// <param name="metrics">Metrics.</param>
-    /// <param name="generations">Generation store.</param>
     /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
     internal sealed partial class HistoryDatabaseHostedService(
-        HistoryDatabaseService history,
-        RocksHistoryStore rocks,
-        HistoryRedisStore redis,
-        HistoryMemoryCache memory,
-        IOptions<HistoryDbOptions> options,
-        HistoryMetrics metrics,
-        HistoryGenerationStore generations,
         ILogger<HistoryDatabaseHostedService> logger) : IHostedService
     {
         /// <summary>
         /// The history service.
         /// </summary>
-        private readonly HistoryDatabaseService _history = history;
+        private readonly HistoryDatabaseService _history = null!;
 
         /// <summary>
         /// The Rocks store.
         /// </summary>
-        private readonly RocksHistoryStore _rocks = rocks;
+        private readonly RocksHistoryStore _rocks = null!;
 
         /// <summary>
         /// The Redis store.
         /// </summary>
-        private readonly HistoryRedisStore _redis = redis;
+        private readonly HistoryRedisStore _redis = null!;
 
         /// <summary>
         /// The memory cache.
         /// </summary>
-        private readonly HistoryMemoryCache _memory = memory;
+        private readonly HistoryMemoryCache _memory = null!;
 
         /// <summary>
         /// The options.
         /// </summary>
-        private readonly HistoryDbOptions _options = options.Value;
+        private readonly HistoryDbOptions _options = null!;
 
         /// <summary>
         /// The metrics.
         /// </summary>
-        private readonly HistoryMetrics _metrics = metrics;
+        private readonly HistoryMetrics _metrics = null!;
 
         /// <summary>
         /// The generation store.
         /// </summary>
-        private readonly HistoryGenerationStore _generations = generations;
+        private readonly HistoryGenerationStore _generations = null!;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HistoryDatabaseHostedService"/> class.
+        /// </summary>
+        /// <param name="history">History service.</param>
+        /// <param name="rocks">Rocks store.</param>
+        /// <param name="redis">Redis store.</param>
+        /// <param name="memory">Memory cache.</param>
+        /// <param name="options">Options.</param>
+        /// <param name="metrics">Metrics.</param>
+        /// <param name="generations">Generation store.</param>
+        /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+        public HistoryDatabaseHostedService(
+            HistoryDatabaseService history,
+            RocksHistoryStore rocks,
+            HistoryRedisStore redis,
+            HistoryMemoryCache memory,
+            IOptions<HistoryDbOptions> options,
+            HistoryMetrics metrics,
+            HistoryGenerationStore generations,
+            ILogger<HistoryDatabaseHostedService> logger)
+            : this(logger)
+        {
+            _history = history;
+            _rocks = rocks;
+            _redis = redis;
+            _memory = memory;
+            _options = options.Value;
+            _metrics = metrics;
+            _generations = generations;
+        }
 
         /// <summary>
         /// Starts the history database hosted service.

@@ -13,37 +13,34 @@ namespace Vector.NNTP.HistoryDB.HostedServices
     /// <summary>
     /// Runs periodic RocksDB expiry sweep (CHECK persist is handled by <see cref="HistoryRocksPersistPump"/>).
     /// </summary>
-    internal sealed partial class HistoryBackgroundWorkerHostedService : BackgroundService
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    internal sealed partial class HistoryBackgroundWorkerHostedService(
+        ILogger<HistoryBackgroundWorkerHostedService> logger) : BackgroundService
     {
         /// <summary>
         /// The history service.
         /// </summary>
-        private readonly HistoryDatabaseService _history;
+        private readonly HistoryDatabaseService _history = null!;
 
         /// <summary>
         /// The Rocks store.
         /// </summary>
-        private readonly RocksHistoryStore _rocks;
-
-        /// <summary>
-        /// The logger.
-        /// </summary>
-        private readonly ILogger<HistoryBackgroundWorkerHostedService> _logger;
+        private readonly RocksHistoryStore _rocks = null!;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="HistoryBackgroundWorkerHostedService"/> class.
         /// </summary>
         /// <param name="history">History service.</param>
         /// <param name="rocks">Rocks store.</param>
-        /// <param name="logger">Logger.</param>
-        internal HistoryBackgroundWorkerHostedService(
+        /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+        public HistoryBackgroundWorkerHostedService(
             HistoryDatabaseService history,
             RocksHistoryStore rocks,
             ILogger<HistoryBackgroundWorkerHostedService> logger)
+            : this(logger)
         {
             _history = history;
             _rocks = rocks;
-            _logger = logger;
         }
 
         /// <summary>

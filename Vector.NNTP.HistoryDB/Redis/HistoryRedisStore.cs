@@ -15,30 +15,43 @@ namespace Vector.NNTP.HistoryDB.Redis
     /// <summary>
     /// Redis CHECK probe, record, metadata, rebuild state, and rebuild pipelining.
     /// </summary>
-    /// <param name="options">Options.</param>
-    /// <param name="redis">Redis accessor.</param>
-    /// <param name="metrics">Metrics.</param>
     /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
     internal sealed partial class HistoryRedisStore(
-        IOptions<HistoryDbOptions> options,
-        IRedisConnectionAccessor redis,
-        HistoryMetrics metrics,
         ILogger<HistoryRedisStore> logger)
     {
         /// <summary>
         /// The options.
         /// </summary>
-        private readonly HistoryDbOptions _options = options.Value;
+        private readonly HistoryDbOptions _options = null!;
 
         /// <summary>
         /// The Redis accessor.
         /// </summary>
-        private readonly IRedisConnectionAccessor _redis = redis;
+        private readonly IRedisConnectionAccessor _redis = null!;
 
         /// <summary>
         /// The metrics.
         /// </summary>
-        private readonly HistoryMetrics _metrics = metrics;
+        private readonly HistoryMetrics _metrics = null!;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HistoryRedisStore"/> class.
+        /// </summary>
+        /// <param name="options">Options.</param>
+        /// <param name="redis">Redis accessor.</param>
+        /// <param name="metrics">Metrics.</param>
+        /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+        public HistoryRedisStore(
+            IOptions<HistoryDbOptions> options,
+            IRedisConnectionAccessor redis,
+            HistoryMetrics metrics,
+            ILogger<HistoryRedisStore> logger)
+            : this(logger)
+        {
+            _options = options.Value;
+            _redis = redis;
+            _metrics = metrics;
+        }
 
         /// <summary>
         /// Builds the Redis key for a digest.

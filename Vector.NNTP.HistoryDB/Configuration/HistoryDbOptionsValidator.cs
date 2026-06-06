@@ -34,7 +34,11 @@ namespace Vector.NNTP.HistoryDB.Configuration
                 return ValidateOptionsResult.Fail($"{nameof(HistoryDbOptions.DbDir)} is not a valid path: {ex.Message}");
             }
 
-            return options.RocksDb.StatsDumpPeriodSec > 0 && !options.RocksDb.EnableStatistics
+            return options.RocksDb.MirrorStatsToHostLogger &&
+                   (options.RocksDb.StatsDumpPeriodSec == 0 || !options.RocksDb.EnableStatistics)
+                ? ValidateOptionsResult.Fail(
+                    $"{nameof(HistoryRocksDbOptions.MirrorStatsToHostLogger)} requires {nameof(HistoryRocksDbOptions.EnableStatistics)} = true and {nameof(HistoryRocksDbOptions.StatsDumpPeriodSec)} > 0.")
+                : options.RocksDb.StatsDumpPeriodSec > 0 && !options.RocksDb.EnableStatistics
                 ? ValidateOptionsResult.Fail(
                     $"{nameof(HistoryRocksDbOptions.StatsDumpPeriodSec)} requires {nameof(HistoryRocksDbOptions.EnableStatistics)} = true for periodic RocksDB LOG dumps.")
                 : options.RocksDb.DigestBloomBitsPerKey is < 0 or > 30

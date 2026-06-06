@@ -11,25 +11,35 @@ namespace Vector.NNTP.HistoryDB.Services
     /// <summary>
     /// Persists rebuild generation across crashes within a single rebuild attempt.
     /// </summary>
-    /// <param name="options">History options.</param>
-    /// <param name="metrics">Metrics.</param>
     /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
     internal sealed partial class HistoryGenerationStore(
-        IOptions<HistoryDbOptions> options,
-        HistoryMetrics metrics,
         ILogger<HistoryGenerationStore> logger)
     {
         /// <summary>
         /// The path to the generation file.
         /// </summary>
-        private readonly string _generationPath = Path.Combine(
-            Path.GetFullPath(options.Value.DbDir),
-            "history.generation");
+        private readonly string _generationPath = null!;
 
         /// <summary>
         /// The metrics.
         /// </summary>
-        private readonly HistoryMetrics _metrics = metrics;
+        private readonly HistoryMetrics _metrics = null!;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HistoryGenerationStore"/> class.
+        /// </summary>
+        /// <param name="options">History options.</param>
+        /// <param name="metrics">Metrics.</param>
+        /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+        public HistoryGenerationStore(
+            IOptions<HistoryDbOptions> options,
+            HistoryMetrics metrics,
+            ILogger<HistoryGenerationStore> logger)
+            : this(logger)
+        {
+            _generationPath = Path.Combine(Path.GetFullPath(options.Value.DbDir), "history.generation");
+            _metrics = metrics;
+        }
 
         /// <summary>
         /// Allocates a new generation stamp for a fresh rebuild.

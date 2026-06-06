@@ -11,39 +11,58 @@ using Vector.NNTP.HistoryDB.Services;
 namespace Vector.NNTP.HistoryDB.HostedServices
 {
     /// <summary>
-    /// Emits RocksDB statistics on a fixed interval to the host logger.
+    /// Optionally mirrors RocksDB statistics into the NNTPD host logger on a fixed interval.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>SetStatsDumpPeriodSec</c> on RocksDB <c>DbOptions</c> enables native periodic <c>LOG</c> dumps when statistics
-    /// are enabled. This service also queries <c>rocksdb.stats</c> and ticker statistics explicitly so operators receive
-    /// predictable snapshots in the host logger regardless of native LOG verbosity.
+    /// <b>Not required on RocksDB 10.x.</b> With <see cref="HistoryRocksDbOptions.EnableStatistics"/> and
+    /// <see cref="HistoryRocksDbOptions.StatsDumpPeriodSec"/>, the native library already writes
+    /// <c>------- DUMPING STATS -------</c> / <c>------- PERSISTING STATS -------</c> sections to <c>DbDir/LOG</c>
+    /// every interval. That path was unreliable on the prior RocksDbSharp 6.2.2 runtime; this hosted service was the
+    /// workaround to surface <c>rocksdb.stats</c> and ticker text in the host log pipeline.
+    /// </para>
+    /// <para>
+    /// Runs only when <see cref="HistoryRocksDbOptions.MirrorStatsToHostLogger"/> is <see langword="true"/> (default
+    /// <see langword="false"/>). Operators tailing <c>DbDir/LOG</c> on 10.x can leave mirroring disabled.
     /// </para>
     /// </remarks>
-    /// <param name="history">History service (operational gate).</param>
-    /// <param name="rocks">Rocks store.</param>
-    /// <param name="options">History options.</param>
     /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
     internal sealed partial class HistoryRocksStatsLogHostedService(
-        HistoryDatabaseService history,
-        RocksHistoryStore rocks,
-        IOptions<HistoryDbOptions> options,
         ILogger<HistoryRocksStatsLogHostedService> logger) : BackgroundService
     {
         /// <summary>
         /// The history database service.
         /// </summary>
-        private readonly HistoryDatabaseService _history = history;
+        private readonly HistoryDatabaseService _history = null!;
 
         /// <summary>
         /// The rocks history store.
         /// </summary>
-        private readonly RocksHistoryStore _rocks = rocks;
+        private readonly RocksHistoryStore _rocks = null!;
 
         /// <summary>
         /// The history database options.
         /// </summary>
-        private readonly HistoryDbOptions _options = options.Value;
+        private readonly HistoryDbOptions _options = null!;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HistoryRocksStatsLogHostedService"/> class.
+        /// </summary>
+        /// <param name="history">History service (operational gate).</param>
+        /// <param name="rocks">Rocks store.</param>
+        /// <param name="options">History options.</param>
+        /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+        public HistoryRocksStatsLogHostedService(
+            HistoryDatabaseService history,
+            RocksHistoryStore rocks,
+            IOptions<HistoryDbOptions> options,
+            ILogger<HistoryRocksStatsLogHostedService> logger)
+            : this(logger)
+        {
+            _history = history;
+            _rocks = rocks;
+            _options = options.Value;
+        }
 
         /// <summary>
         /// Executes the hosted service.
@@ -54,7 +73,9 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             HistoryRocksDbOptions rocks = _options.RocksDb;
-            if (!rocks.EnableStatistics || rocks.StatsDumpPeriodSec == 0)
+            if (!rocks.MirrorStatsToHostLogger ||
+                !rocks.EnableStatistics ||
+                rocks.StatsDumpPeriodSec == 0)
             {
                 return;
             }

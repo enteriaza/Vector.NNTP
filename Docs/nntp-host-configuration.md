@@ -119,7 +119,7 @@ Unit tests that do not call `AddNntpSessionRedis` keep in-memory coordinators fr
 | `RebuildCheckpointInterval` | Redis `history:rebuild_state` checkpoint interval during rebuild. |
 | `RebuildRedisBatchSize` | Pipeline batch size for Rocks→Redis rebuild. |
 | `EnableMemoryPreloadOnStartup` | Reverse-iterate `by_expiration` into memory after rebuild. |
-| `RocksDb` | Optional Rocks tuning overrides. `DigestBlockCacheBytes` (JSON alias `BlockCacheBytes`) and `ExpirationBlockCacheBytes` (default 8 MB) size independent per-CF LRU caches. `DigestBloomBitsPerKey` (default 10) enables BuiltinBloom on `by_digest`. `EnableStatistics` (default true) and `StatsDumpPeriodSec` (default 600) enable ticker collection and host logger snapshots (`HistoryRocksStatsLogHostedService`). Startup logs include `rocksdb.version` (RocksDB 10.x). See [historydb-rocksdb-schema.md](historydb-rocksdb-schema.md) for upgrade/rollback notes. |
+| `RocksDb` | Optional Rocks tuning overrides. `DigestBlockCacheBytes` (JSON alias `BlockCacheBytes`) and `ExpirationBlockCacheBytes` (default 8 MB) size independent per-CF LRU caches. `DigestBloomBitsPerKey` (default 10) enables BuiltinBloom on `by_digest`. `EnableStatistics` (default true) and `StatsDumpPeriodSec` (default 600) drive native periodic `DUMPING STATS` / `PERSISTING STATS` sections in `DbDir/LOG` on RocksDB 10.x. `MirrorStatsToHostLogger` (default false) optionally duplicates snapshots into the NNTPD host logger via `HistoryRocksStatsLogHostedService` (legacy workaround for 6.x). Startup logs include `rocksdb.version`. See [historydb-rocksdb-schema.md](historydb-rocksdb-schema.md) for upgrade/rollback and stats notes. |
 
 **Operational notes:**
 

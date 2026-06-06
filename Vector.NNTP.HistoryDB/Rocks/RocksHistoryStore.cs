@@ -99,7 +99,7 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <param name="options">History options.</param>
         /// <param name="metrics">Metrics.</param>
         /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
-        internal RocksHistoryStore(
+        public RocksHistoryStore(
             IOptions<HistoryDbOptions> options,
             HistoryMetrics metrics,
             ILogger<RocksHistoryStore> logger)
@@ -361,8 +361,8 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// Logs current RocksDB property and ticker statistics to the host logger.
         /// </summary>
         /// <remarks>
-        /// Used by <see cref="HostedServices.HistoryRocksStatsLogHostedService"/> for predictable operator snapshots
-        /// alongside native <c>stats_dump_period_sec</c> LOG output.
+        /// Used only when <see cref="HistoryRocksDbOptions.MirrorStatsToHostLogger"/> is enabled. Native RocksDB 10.x
+        /// already persists the same statistics to <c>DbDir/LOG</c> via <c>stats_dump_period_sec</c>.
         /// </remarks>
         internal void EmitStatsSnapshot()
         {

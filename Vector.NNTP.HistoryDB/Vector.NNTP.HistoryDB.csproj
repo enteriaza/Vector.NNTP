@@ -38,6 +38,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Vector.NNTP.Tests" />
+    <InternalsVisibleTo Include="Vector.NNTP.NNTPD" />
   </ItemGroup>
 
 </Project>

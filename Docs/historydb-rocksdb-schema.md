@@ -106,6 +106,25 @@ HistoryDB uses the unified **RocksDB** NuGet package (curiosity-ai, tracks upstr
 
 **Rollback:** Downgrading the native library after opening with a newer RocksDB version may be unsafe. Restore from the pre-upgrade backup rather than downgrading in place.
 
+### Statistics and LOG dumps
+
+With `EnableStatistics: true` and `StatsDumpPeriodSec` (default 600), RocksDB **10.4.x** reliably emits periodic statistics to **`DbDir/LOG`**:
+
+```
+------- DUMPING STATS -------
+...
+------- PERSISTING STATS -------
+```
+
+The prior **RocksDbSharp 6.2.2** runtime did not consistently produce these periodic dumps even when `stats_dump_period_sec` was set.
+
+| Sink | Mechanism | Default on 10.x |
+|------|-----------|-----------------|
+| `DbDir/LOG` | Native `stats_dump_period_sec` | **On** when `EnableStatistics` + non-zero period |
+| NNTPD host logger | `HistoryRocksStatsLogHostedService` | **Off** (`MirrorStatsToHostLogger: false`) |
+
+Enable `MirrorStatsToHostLogger` only when operators want duplicate `rocksdb.stats` / ticker snapshots in the centralized host log pipeline instead of tailing `DbDir/LOG`.
+
 ## Non-functional: memory-hit zero allocations
 
 **Duplicate → memory hit → return must incur zero heap allocations** on `CheckAsync` and callees on that branch. Enforced by build-blocking test.

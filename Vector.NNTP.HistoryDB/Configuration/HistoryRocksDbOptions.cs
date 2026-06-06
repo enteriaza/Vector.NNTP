@@ -110,11 +110,12 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public double ExpirationMemtablePrefixBloomRatio { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether RocksDB collects internal statistics (required for meaningful periodic LOG dumps).
+        /// Gets or sets a value indicating whether RocksDB collects internal statistics (required for periodic LOG dumps).
         /// </summary>
         /// <remarks>
-        /// When <see langword="false"/>, <c>Options.statistics</c> stays null and only open-time LOG sections appear
-        /// even if <see cref="StatsDumpPeriodSec"/> is non-zero.
+        /// When <see langword="false"/>, <c>Options.statistics</c> stays null and periodic
+        /// <c>DUMPING/PERSISTING STATS</c> sections are not written to <c>DbDir/LOG</c> even if
+        /// <see cref="StatsDumpPeriodSec"/> is non-zero.
         /// </remarks>
         public bool EnableStatistics { get; set; } = true;
 
@@ -122,9 +123,25 @@ namespace Vector.NNTP.HistoryDB.Configuration
         /// Gets or sets the interval in seconds for RocksDB stats snapshots (0 disables).
         /// </summary>
         /// <remarks>
-        /// <para>Default 600 (10 minutes). Passed to RocksDB as <c>stats_dump_period_sec</c> and used by the host
-        /// <c>HistoryRocksStatsLogHostedService</c> to log <c>rocksdb.stats</c> and ticker statistics.</para>
+        /// <para>Default 600 (10 minutes). Passed to RocksDB as <c>stats_dump_period_sec</c>. On RocksDB 10.x with
+        /// <see cref="EnableStatistics"/> enabled, the native runtime writes <c>------- DUMPING STATS -------</c> and
+        /// <c>------- PERSISTING STATS -------</c> sections to <c>DbDir/LOG</c> on this interval (reliable on 10.x;
+        /// the prior 6.2.2 bindings did not always emit periodic dumps).</para>
+        /// <para>When <see cref="MirrorStatsToHostLogger"/> is <see langword="true"/>, the same interval drives
+        /// <c>HistoryRocksStatsLogHostedService</c> to copy <c>rocksdb.stats</c> and ticker text into the NNTPD host
+        /// logger.</para>
         /// </remarks>
         public uint StatsDumpPeriodSec { get; set; } = 600;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether RocksDB statistics are mirrored into the NNTPD host logger.
+        /// </summary>
+        /// <remarks>
+        /// <para>Default <see langword="false"/>. RocksDB 10.x already persists periodic statistics to <c>DbDir/LOG</c>
+        /// when <see cref="EnableStatistics"/> and <see cref="StatsDumpPeriodSec"/> are set; enable this only when
+        /// operators want duplicate snapshots in the centralized host log pipeline (required workaround on some 6.x
+        /// builds).</para>
+        /// </remarks>
+        public bool MirrorStatsToHostLogger { get; set; }
     }
 }

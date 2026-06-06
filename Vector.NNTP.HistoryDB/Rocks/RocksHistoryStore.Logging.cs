@@ -17,7 +17,7 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <param name="dbDir">Database directory.</param>
         /// <param name="statsDumpPeriodSec">Native stats dump period.</param>
         [LoggerMessage(EventId = 230, Level = LogLevel.Information,
-            Message = "RocksDB statistics enabled at {DbDir}; native stats_dump_period_sec={StatsDumpPeriodSec}. Host logger snapshots use the same interval.")]
+            Message = "RocksDB statistics enabled at {DbDir}; native stats_dump_period_sec={StatsDumpPeriodSec} (periodic DUMPING/PERSISTING STATS in DbDir/LOG on RocksDB 10.x).")]
         private partial void LogStatisticsEnabled(string dbDir, uint statsDumpPeriodSec);
 
         /// <summary>Logs statistics misconfiguration.</summary>
