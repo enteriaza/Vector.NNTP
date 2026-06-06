@@ -53,11 +53,11 @@ namespace Vector.NNTP.MessageBus.DependencyInjection
             services.TryAddSingleton<IValidateOptions<RabbitMQOptions>, RabbitMQOptionsValidator>();
             services.TryAddSingleton<IRabbitMqConnectionFactory, RabbitMqConnectionFactory>();
             services.TryAddSingleton<HostHealthTracker>();
+            services.TryAddSingleton(static _ => new MessageBusMetrics());
             services.TryAddSingleton<ConnectionPool>();
             services.TryAddSingleton<IRabbitMqPoolHealth, RabbitMqPoolHealth>();
             services.TryAddSingleton<IRabbitMqPublisherPool, RabbitMqPublisherPool>();
             services.TryAddSingleton<IRabbitMqConsumerManager, RabbitMqConsumerManager>();
-            services.TryAddSingleton(static _ => new MessageBusMetrics());
             _ = services.AddHostedService<RabbitMqBackgroundScaler>();
             _ = services.AddHostedService<RabbitMqPoolFlowControlMonitor>();
             _ = services.AddHostedService<RabbitMqPoolSupervisor>();

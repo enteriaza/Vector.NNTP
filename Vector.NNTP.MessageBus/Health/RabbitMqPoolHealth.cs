@@ -51,7 +51,7 @@ namespace Vector.NNTP.MessageBus.Health
         /// </summary>
         /// <param name="metrics">Metrics sink for health transitions.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="metrics"/> is <see langword="null"/>.</exception>
-        internal RabbitMqPoolHealth(MessageBusMetrics metrics)
+        public RabbitMqPoolHealth(MessageBusMetrics metrics)
         {
             _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         }

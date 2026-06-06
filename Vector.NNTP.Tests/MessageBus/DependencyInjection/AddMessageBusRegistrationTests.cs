@@ -11,6 +11,7 @@ using Vector.NNTP.MessageBus.Configuration;
 using Vector.NNTP.MessageBus.Connections;
 using Vector.NNTP.MessageBus.Consuming;
 using Vector.NNTP.MessageBus.DependencyInjection;
+using Vector.NNTP.MessageBus.Health;
 using Vector.NNTP.MessageBus.Metrics;
 using Vector.NNTP.MessageBus.Publishing;
 
@@ -48,6 +49,7 @@ namespace Vector.NNTP.Tests.MessageBus.DependencyInjection
                 Assert.That(provider.GetService<IRabbitMqConnectionFactory>(), Is.Not.Null);
                 Assert.That(provider.GetService<IRabbitMqPublisherPool>(), Is.Not.Null);
                 Assert.That(provider.GetService<IRabbitMqConsumerManager>(), Is.Not.Null);
+                Assert.That(provider.GetService<IRabbitMqPoolHealth>(), Is.Not.Null);
                 Assert.That(provider.GetService<MessageBusMetrics>(), Is.Not.Null);
             }
             finally
