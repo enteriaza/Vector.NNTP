@@ -11,7 +11,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
     /// <remarks>
     /// Source-generated <see cref="LoggerMessageAttribute"/> helpers for <see cref="MySqlNntpCredentialValidator"/>.
     /// </remarks>
-    public sealed partial class MySqlNntpCredentialValidator
+    internal sealed partial class MySqlNntpCredentialValidator
     {
         /// <summary>
         /// Logs that host-side authentication finalization is starting.

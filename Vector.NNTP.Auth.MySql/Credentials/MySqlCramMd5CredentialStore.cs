@@ -24,7 +24,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
     /// <see cref="CancellationToken.None"/> and cannot be aborted when the client disconnects mid-query.
     /// </para>
     /// </remarks>
-    public sealed partial class MySqlCramMd5CredentialStore : ICramMd5CredentialStore
+    internal sealed partial class MySqlCramMd5CredentialStore : ICramMd5CredentialStore
     {
         /// <summary>
         /// Backing user record store.
@@ -61,7 +61,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <remarks>
         /// <see cref="OperationCanceledException"/> propagates when the backing lookup is cancelled.
         /// </remarks>
-        public bool TryGetCramSecret(string username, out ReadOnlyMemory<byte> secret)
+        bool ICramMd5CredentialStore.TryGetCramSecret(string username, out ReadOnlyMemory<byte> secret)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);
 

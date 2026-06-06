@@ -39,7 +39,7 @@ namespace Vector.NNTP.Auth.MySql.Configuration
         /// <summary>
         /// Gets the validated MySQL connection string for the <c>nntpusers</c> table.
         /// </summary>
-        public string ConnectionString { get; }
+        internal string ConnectionString { get; }
 
         /// <summary>
         /// Gets the time-to-live for successful-authentication cache entries.
@@ -48,6 +48,6 @@ namespace Vector.NNTP.Auth.MySql.Configuration
         /// Defaults to ten seconds. Entries expire solely by elapsed time so concurrent sessions authenticating
         /// together share one MySQL lookup without retaining credentials in memory beyond that window.
         /// </remarks>
-        public TimeSpan AuthCacheTtl { get; }
+        internal TimeSpan AuthCacheTtl { get; }
     }
 }

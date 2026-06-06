@@ -25,7 +25,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         public async Task ValidatePasswordAsync_DelayedLookup_ReturnsTransientFailure()
         {
             DelayedUserRecordStore store = new DelayedUserRecordStore(TimeSpan.FromMilliseconds(50));
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpCredentialValidator validator = CreateValidator(store);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.AuthInfoUserPass,
@@ -46,7 +46,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         public async Task ValidatePasswordAsync_DelayedLookup_CompletesWithinBudget()
         {
             DelayedUserRecordStore store = new DelayedUserRecordStore(TimeSpan.FromMilliseconds(200));
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpCredentialValidator validator = CreateValidator(store);
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             _ = await validator.ValidatePasswordAsync(
@@ -67,7 +67,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         [Test]
         public void TryGetScramCredential_QueryTimeout_ThrowsTransientException()
         {
-            MySqlScramCredentialStore store = new MySqlScramCredentialStore(
+            IScramCredentialStore store = new MySqlScramCredentialStore(
                 new TimeoutUserRecordStore(),
                 NullLogger<MySqlScramCredentialStore>.Instance);
 
@@ -85,7 +85,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         public async Task ValidatePasswordAsync_PoolPressure_ReturnsTransientFailure()
         {
             PoolPressureUserRecordStore store = new PoolPressureUserRecordStore();
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpCredentialValidator validator = CreateValidator(store);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.AuthInfoUserPass,
@@ -104,7 +104,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         [Test]
         public void TryGetScramCredential_PoolPressure_ThrowsTransientException()
         {
-            MySqlScramCredentialStore store = new MySqlScramCredentialStore(
+            IScramCredentialStore store = new MySqlScramCredentialStore(
                 new PoolPressureUserRecordStore(),
                 NullLogger<MySqlScramCredentialStore>.Instance);
 
@@ -120,7 +120,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         [Test]
         public void TryGetCramSecret_QueryTimeout_ThrowsTransientException()
         {
-            MySqlCramMd5CredentialStore store = new MySqlCramMd5CredentialStore(
+            ICramMd5CredentialStore store = new MySqlCramMd5CredentialStore(
                 new TimeoutUserRecordStore(),
                 NullLogger<MySqlCramMd5CredentialStore>.Instance);
 

@@ -34,7 +34,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
     /// <see cref="INntpSaslAccountAuthenticator.CompleteSaslAccountAsync"/> on success (which clears via <c>finally</c>).
     /// </para>
     /// </remarks>
-    public sealed partial class MySqlScramCredentialStore : IScramCredentialStore
+    internal sealed partial class MySqlScramCredentialStore : IScramCredentialStore
     {
         /// <summary>
         /// Backing user record store.
@@ -71,7 +71,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <remarks>
         /// <see cref="OperationCanceledException"/> propagates when the backing lookup is cancelled.
         /// </remarks>
-        public bool TryGetScramCredential(string username, [NotNullWhen(true)] out ScramStoredCredential? credential)
+        bool IScramCredentialStore.TryGetScramCredential(string username, [NotNullWhen(true)] out ScramStoredCredential? credential)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);
 

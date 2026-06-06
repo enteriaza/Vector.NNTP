@@ -82,28 +82,28 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <summary>
         /// Gets the user account name.
         /// </summary>
-        public string AccountName { get; }
+        internal string AccountName { get; }
 
         /// <summary>
         /// Gets the decrypted account password in cleartext.
         /// </summary>
-        public string AccountPassword { get; }
+        internal string AccountPassword { get; }
 
         /// <summary>
         /// Gets a value indicating whether password-based mechanisms (AUTHINFO PASS, SASL PLAIN, SASL LOGIN, and CRAM-MD5)
         /// are permitted for this account.
         /// </summary>
-        public bool AllowAuthPlain { get; }
+        internal bool AllowAuthPlain { get; }
 
         /// <summary>
         /// Gets a value indicating whether SCRAM-SHA-256 is permitted for this account.
         /// </summary>
-        public bool AllowAuthScram256 { get; }
+        internal bool AllowAuthScram256 { get; }
 
         /// <summary>
         /// Gets the SCRAM salt bytes.
         /// </summary>
-        public ReadOnlyMemory<byte> ScramSalt { get; }
+        internal ReadOnlyMemory<byte> ScramSalt { get; }
 
         /// <summary>
         /// Gets the SCRAM PBKDF2 iteration count.
@@ -112,51 +112,51 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// Zero indicates SCRAM material is not provisioned for the account; positive values are required before
         /// <see cref="Credentials.MySqlScramCredentialStore"/> will return stored keys.
         /// </remarks>
-        public int ScramIterations { get; }
+        internal int ScramIterations { get; }
 
         /// <summary>
         /// Gets the SCRAM StoredKey (H(ClientKey)).
         /// </summary>
-        public ReadOnlyMemory<byte> ScramStoredKey { get; }
+        internal ReadOnlyMemory<byte> ScramStoredKey { get; }
 
         /// <summary>
         /// Gets the SCRAM ServerKey.
         /// </summary>
-        public ReadOnlyMemory<byte> ScramServerKey { get; }
+        internal ReadOnlyMemory<byte> ScramServerKey { get; }
 
         /// <summary>
         /// Gets the account type flag (for example <c>'B'</c> for both or <c>'R'</c> for reader).
         /// </summary>
-        public char AccountType { get; }
+        internal char AccountType { get; }
 
         /// <summary>
         /// Gets the configured rate limit value for the account.
         /// </summary>
-        public int RateLimit { get; }
+        internal int RateLimit { get; }
 
         /// <summary>
         /// Gets the configured byte limit value for the account.
         /// </summary>
-        public long ByteLimit { get; }
+        internal long ByteLimit { get; }
 
         /// <summary>
         /// Gets the maximum concurrent sessions permitted for the account.
         /// </summary>
-        public int SessionLimit { get; }
+        internal int SessionLimit { get; }
 
         /// <summary>
         /// Gets the maximum concurrent sessions from a single source IP address.
         /// </summary>
-        public int SrcIpLimit { get; }
+        internal int SrcIpLimit { get; }
 
         /// <summary>
         /// Gets a value indicating whether the account is enabled for authentication.
         /// </summary>
-        public bool IsEnabled { get; }
+        internal bool IsEnabled { get; }
 
         /// <summary>
         /// Gets the customer identifier associated with the account.
         /// </summary>
-        public string CustomerId { get; }
+        internal string CustomerId { get; }
     }
 }

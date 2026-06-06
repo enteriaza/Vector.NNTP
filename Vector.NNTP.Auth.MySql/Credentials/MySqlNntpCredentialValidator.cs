@@ -27,10 +27,10 @@ namespace Vector.NNTP.Auth.MySql.Credentials
     /// <para><b>Burst cache:</b> Successful AUTHINFO and SASL completions populate <see cref="MySqlUserRecordCache"/> with
     /// AES-256-GCM protected snapshots and a short TTL for concurrent duplicate logons.</para>
     /// <para><b>SASL staging:</b> Credential stores stash records in <see cref="MySqlUserRecordSaslCache"/> for the
-    /// completion step; <see cref="AbandonSaslExchange"/> clears that slot on auth reset.</para>
+    /// completion step; <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/> clears that slot on auth reset.</para>
     /// <para><b>Password compare:</b> <see cref="PasswordEquals"/> uses constant-time ASCII comparison for AUTHINFO paths.</para>
     /// </remarks>
-    public sealed partial class MySqlNntpCredentialValidator : INntpCredentialValidator, INntpSaslAccountAuthenticator
+    internal sealed partial class MySqlNntpCredentialValidator : INntpCredentialValidator, INntpSaslAccountAuthenticator
     {
         /// <summary>
         /// Backing user record store.
@@ -93,7 +93,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <remarks>
         /// <see cref="OperationCanceledException"/> propagates when the backing user lookup is cancelled.
         /// </remarks>
-        public async ValueTask<NntpAuthResult> CompleteSaslAccountAsync(
+        async ValueTask<NntpAuthResult> INntpSaslAccountAuthenticator.CompleteSaslAccountAsync(
             string mechanism,
             string username,
             IPAddress clientIp,
@@ -125,7 +125,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <para>Clears the per-exchange <see cref="MySqlUserRecordSaslCache"/> slot and logs the abandoned exchange.</para>
         /// <para>Idempotent: safe to call when no SASL exchange is in progress.</para>
         /// </remarks>
-        public void AbandonSaslExchange()
+        void INntpSaslAccountAuthenticator.AbandonSaslExchange()
         {
             SaslExchangeAbandoned(_logger);
             MySqlUserRecordSaslCache.Clear();
@@ -145,7 +145,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// A null or whitespace <paramref name="username"/> yields <see cref="NntpAuthResult.InvalidCredentials"/> rather
         /// than throwing. <see cref="OperationCanceledException"/> propagates when the backing lookup is cancelled.
         /// </remarks>
-        public async ValueTask<NntpAuthResult> ValidatePasswordAsync(
+        async ValueTask<NntpAuthResult> INntpCredentialValidator.ValidatePasswordAsync(
             string mechanism,
             string username,
             string password,

@@ -41,7 +41,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 "00000000-0000-0000-0000-0000000042");
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpCredentialValidator validator = CreateValidator(store);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.AuthInfoUserPass,
@@ -87,7 +87,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 string.Empty);
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpCredentialValidator validator = CreateValidator(store);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.AuthInfoUserPass,
@@ -126,7 +126,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 string.Empty);
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpCredentialValidator validator = CreateValidator(store);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.SaslPlain,
@@ -163,7 +163,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 string.Empty);
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpCredentialValidator validator = CreateValidator(store);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.AuthInfoUserPass,
@@ -196,13 +196,13 @@ namespace Vector.NNTP.Tests.Auth.MySql
         {
             MySqlUserRecord record = CreateScramRecord();
             CountingUserRecordStore store = new CountingUserRecordStore(record);
-            MySqlScramCredentialStore scramStore = new MySqlScramCredentialStore(store, NullLogger<MySqlScramCredentialStore>.Instance);
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            IScramCredentialStore scramStore = new MySqlScramCredentialStore(store, NullLogger<MySqlScramCredentialStore>.Instance);
+            INntpSaslAccountAuthenticator authenticator = CreateValidator(store);
 
             Assert.That(scramStore.TryGetScramCredential("user1", out _), Is.True);
             Assert.That(store.LookupCount, Is.EqualTo(1));
 
-            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+            NntpAuthResult result = await authenticator.CompleteSaslAccountAsync(
                 NntpAuthMechanisms.SaslScramSha256,
                 "user1",
                 IPAddress.Loopback,
@@ -222,13 +222,13 @@ namespace Vector.NNTP.Tests.Auth.MySql
         {
             MySqlUserRecord record = CreateCramRecord();
             CountingUserRecordStore store = new CountingUserRecordStore(record);
-            MySqlCramMd5CredentialStore cramStore = new MySqlCramMd5CredentialStore(store, NullLogger<MySqlCramMd5CredentialStore>.Instance);
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            ICramMd5CredentialStore cramStore = new MySqlCramMd5CredentialStore(store, NullLogger<MySqlCramMd5CredentialStore>.Instance);
+            INntpSaslAccountAuthenticator authenticator = CreateValidator(store);
 
             Assert.That(cramStore.TryGetCramSecret("user1", out _), Is.True);
             Assert.That(store.LookupCount, Is.EqualTo(1));
 
-            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+            NntpAuthResult result = await authenticator.CompleteSaslAccountAsync(
                 NntpAuthMechanisms.SaslCramMd5,
                 "user1",
                 IPAddress.Loopback,
@@ -248,15 +248,15 @@ namespace Vector.NNTP.Tests.Auth.MySql
         {
             MySqlUserRecord record = CreateScramRecord();
             CountingUserRecordStore store = new CountingUserRecordStore(record);
-            MySqlScramCredentialStore scramStore = new MySqlScramCredentialStore(store, NullLogger<MySqlScramCredentialStore>.Instance);
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            IScramCredentialStore scramStore = new MySqlScramCredentialStore(store, NullLogger<MySqlScramCredentialStore>.Instance);
+            INntpSaslAccountAuthenticator authenticator = CreateValidator(store);
 
             Assert.That(scramStore.TryGetScramCredential("user1", out _), Is.True);
             Assert.That(store.LookupCount, Is.EqualTo(1));
 
-            validator.AbandonSaslExchange();
+            authenticator.AbandonSaslExchange();
 
-            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+            NntpAuthResult result = await authenticator.CompleteSaslAccountAsync(
                 NntpAuthMechanisms.SaslScramSha256,
                 "user1",
                 IPAddress.Loopback,
@@ -291,9 +291,9 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 "00000000-0000-0000-0000-0000000042");
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpSaslAccountAuthenticator authenticator = CreateValidator(store);
 
-            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+            NntpAuthResult result = await authenticator.CompleteSaslAccountAsync(
                 NntpAuthMechanisms.SaslScramSha256,
                 "user1",
                 IPAddress.Loopback,
@@ -330,9 +330,9 @@ namespace Vector.NNTP.Tests.Auth.MySql
                 true,
                 "00000000-0000-0000-0000-0000000042");
             FakeUserRecordStore store = new FakeUserRecordStore(record);
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpSaslAccountAuthenticator authenticator = CreateValidator(store);
 
-            NntpAuthResult result = await validator.CompleteSaslAccountAsync(
+            NntpAuthResult result = await authenticator.CompleteSaslAccountAsync(
                 NntpAuthMechanisms.SaslCramMd5,
                 "user1",
                 IPAddress.Loopback,
@@ -352,7 +352,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         public async Task ValidatePasswordAsync_RecordStoreThrows_TransientFailure()
         {
             ThrowingUserRecordStore store = new ThrowingUserRecordStore();
-            MySqlNntpCredentialValidator validator = CreateValidator(store);
+            INntpCredentialValidator validator = CreateValidator(store);
 
             NntpAuthResult result = await validator.ValidatePasswordAsync(
                 NntpAuthMechanisms.AuthInfoUserPass,

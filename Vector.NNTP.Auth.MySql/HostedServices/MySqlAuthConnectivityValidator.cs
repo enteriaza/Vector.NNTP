@@ -57,7 +57,7 @@ namespace Vector.NNTP.Auth.MySql.HostedServices
         /// is not observed. Wait time is bounded by connection-string <c>ConnectionTimeout</c> and
         /// <see cref="ConnectivityTimeoutSeconds"/>.
         /// </remarks>
-        public Task StartAsync(CancellationToken cancellationToken)
+        Task IHostedService.StartAsync(CancellationToken cancellationToken)
         {
             try
             {
@@ -85,7 +85,7 @@ namespace Vector.NNTP.Auth.MySql.HostedServices
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
-        public Task StopAsync(CancellationToken cancellationToken)
+        Task IHostedService.StopAsync(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

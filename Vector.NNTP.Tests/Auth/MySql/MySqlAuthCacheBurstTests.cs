@@ -43,7 +43,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
             MySqlUserRecordCache cache = new MySqlUserRecordCache(TimeSpan.FromMinutes(1));
             AuthMySqlMetrics metrics = new AuthMySqlMetrics();
             Blake3AccountKeyNormalizer normalizer = new Blake3AccountKeyNormalizer();
-            MySqlNntpCredentialValidator validator = new MySqlNntpCredentialValidator(
+            INntpCredentialValidator validator = new MySqlNntpCredentialValidator(
                 store,
                 normalizer,
                 cache,

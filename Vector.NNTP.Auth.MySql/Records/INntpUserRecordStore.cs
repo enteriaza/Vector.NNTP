@@ -31,7 +31,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// Used by synchronous SASL credential stores (<see cref="Sockets.Authentication.ICramMd5CredentialStore"/>,
         /// <see cref="Sockets.Authentication.IScramCredentialStore"/>). Exceptions propagate to the caller.
         /// </remarks>
-        public MySqlUserRecord? TryGetUser(string accountName);
+        MySqlUserRecord? TryGetUser(string accountName);
 
         /// <summary>
         /// Attempts to retrieve a user record for the specified account name using asynchronous database I/O.
@@ -44,6 +44,6 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <remarks>
         /// Backend I/O and provider exceptions propagate to the caller after logging at the implementation boundary.
         /// </remarks>
-        public Task<MySqlUserRecord?> TryGetUserAsync(string accountName, CancellationToken cancellationToken);
+        Task<MySqlUserRecord?> TryGetUserAsync(string accountName, CancellationToken cancellationToken);
     }
 }

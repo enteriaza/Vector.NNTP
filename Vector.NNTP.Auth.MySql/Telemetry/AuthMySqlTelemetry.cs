@@ -16,16 +16,16 @@ namespace Vector.NNTP.Auth.MySql.Telemetry
     /// <para><b>Spans:</b> <c>auth.mysql.user.lookup</c>, <c>auth.mysql.validate.password</c>,
     /// <c>auth.mysql.validate.sasl</c>.</para>
     /// </remarks>
-    public static class AuthMySqlTelemetry
+    internal static class AuthMySqlTelemetry
     {
         /// <summary>
         /// Activity source name for host SDK registration.
         /// </summary>
-        public const string SourceName = "Vector.NNTP.Auth.MySql";
+        internal const string SourceName = "Vector.NNTP.Auth.MySql";
 
         /// <summary>
         /// Shared activity source for credential validation and user-record lookups.
         /// </summary>
-        public static ActivitySource ActivitySource { get; } = new(SourceName, Utilities.Diagnostics.AssemblyInfoUtilities.ApplicationVersion);
+        internal static ActivitySource ActivitySource { get; } = new(SourceName, Utilities.Diagnostics.AssemblyInfoUtilities.ApplicationVersion);
     }
 }

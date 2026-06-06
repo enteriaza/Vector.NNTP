@@ -10,7 +10,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
     /// <remarks>
     /// Source-generated <see cref="LoggerMessageAttribute"/> helpers for <see cref="MySqlScramCredentialStore"/>.
     /// </remarks>
-    public sealed partial class MySqlScramCredentialStore
+    internal sealed partial class MySqlScramCredentialStore
     {
         /// <summary>
         /// Logs the start of a SCRAM credential lookup.

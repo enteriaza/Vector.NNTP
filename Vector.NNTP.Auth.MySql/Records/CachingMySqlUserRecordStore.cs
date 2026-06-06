@@ -23,7 +23,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <summary>
         /// Inner store that performs MySQL I/O on cache miss.
         /// </summary>
-        private readonly MySqlUserRecordStore _inner;
+        private readonly INntpUserRecordStore _inner;
 
         /// <summary>
         /// Metrics for cache hit tracking.
@@ -67,7 +67,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <param name="accountName">Account name to lookup.</param>
         /// <returns>User record or <see langword="null"/> when not found.</returns>
         /// <exception cref="ArgumentException">Thrown when <paramref name="accountName"/> is null or empty.</exception>
-        public MySqlUserRecord? TryGetUser(string accountName)
+        MySqlUserRecord? INntpUserRecordStore.TryGetUser(string accountName)
         {
             return TryGetCached(accountName, out MySqlUserRecord? cached) ? cached : _inner.TryGetUser(accountName);
         }
@@ -79,7 +79,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>User record or <see langword="null"/> when not found.</returns>
         /// <exception cref="ArgumentException">Thrown when <paramref name="accountName"/> is null or empty.</exception>
-        public async Task<MySqlUserRecord?> TryGetUserAsync(string accountName, CancellationToken cancellationToken)
+        async Task<MySqlUserRecord?> INntpUserRecordStore.TryGetUserAsync(string accountName, CancellationToken cancellationToken)
         {
             return TryGetCached(accountName, out MySqlUserRecord? cached)
                 ? cached

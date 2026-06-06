@@ -21,7 +21,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         [Test]
         public void TryGetScramCredential_BackendFailure_ThrowsTransientException()
         {
-            MySqlScramCredentialStore store = new MySqlScramCredentialStore(
+            IScramCredentialStore store = new MySqlScramCredentialStore(
                 new ThrowingUserRecordStore(),
                 NullLogger<MySqlScramCredentialStore>.Instance);
 
@@ -37,7 +37,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         [Test]
         public void TryGetCramSecret_BackendFailure_ThrowsTransientException()
         {
-            MySqlCramMd5CredentialStore store = new MySqlCramMd5CredentialStore(
+            ICramMd5CredentialStore store = new MySqlCramMd5CredentialStore(
                 new ThrowingUserRecordStore(),
                 NullLogger<MySqlCramMd5CredentialStore>.Instance);
 
@@ -53,7 +53,7 @@ namespace Vector.NNTP.Tests.Auth.MySql
         [Test]
         public void TryGetScramCredential_UserNotFound_ReturnsFalse()
         {
-            MySqlScramCredentialStore store = new MySqlScramCredentialStore(
+            IScramCredentialStore store = new MySqlScramCredentialStore(
                 new EmptyUserRecordStore(),
                 NullLogger<MySqlScramCredentialStore>.Instance);
 

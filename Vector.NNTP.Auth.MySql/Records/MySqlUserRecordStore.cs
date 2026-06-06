@@ -99,7 +99,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <remarks>
         /// MySQL and transport exceptions propagate after logging and metrics recording.
         /// </remarks>
-        public MySqlUserRecord? TryGetUser(string accountName)
+        MySqlUserRecord? INntpUserRecordStore.TryGetUser(string accountName)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountName);
             return ExecuteLookup(accountName, isAsync: false, cancellationToken: CancellationToken.None);
@@ -116,7 +116,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// MySQL and transport exceptions propagate after logging and metrics recording.
         /// <see cref="OperationCanceledException"/> propagates when <paramref name="cancellationToken"/> is signalled.
         /// </remarks>
-        public Task<MySqlUserRecord?> TryGetUserAsync(string accountName, CancellationToken cancellationToken)
+        Task<MySqlUserRecord?> INntpUserRecordStore.TryGetUserAsync(string accountName, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountName);
             return ExecuteLookupAsync(accountName, cancellationToken);

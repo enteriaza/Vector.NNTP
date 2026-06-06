@@ -12,8 +12,8 @@ namespace Vector.NNTP.Auth.MySql.Records
     /// Concurrent SASL attempts for the same username on different connections remain independent.</para>
     /// <para><b>Lifecycle:</b> <see cref="TryTake"/> clears the slot after a successful username match so records are not
     /// reused across unrelated authentications. <see cref="Clear"/> is invoked from
-    /// <see cref="Credentials.MySqlNntpCredentialValidator.AbandonSaslExchange"/> (session auth reset) and from a <c>finally</c> block
-    /// after <see cref="Credentials.MySqlNntpCredentialValidator.CompleteSaslAccountAsync"/> so a prior <see cref="Set"/> does not
+    /// <see cref="Sockets.Authentication.INntpSaslAccountAuthenticator.AbandonSaslExchange"/> (session auth reset) and from a <c>finally</c> block
+    /// after <see cref="Sockets.Authentication.INntpSaslAccountAuthenticator.CompleteSaslAccountAsync"/> so a prior <see cref="Set"/> does not
     /// linger when the exchange aborts before <see cref="TryTake"/> runs.</para>
     /// </remarks>
     internal static class MySqlUserRecordSaslCache
