@@ -61,8 +61,11 @@ namespace Vector.NNTP.Sockets.Transport
         /// <summary>POST.</summary>
         Post,
 
-        /// <summary>CHECK / IHAVE.</summary>
+        /// <summary>CHECK (streaming filter).</summary>
         Check,
+
+        /// <summary>IHAVE (offer and body transfer).</summary>
+        Ihave,
 
         /// <summary>TAKETHIS.</summary>
         Takethis,

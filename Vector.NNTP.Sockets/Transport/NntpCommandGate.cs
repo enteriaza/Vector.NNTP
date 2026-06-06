@@ -87,6 +87,10 @@ namespace Vector.NNTP.Sockets.Transport
                 {
                     NntpTransitPeerMetrics.RecordCheckWithoutAuth(peerId);
                 }
+                else if (verb == NntpKnownVerb.Ihave)
+                {
+                    NntpTransitPeerMetrics.RecordIhaveWithoutAuth(peerId);
+                }
                 else if (verb == NntpKnownVerb.Takethis)
                 {
                     NntpTransitPeerMetrics.RecordTakethisWithoutAuth(peerId);
@@ -140,7 +144,7 @@ namespace Vector.NNTP.Sockets.Transport
 
         private static bool IsStreamingVerb(NntpKnownVerb verb)
         {
-            return verb is NntpKnownVerb.Check or NntpKnownVerb.Takethis;
+            return verb is NntpKnownVerb.Check or NntpKnownVerb.Ihave or NntpKnownVerb.Takethis;
         }
     }
 }

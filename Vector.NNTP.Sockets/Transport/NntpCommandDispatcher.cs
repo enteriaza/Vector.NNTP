@@ -22,7 +22,7 @@ namespace Vector.NNTP.Sockets.Transport
     /// <param name="auth">Authentication service.</param>
     /// <param name="articleStorage">Optional reader storage.</param>
     /// <param name="transitStorage">Optional transit storage.</param>
-    /// <param name="historyDatabase">Optional transit history database for CHECK and TAKETHIS/IHAVE record.</param>
+    /// <param name="historyDatabase">Optional transit history database for CHECK, IHAVE, and TAKETHIS.</param>
     /// <param name="tlsCertificateSource">Optional TLS certificate source.</param>
     /// <param name="scramCredentialStore">Optional SCRAM credential store for capability advertisement.</param>
     /// <param name="logger">Logger.</param>
@@ -163,8 +163,13 @@ namespace Vector.NNTP.Sockets.Transport
                     return await NntpCmdCheck.DispatchAsync(
                         session,
                         this._historyDatabase,
+                        line,
+                        cancellationToken).ConfigureAwait(false);
+                case NntpKnownVerb.Ihave:
+                    return await NntpCmdIHave.DispatchAsync(
+                        session,
+                        this._historyDatabase,
                         this._transitStorage,
-                        NntpCommandLineHelpers.GetVerb(line),
                         line,
                         session.LineReader,
                         cancellationToken).ConfigureAwait(false);

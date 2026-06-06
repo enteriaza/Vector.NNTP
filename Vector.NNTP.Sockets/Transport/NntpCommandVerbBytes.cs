@@ -61,7 +61,7 @@ namespace Vector.NNTP.Sockets.Transport
                     : NntpKnownVerb.Unknown,
                 5 => IsVerb(verb, "GROUP") ? NntpKnownVerb.Group
                     : IsVerb(verb, "CHECK") ? NntpKnownVerb.Check
-                    : IsVerb(verb, "IHAVE") ? NntpKnownVerb.Check
+                    : IsVerb(verb, "IHAVE") ? NntpKnownVerb.Ihave
                     : IsVerb(verb, "XOVER") ? NntpKnownVerb.Over
                     : IsVerb(verb, "SLAVE") ? NntpKnownVerb.Slave
                     : NntpKnownVerb.Unknown,

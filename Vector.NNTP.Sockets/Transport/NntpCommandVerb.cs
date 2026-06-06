@@ -66,7 +66,7 @@ namespace Vector.NNTP.Sockets.Transport
                 case 5:
                     if (IsVerb(verb, "GROUP")) return NntpKnownVerb.Group;
                     if (IsVerb(verb, "CHECK")) return NntpKnownVerb.Check;
-                    if (IsVerb(verb, "IHAVE")) return NntpKnownVerb.Check;
+                    if (IsVerb(verb, "IHAVE")) return NntpKnownVerb.Ihave;
                     if (IsVerb(verb, "XOVER")) return NntpKnownVerb.Over;
                     if (IsVerb(verb, "SLAVE")) return NntpKnownVerb.Slave;
                     break;
