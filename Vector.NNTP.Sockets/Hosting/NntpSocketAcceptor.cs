@@ -17,6 +17,7 @@ using Vector.NNTP.Sockets.Proxy;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Tls;
 using Vector.NNTP.Sockets.Transport;
+using Vector.NNTP.Utilities.Diagnostics;
 
 namespace Vector.NNTP.Sockets.Hosting
 {
@@ -489,7 +490,7 @@ namespace Vector.NNTP.Sockets.Hosting
                 case NntpTransitPeerAdmissionResult.Success:
                     LogAcceptedTransitPeer(
                         _logger,
-                        clientEndPoint.Address,
+                        FormattingUtilities.FormatConnectionLogPrefix(clientEndPoint),
                         match.PeerId,
                         match.DisplayName,
                         match.MatchedEntry);
@@ -510,14 +511,17 @@ namespace Vector.NNTP.Sockets.Hosting
                         : -1;
                     LogTransitPeerAtCapacity(
                         _logger,
+                        FormattingUtilities.FormatConnectionLogPrefix(clientEndPoint),
                         match.PeerId,
-                        clientEndPoint.Address,
                         occupied,
                         match.MaxConnections);
                     return null;
                 default:
                     NntpTransitPeerMetrics.RecordRedisError(match.PeerId);
-                    LogTransitPeerAdmissionBackendFailure(_logger, match.PeerId, clientEndPoint.Address);
+                    LogTransitPeerAdmissionBackendFailure(
+                        _logger,
+                        FormattingUtilities.FormatConnectionLogPrefix(clientEndPoint),
+                        match.PeerId);
                     return null;
             }
         }

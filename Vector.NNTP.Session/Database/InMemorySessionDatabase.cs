@@ -38,11 +38,11 @@ namespace Vector.NNTP.Session.Database
             ArgumentNullException.ThrowIfNull(session);
             if (!_sessions.TryAdd(session.SessionId, session))
             {
-                InMemorySessionDatabaseLog.SessionRegisteredDuplicate(_logger, session.SessionId);
+                InMemorySessionDatabaseLog.SessionRegisteredDuplicate(_logger, session.ConnectionLogPrefix, session.SessionId);
                 return false;
             }
 
-            InMemorySessionDatabaseLog.SessionRegistered(_logger, session.SessionId, session.RemoteIp.ToString());
+            InMemorySessionDatabaseLog.SessionRegistered(_logger, session.ConnectionLogPrefix, session.SessionId);
             return true;
         }
 

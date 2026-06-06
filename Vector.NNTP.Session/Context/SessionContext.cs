@@ -40,6 +40,7 @@ namespace Vector.NNTP.Session.Context
         /// </summary>
         /// <param name="sessionId">Stable session identifier.</param>
         /// <param name="remoteIp">Effective client IP (post-PROXY when applicable).</param>
+        /// <param name="connectionLogPrefix">Bracketed <c>[ip:port]</c> prefix for correlated connection logs.</param>
         /// <param name="connectedAtUtc">Connection timestamp.</param>
         /// <param name="configVersion">Configuration version stamped at accept time.</param>
         /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
@@ -47,6 +48,7 @@ namespace Vector.NNTP.Session.Context
         public SessionContext(
             string sessionId,
             IPAddress remoteIp,
+            string connectionLogPrefix,
             DateTimeOffset connectedAtUtc,
             string configVersion,
             string nodeName,
@@ -54,10 +56,12 @@ namespace Vector.NNTP.Session.Context
         {
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentNullException.ThrowIfNull(remoteIp);
+            ArgumentException.ThrowIfNullOrEmpty(connectionLogPrefix);
             ArgumentException.ThrowIfNullOrEmpty(configVersion);
             ArgumentException.ThrowIfNullOrEmpty(nodeName);
             SessionId = sessionId;
             RemoteIp = remoteIp;
+            ConnectionLogPrefix = connectionLogPrefix;
             ConnectedAtUtc = connectedAtUtc;
             ConfigVersion = configVersion;
             NodeName = nodeName;
@@ -75,6 +79,11 @@ namespace Vector.NNTP.Session.Context
         /// Gets the effective client IP address.
         /// </summary>
         public IPAddress RemoteIp { get; }
+
+        /// <summary>
+        /// Gets the bracketed <c>[ip:port]</c> prefix used to correlate connection-scoped log lines.
+        /// </summary>
+        public string ConnectionLogPrefix { get; }
 
         /// <summary>
         /// Gets the UTC time the connection was accepted.

@@ -15,19 +15,19 @@ namespace Vector.NNTP.Session.Database
         /// Log a session registered message.
         /// </summary>
         /// <param name="logger">Logger instance.</param>
+        /// <param name="connectionPrefix">Bracketed client endpoint prefix for log correlation.</param>
         /// <param name="sessionId">The session ID.</param>
-        /// <param name="clientIp">The client IP.</param>
-        [LoggerMessage(EventName = "SessionRegistered", Level = LogLevel.Debug, Message = "Connection session registered SessionId={SessionId} ClientIp={ClientIp}")]
-        public static partial void SessionRegistered(ILogger logger, string sessionId, string clientIp);
+        [LoggerMessage(EventName = "SessionRegistered", Level = LogLevel.Debug, Message = "{ConnectionPrefix} Connection session registered SessionId={SessionId}")]
+        public static partial void SessionRegistered(ILogger logger, string connectionPrefix, string sessionId);
 
         /// <summary>
         /// Log a session registered duplicate message.
         /// </summary>
         /// <param name="logger">Logger instance.</param>
+        /// <param name="connectionPrefix">Bracketed client endpoint prefix for log correlation.</param>
         /// <param name="sessionId">The session ID.</param>
-        /// <returns><see langword="true"/> when inserted.</returns>
-        [LoggerMessage(EventName = "SessionRegisteredDuplicate", Level = LogLevel.Warning, Message = "Duplicate session insert SessionId={SessionId}")]
-        public static partial void SessionRegisteredDuplicate(ILogger logger, string sessionId);
+        [LoggerMessage(EventName = "SessionRegisteredDuplicate", Level = LogLevel.Warning, Message = "{ConnectionPrefix} Duplicate session insert SessionId={SessionId}")]
+        public static partial void SessionRegisteredDuplicate(ILogger logger, string connectionPrefix, string sessionId);
 
         /// <summary>
         /// Log a session removed message.

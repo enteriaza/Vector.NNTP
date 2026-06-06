@@ -75,6 +75,7 @@ namespace Vector.NNTP.Sockets.Transport
             SessionContext connectionSession = new(
                 context.SessionId,
                 context.ClientRemoteEndPoint.Address,
+                context.ConnectionLogPrefix,
                 DateTimeOffset.UtcNow,
                 configVersion,
                 context.NodeName,
