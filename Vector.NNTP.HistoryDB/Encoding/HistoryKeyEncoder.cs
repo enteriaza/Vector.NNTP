@@ -2,7 +2,6 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-using System.Text;
 using Blake3;
 
 namespace Vector.NNTP.HistoryDB.Encoding
@@ -10,7 +9,7 @@ namespace Vector.NNTP.HistoryDB.Encoding
     /// <summary>
     /// Derives 32-byte BLAKE3 digests from message-id strings for history keys.
     /// </summary>
-    public static class HistoryKeyEncoder
+    internal static class HistoryKeyEncoder
     {
         /// <summary>
         /// Size of a history digest key in bytes.

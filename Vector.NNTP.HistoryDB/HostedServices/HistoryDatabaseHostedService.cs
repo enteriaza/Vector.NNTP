@@ -2,9 +2,8 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-using System.Text;
+using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using Vector.NNTP.HistoryDB.Configuration;
@@ -14,161 +13,158 @@ using Vector.NNTP.HistoryDB.Metrics;
 using Vector.NNTP.HistoryDB.Redis;
 using Vector.NNTP.HistoryDB.Rocks;
 using Vector.NNTP.HistoryDB.Services;
+using Vector.NNTP.HistoryDB.Telemetry;
 
 namespace Vector.NNTP.HistoryDB.HostedServices
 {
     /// <summary>
     /// Runs full Rocks→Redis rebuild on every process start before HistoryDB accepts CHECK.
     /// </summary>
-    internal sealed class HistoryDatabaseHostedService : IHostedService
+    /// <param name="history">History service.</param>
+    /// <param name="rocks">Rocks store.</param>
+    /// <param name="redis">Redis store.</param>
+    /// <param name="memory">Memory cache.</param>
+    /// <param name="options">Options.</param>
+    /// <param name="metrics">Metrics.</param>
+    /// <param name="generations">Generation store.</param>
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    internal sealed partial class HistoryDatabaseHostedService(
+        HistoryDatabaseService history,
+        RocksHistoryStore rocks,
+        HistoryRedisStore redis,
+        HistoryMemoryCache memory,
+        IOptions<HistoryDbOptions> options,
+        HistoryMetrics metrics,
+        HistoryGenerationStore generations,
+        ILogger<HistoryDatabaseHostedService> logger) : IHostedService
     {
         /// <summary>
         /// The history service.
         /// </summary>
-        private readonly HistoryDatabaseService _history;
+        private readonly HistoryDatabaseService _history = history;
 
         /// <summary>
         /// The Rocks store.
         /// </summary>
-        private readonly RocksHistoryStore _rocks;
+        private readonly RocksHistoryStore _rocks = rocks;
 
         /// <summary>
         /// The Redis store.
         /// </summary>
-        private readonly HistoryRedisStore _redis;
+        private readonly HistoryRedisStore _redis = redis;
 
         /// <summary>
         /// The memory cache.
         /// </summary>
-        private readonly HistoryMemoryCache _memory;
+        private readonly HistoryMemoryCache _memory = memory;
 
         /// <summary>
         /// The options.
         /// </summary>
-        private readonly HistoryDbOptions _options;
+        private readonly HistoryDbOptions _options = options.Value;
 
         /// <summary>
         /// The metrics.
         /// </summary>
-        private readonly HistoryMetrics _metrics;
+        private readonly HistoryMetrics _metrics = metrics;
 
         /// <summary>
         /// The generation store.
         /// </summary>
-        private readonly HistoryGenerationStore _generations;
-
-        /// <summary>
-        /// The logger.
-        /// </summary>
-        private readonly ILogger<HistoryDatabaseHostedService> _logger;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="HistoryDatabaseHostedService"/> class.
-        /// </summary>
-        /// <param name="history">History service.</param>
-        /// <param name="rocks">Rocks store.</param>
-        /// <param name="redis">Redis store.</param>
-        /// <param name="memory">Memory cache.</param>
-        /// <param name="options">Options.</param>
-        /// <param name="metrics">Metrics.</param>
-        /// <param name="generations">Generation store.</param>
-        /// <param name="logger">Logger.</param>
-        public HistoryDatabaseHostedService(
-            HistoryDatabaseService history,
-            RocksHistoryStore rocks,
-            HistoryRedisStore redis,
-            HistoryMemoryCache memory,
-            IOptions<HistoryDbOptions> options,
-            HistoryMetrics metrics,
-            HistoryGenerationStore generations,
-            ILogger<HistoryDatabaseHostedService> logger)
-        {
-            this._history = history;
-            this._rocks = rocks;
-            this._redis = redis;
-            this._memory = memory;
-            this._options = options.Value;
-            this._metrics = metrics;
-            this._generations = generations;
-            this._logger = logger;
-        }
+        private readonly HistoryGenerationStore _generations = generations;
 
         /// <summary>
         /// Starts the history database hosted service.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        /// <exception cref="OperationCanceledException">Thrown when startup is canceled.</exception>
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            ulong generation = await this.ResolveGenerationAsync(cancellationToken).ConfigureAwait(false);
-            byte[]? resumeKey = await this.TryGetResumeKeyAsync(generation, cancellationToken).ConfigureAwait(false);
+            ulong generation = await ResolveGenerationAsync(cancellationToken).ConfigureAwait(false);
+            byte[]? resumeKey = await TryGetResumeKeyAsync(generation, cancellationToken).ConfigureAwait(false);
             long total = 0;
             ulong now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            await this._redis.SetRebuildStateAsync(
-                [
-                    new HashEntry("status", "in_progress"),
-                    new HashEntry("generation", generation.ToString()),
-                    new HashEntry("keysProcessed", "0"),
-                    new HashEntry("startedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString()),
-                ],
-                cancellationToken).ConfigureAwait(false);
+            long rebuildStartTimestamp = Stopwatch.GetTimestamp();
 
-            this._logger.LogInformation(
-                "HistoryDB rebuild started (generation={Generation}, resume={Resume})",
-                generation,
-                resumeKey is not null);
+            using Activity? activity = HistoryDbTelemetry.ActivitySource.StartActivity("history.rebuild");
+            _ = (activity?.SetTag("history.generation", generation));
+            _ = (activity?.SetTag("history.resume", resumeKey is not null));
 
-            long processed = await this._rocks.RebuildForwardAsync(
-                now,
-                resumeKey,
-                async (batch, ct) =>
-                {
-                    await this._redis.PipelineSetBatchAsync(batch, now, ct).ConfigureAwait(false);
-                    total += batch.Count;
-                    this._metrics.SetRebuildKeysProcessed(total);
-                    if (total > 0 && total % this._options.RebuildCheckpointInterval == 0)
-                    {
-                        byte[] lastKey = batch[^1].ExpirationKey;
-                        await this._redis.SetRebuildStateAsync(
-                            [
-                                new HashEntry("status", "in_progress"),
-                                new HashEntry("generation", generation.ToString()),
-                                new HashEntry("lastExpirationKey", Convert.ToHexString(lastKey)),
-                                new HashEntry("keysProcessed", total.ToString()),
-                                new HashEntry("updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString()),
-                            ],
-                            ct).ConfigureAwait(false);
-                    }
-                },
-                cancellationToken).ConfigureAwait(false);
-
-            _ = processed;
-            await this._redis.SetMetaAsync(generation, cancellationToken).ConfigureAwait(false);
-            await this._redis.SetRebuildStateAsync(
-                [
-                    new HashEntry("status", "completed"),
-                    new HashEntry("generation", generation.ToString()),
-                    new HashEntry("keysProcessed", total.ToString()),
-                    new HashEntry("updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString()),
-                ],
-                cancellationToken).ConfigureAwait(false);
-
-            if (this._options.EnableMemoryPreloadOnStartup)
+            try
             {
-                _ = this._rocks.PreloadReverse(
-                    now,
-                    (digest, exp) =>
-                    {
-                        var digestKey = new DigestKey(digest);
-                        this._memory.InsertOrUpdate(in digestKey, exp);
-                    },
-                    this._options.MemoryLimitBytes);
-            }
+                await _redis.SetRebuildStateAsync(
+                    [
+                        new HashEntry("status", "in_progress"),
+                        new HashEntry("generation", generation.ToString()),
+                        new HashEntry("keysProcessed", "0"),
+                        new HashEntry("startedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString()),
+                    ],
+                    cancellationToken).ConfigureAwait(false);
 
-            this._history.SetOperational();
-            this._logger.LogInformation(
-                "HistoryDB rebuild completed ({Keys} keys); CHECK operational. RocksDB receives new entries asynchronously after CHECK returns 238 (Wanted) via the persist queue — not at open or on 438 duplicate.",
-                total);
+                LogRebuildStarted(generation, resumeKey is not null);
+
+                long processed = await _rocks.RebuildForwardAsync(
+                    now,
+                    resumeKey,
+                    async (batch, ct) =>
+                    {
+                        await _redis.PipelineSetBatchAsync(batch, now, ct).ConfigureAwait(false);
+                        total += batch.Count;
+                        _metrics.SetRebuildKeysProcessed(total);
+                        if (total > 0 && total % _options.RebuildCheckpointInterval == 0)
+                        {
+                            byte[] lastKey = batch[^1].ExpirationKey;
+                            await _redis.SetRebuildStateAsync(
+                                [
+                                    new HashEntry("status", "in_progress"),
+                                    new HashEntry("generation", generation.ToString()),
+                                    new HashEntry("lastExpirationKey", Convert.ToHexString(lastKey)),
+                                    new HashEntry("keysProcessed", total.ToString()),
+                                    new HashEntry("updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString()),
+                                ],
+                                ct).ConfigureAwait(false);
+                        }
+                    },
+                    cancellationToken).ConfigureAwait(false);
+
+                _ = processed;
+                await _redis.SetMetaAsync(generation, cancellationToken).ConfigureAwait(false);
+                await _redis.SetRebuildStateAsync(
+                    [
+                        new HashEntry("status", "completed"),
+                        new HashEntry("generation", generation.ToString()),
+                        new HashEntry("keysProcessed", total.ToString()),
+                        new HashEntry("updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString()),
+                    ],
+                    cancellationToken).ConfigureAwait(false);
+
+                if (_options.EnableMemoryPreloadOnStartup)
+                {
+                    _ = _rocks.PreloadReverse(
+                        now,
+                        (digest, exp) =>
+                        {
+                            DigestKey digestKey = new(digest);
+                            _memory.InsertOrUpdate(in digestKey, exp);
+                        },
+                        _options.MemoryLimitBytes);
+                }
+
+                double rebuildMs = Stopwatch.GetElapsedTime(rebuildStartTimestamp).TotalMilliseconds;
+                _metrics.RecordRebuildDurationMilliseconds(rebuildMs);
+                _ = (activity?.SetTag("history.keys_processed", total));
+                _ = (activity?.SetTag("history.rebuild.duration_ms", rebuildMs));
+
+                _history.SetOperational();
+                LogRebuildCompleted(total);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                LogRebuildFailed(ex, generation, total);
+                _ = (activity?.SetStatus(ActivityStatusCode.Error, ex.Message));
+                throw;
+            }
         }
 
         /// <summary>
@@ -176,7 +172,10 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
 
         /// <summary>
         /// Reads a hash field by name.
@@ -204,16 +203,13 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         /// <returns>Generation stamp.</returns>
         private async Task<ulong> ResolveGenerationAsync(CancellationToken cancellationToken)
         {
-            HashEntry[] state = await this._redis.GetRebuildStateAsync(cancellationToken).ConfigureAwait(false);
+            HashEntry[] state = await _redis.GetRebuildStateAsync(cancellationToken).ConfigureAwait(false);
             string status = GetField(state, "status");
             string gen = GetField(state, "generation");
-            if (string.Equals(status, "in_progress", StringComparison.Ordinal) &&
-                ulong.TryParse(gen, out ulong resumeGen))
-            {
-                return resumeGen;
-            }
-
-            return this._generations.AllocateGeneration();
+            return string.Equals(status, "in_progress", StringComparison.Ordinal) &&
+                   ulong.TryParse(gen, out ulong resumeGen)
+                ? resumeGen
+                : _generations.AllocateGeneration();
         }
 
         /// <summary>
@@ -224,7 +220,7 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         /// <returns>Last expiration key bytes or null.</returns>
         private async Task<byte[]?> TryGetResumeKeyAsync(ulong generation, CancellationToken cancellationToken)
         {
-            HashEntry[] state = await this._redis.GetRebuildStateAsync(cancellationToken).ConfigureAwait(false);
+            HashEntry[] state = await _redis.GetRebuildStateAsync(cancellationToken).ConfigureAwait(false);
             if (state.Length == 0)
             {
                 return null;
@@ -244,8 +240,9 @@ namespace Vector.NNTP.HistoryDB.HostedServices
             {
                 return Convert.FromHexString(lastKey);
             }
-            catch (FormatException)
+            catch (FormatException ex)
             {
+                LogResumeKeyHexParseFailed(ex);
                 return Convert.FromBase64String(lastKey);
             }
         }

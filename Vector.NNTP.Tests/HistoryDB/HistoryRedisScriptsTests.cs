@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using Vector.NNTP.HistoryDB.Configuration;
+using Vector.NNTP.HistoryDB.Metrics;
 using Vector.NNTP.HistoryDB.Redis;
 
 namespace Vector.NNTP.Tests.HistoryDB
@@ -58,7 +59,11 @@ namespace Vector.NNTP.Tests.HistoryDB
             this._multiplexer = ConnectionMultiplexer.Connect("localhost:6379,abortConnect=false");
             var accessor = new HistoryRedisTestAccessor(this._multiplexer);
             var options = Options.Create(new HistoryDbOptions { KeyPrefix = KeyPrefix, RememberDays = 2 });
-            this._store = new HistoryRedisStore(options, accessor, NullLogger<HistoryRedisStore>.Instance);
+            this._store = new HistoryRedisStore(
+                options,
+                accessor,
+                new HistoryMetrics(),
+                NullLogger<HistoryRedisStore>.Instance);
         }
 
         /// <summary>

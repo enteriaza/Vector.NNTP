@@ -10,6 +10,10 @@ namespace Vector.NNTP.HistoryDB.Memory
     /// <summary>
     /// Bounded in-memory duplicate filter keyed by digest (newest / highest expiration retained).
     /// </summary>
+    /// <remarks>
+    /// <para>Eviction uses a min-heap with lazy tombstones: heap entries are not updated on expiration bump;
+    /// stale tops are discarded during eviction by comparing against the authoritative dictionary.</para>
+    /// </remarks>
     internal sealed class HistoryMemoryCache
     {
         /// <summary>
@@ -23,9 +27,14 @@ namespace Vector.NNTP.HistoryDB.Memory
         private readonly long _limitBytes;
 
         /// <summary>
-        /// The entries.
+        /// Authoritative digest to expiration map.
         /// </summary>
         private readonly Dictionary<DigestKey, ulong> _entries = new();
+
+        /// <summary>
+        /// Expiration-ordered eviction candidates (may contain lazy tombstones).
+        /// </summary>
+        private readonly ExpirationMinHeap _evictionHeap = new();
 
         /// <summary>
         /// The metrics.
@@ -42,16 +51,16 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// </summary>
         /// <param name="limitBytes">Maximum tracked bytes.</param>
         /// <param name="metrics">Metrics recorder.</param>
-        public HistoryMemoryCache(long limitBytes, HistoryMetrics metrics)
+        internal HistoryMemoryCache(long limitBytes, HistoryMetrics metrics)
         {
-            this._limitBytes = limitBytes;
-            this._metrics = metrics;
+            _limitBytes = limitBytes;
+            _metrics = metrics;
         }
 
         /// <summary>
         /// Gets tracked entry count.
         /// </summary>
-        public int Count => this._entries.Count;
+        internal int Count => _entries.Count;
 
         /// <summary>
         /// Tries a duplicate lookup without allocating (hot path).
@@ -59,21 +68,21 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <param name="digestKey">Digest key.</param>
         /// <param name="nowEpochSeconds">Current UTC epoch seconds.</param>
         /// <returns><see langword="true"/> when an unexpired entry exists.</returns>
-        public bool TryGetDuplicate(in DigestKey digestKey, ulong nowEpochSeconds)
+        internal bool TryGetDuplicate(in DigestKey digestKey, ulong nowEpochSeconds)
         {
-            if (!this._entries.TryGetValue(digestKey, out ulong expiration))
+            if (!_entries.TryGetValue(digestKey, out ulong expiration))
             {
-                this._metrics.RecordMemoryMiss();
+                _metrics.RecordMemoryMiss();
                 return false;
             }
 
             if (expiration <= nowEpochSeconds)
             {
-                this._metrics.RecordMemoryMiss();
+                _metrics.RecordMemoryMiss();
                 return false;
             }
 
-            this._metrics.RecordMemoryHit();
+            _metrics.RecordMemoryHit();
             return true;
         }
 
@@ -82,34 +91,36 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// </summary>
         /// <param name="digestKey">Digest key.</param>
         /// <param name="expirationEpochSeconds">Expiration epoch.</param>
-        public void InsertOrUpdate(in DigestKey digestKey, ulong expirationEpochSeconds)
+        internal void InsertOrUpdate(in DigestKey digestKey, ulong expirationEpochSeconds)
         {
-            if (this._entries.TryGetValue(digestKey, out ulong existing) && existing >= expirationEpochSeconds)
+            if (_entries.TryGetValue(digestKey, out ulong existing) && existing >= expirationEpochSeconds)
             {
                 return;
             }
 
-            bool added = !this._entries.ContainsKey(digestKey);
-            this._entries[digestKey] = expirationEpochSeconds;
+            bool added = !_entries.ContainsKey(digestKey);
+            _entries[digestKey] = expirationEpochSeconds;
+            _evictionHeap.Push(expirationEpochSeconds, in digestKey);
             if (added)
             {
-                this._trackedBytes += BytesPerEntry;
+                _trackedBytes += BytesPerEntry;
             }
 
-            this._metrics.SetMemoryEntries(this._entries.Count);
-            this._metrics.SetMemoryBytes(this._trackedBytes);
-            this.EvictIfNeeded();
+            _metrics.SetMemoryEntries(_entries.Count);
+            _metrics.SetMemoryBytes(_trackedBytes);
+            EvictIfNeeded();
         }
 
         /// <summary>
         /// Clears all entries (used by tests).
         /// </summary>
-        public void Clear()
+        internal void Clear()
         {
-            this._entries.Clear();
-            this._trackedBytes = 0;
-            this._metrics.SetMemoryEntries(0);
-            this._metrics.SetMemoryBytes(0);
+            _entries.Clear();
+            _evictionHeap.Clear();
+            _trackedBytes = 0;
+            _metrics.SetMemoryEntries(0);
+            _metrics.SetMemoryBytes(0);
         }
 
         /// <summary>
@@ -117,33 +128,25 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// </summary>
         private void EvictIfNeeded()
         {
-            while (this._trackedBytes > this._limitBytes && this._entries.Count > 0)
+            while (_trackedBytes > _limitBytes && _evictionHeap.TryPeek(out ulong heapExp, out DigestKey heapKey))
             {
-                DigestKey oldestKey = default;
-                ulong oldestExp = ulong.MaxValue;
-                foreach (KeyValuePair<DigestKey, ulong> pair in this._entries)
+                if (!_entries.TryGetValue(heapKey, out ulong currentExp) || currentExp != heapExp)
                 {
-                    if (pair.Value < oldestExp)
-                    {
-                        oldestExp = pair.Value;
-                        oldestKey = pair.Key;
-                    }
+                    _evictionHeap.Pop();
+                    continue;
                 }
 
-                if (oldestExp == ulong.MaxValue)
+                if (_entries.Remove(heapKey))
                 {
-                    break;
+                    _trackedBytes -= BytesPerEntry;
+                    _metrics.RecordMemoryEviction();
                 }
 
-                if (this._entries.Remove(oldestKey))
-                {
-                    this._trackedBytes -= BytesPerEntry;
-                    this._metrics.RecordMemoryEviction();
-                }
+                _evictionHeap.Pop();
             }
 
-            this._metrics.SetMemoryEntries(this._entries.Count);
-            this._metrics.SetMemoryBytes(this._trackedBytes);
+            _metrics.SetMemoryEntries(_entries.Count);
+            _metrics.SetMemoryBytes(_trackedBytes);
         }
     }
 }

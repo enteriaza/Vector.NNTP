@@ -2,7 +2,7 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using Microsoft.Extensions.Options;
 using RocksDbSharp;
 using Vector.NNTP.HistoryDB.Configuration;
@@ -14,7 +14,9 @@ namespace Vector.NNTP.HistoryDB.Rocks
     /// <summary>
     /// Dual column-family RocksDB store for history digests and expiration ordering.
     /// </summary>
-    internal sealed class RocksHistoryStore : IDisposable
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    internal sealed partial class RocksHistoryStore(
+        ILogger<RocksHistoryStore> logger) : IDisposable
     {
         /// <summary>
         /// Digest column family name.
@@ -34,47 +36,42 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <summary>
         /// The options.
         /// </summary>
-        private readonly HistoryDbOptions _options;
+        private readonly HistoryDbOptions _options = null!;
 
         /// <summary>
         /// The metrics.
         /// </summary>
-        private readonly HistoryMetrics _metrics;
+        private readonly HistoryMetrics _metrics = null!;
 
         /// <summary>
-        /// The logger.
+        /// Open-time database options (kept alive for ticker statistics snapshots via <c>GetStatisticsString</c>).
         /// </summary>
-        private readonly ILogger<RocksHistoryStore> _logger;
-
-        /// <summary>
-        /// Open-time database options (kept alive for <see cref="DbOptions.GetStatisticsString"/>).
-        /// </summary>
-        private readonly DbOptions _dbOptions;
+        private readonly DbOptions _dbOptions = null!;
 
         /// <summary>
         /// Full path to the database directory.
         /// </summary>
-        private readonly string _dbPath;
+        private readonly string _dbPath = null!;
 
         /// <summary>
         /// The RocksDB database.
         /// </summary>
-        private readonly RocksDb _db;
+        private readonly RocksDb _db = null!;
 
         /// <summary>
         /// The digest column family handle.
         /// </summary>
-        private readonly ColumnFamilyHandle _digestCf;
+        private readonly ColumnFamilyHandle _digestCf = null!;
 
         /// <summary>
         /// The expiration column family handle.
         /// </summary>
-        private readonly ColumnFamilyHandle _expirationCf;
+        private readonly ColumnFamilyHandle _expirationCf = null!;
 
         /// <summary>
         /// Owns native Bloom filter and block-cache handles for the database lifetime.
         /// </summary>
-        private readonly RocksHistoryBloomFilterConfigurator _bloomConfigurator;
+        private readonly RocksHistoryBloomFilterConfigurator _bloomConfigurator = null!;
 
         /// <summary>
         /// The expiration key scratch buffer.
@@ -101,15 +98,15 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// </summary>
         /// <param name="options">History options.</param>
         /// <param name="metrics">Metrics.</param>
-        /// <param name="logger">Logger.</param>
-        public RocksHistoryStore(
+        /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+        internal RocksHistoryStore(
             IOptions<HistoryDbOptions> options,
             HistoryMetrics metrics,
             ILogger<RocksHistoryStore> logger)
+            : this(logger)
         {
             _options = options.Value;
             _metrics = metrics;
-            _logger = logger;
             _dbPath = Path.GetFullPath(_options.DbDir);
             _ = Directory.CreateDirectory(_dbPath);
 
@@ -125,21 +122,18 @@ namespace Vector.NNTP.HistoryDB.Rocks
 
             if (rocks.MaxBackgroundJobs > 0)
             {
+                // RocksDB 10.4.x C# bindings expose compaction/flush knobs separately; map the unified jobs config
+                // to compaction threads (same production mapping as the prior 6.2.2 host).
                 _ = _dbOptions.SetMaxBackgroundCompactions(rocks.MaxBackgroundJobs);
             }
 
             if (rocks.StatsDumpPeriodSec > 0 && rocks.EnableStatistics)
             {
-                _logger.LogInformation(
-                    "RocksDB statistics enabled at {DbDir}; native stats_dump_period_sec={StatsDumpPeriodSec}. Host logger snapshots use the same interval (RocksDbSharp 6.2.x may not emit periodic LOG dumps).",
-                    _dbPath,
-                    rocks.StatsDumpPeriodSec);
+                LogStatisticsEnabled(_dbPath, rocks.StatsDumpPeriodSec);
             }
             else if (rocks.StatsDumpPeriodSec > 0 && !rocks.EnableStatistics)
             {
-                _logger.LogWarning(
-                    "RocksDB StatsDumpPeriodSec is {StatsDumpPeriodSec} but EnableStatistics is false; stats snapshots will not include ticker data",
-                    rocks.StatsDumpPeriodSec);
+                LogStatisticsDisabled(rocks.StatsDumpPeriodSec);
             }
 
             _bloomConfigurator = new RocksHistoryBloomFilterConfigurator();
@@ -152,13 +146,16 @@ namespace Vector.NNTP.HistoryDB.Rocks
             };
 
             _db = RocksDb.Open(_dbOptions, _dbPath, families);
-            _logger.LogInformation(
-                "RocksDB opened at {DbDir} with digest BloomBitsPerKey={DigestBloomBitsPerKey}, expiration BloomBitsPerKey={ExpirationBloomBitsPerKey}, BlockCacheBytes={BlockCacheBytes}, BlockSizeBytes={BlockSizeBytes}.",
+            string rocksVersion = _db.GetProperty("rocksdb.version") ?? "unknown";
+            LogDatabaseOpened(
+                rocksVersion,
                 _dbPath,
                 rocks.DigestBloomBitsPerKey,
                 rocks.ExpirationBloomBitsPerKey,
-                rocks.BlockCacheBytes,
-                rocks.BlockSizeBytes);
+                rocks.DigestBlockCacheBytes,
+                rocks.ExpirationBlockCacheBytes,
+                rocks.BlockSizeBytes,
+                rocks.MaxBackgroundJobs);
             _digestCf = _db.GetColumnFamily(CfByDigest);
             _expirationCf = _db.GetColumnFamily(CfByExpiration);
         }
@@ -168,12 +165,13 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// </summary>
         /// <param name="digest">32-byte digest.</param>
         /// <param name="expirationEpochSeconds">New expiration epoch.</param>
-        public void PutReservation(ReadOnlySpan<byte> digest, ulong expirationEpochSeconds)
+        internal void PutReservation(ReadOnlySpan<byte> digest, ulong expirationEpochSeconds)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            digest.CopyTo(_digestKeyScratch);
             ulong oldExp = 0;
             bool hadOld = false;
-            byte[]? existing = _db.Get(digest.ToArray(), _digestCf);
+            byte[]? existing = _db.Get(_digestKeyScratch, _digestCf);
             if (existing is { Length: HistoryRocksKeyEncoding.DigestValueLength })
             {
                 oldExp = HistoryRocksKeyEncoding.DecodeDigestValue(existing);
@@ -194,7 +192,7 @@ namespace Vector.NNTP.HistoryDB.Rocks
             HistoryRocksKeyEncoding.EncodeExpirationKey(expirationEpochSeconds, digest, _expKeyScratch);
             _ = batch.Put(_expKeyScratch, TombstoneValue, _expirationCf);
             HistoryRocksKeyEncoding.EncodeDigestValue(expirationEpochSeconds, _digestValueScratch);
-            _ = batch.Put(digest.ToArray(), _digestValueScratch, _digestCf);
+            _ = batch.Put(_digestKeyScratch, _digestValueScratch, _digestCf);
             _db.Write(batch);
         }
 
@@ -204,10 +202,10 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <param name="nowEpochSeconds">Current UTC epoch.</param>
         /// <param name="maxDeletes">Maximum deletes per sweep pass.</param>
         /// <returns>Number of keys deleted.</returns>
-        public int SweepExpired(ulong nowEpochSeconds, int maxDeletes)
+        internal int SweepExpired(ulong nowEpochSeconds, int maxDeletes)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            long start = Environment.TickCount64;
+            long startTimestamp = Stopwatch.GetTimestamp();
             int deleted = 0;
             using Iterator it = _db.NewIterator(_expirationCf);
             _ = it.SeekToFirst();
@@ -236,7 +234,9 @@ namespace Vector.NNTP.HistoryDB.Rocks
                 _db.Write(batch);
             }
 
-            _metrics.RecordSweepMilliseconds(Environment.TickCount64 - start);
+            double elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+            _metrics.RecordSweepMilliseconds(elapsedMs);
+            _metrics.RecordSweepDeleted(deleted);
             return deleted;
         }
 
@@ -248,7 +248,7 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <param name="processBatch">Batch processor.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Total keys processed in this run.</returns>
-        public async Task<long> RebuildForwardAsync(
+        internal async Task<long> RebuildForwardAsync(
             ulong nowEpochSeconds,
             byte[]? resumeKey,
             Func<IReadOnlyList<(byte[] ExpirationKey, ulong Expiration, byte[] Digest)>, CancellationToken, Task> processBatch,
@@ -288,9 +288,9 @@ namespace Vector.NNTP.HistoryDB.Rocks
                 processed++;
                 if (batch.Count >= batchSize)
                 {
-                    long batchStart = Environment.TickCount64;
+                    long batchStartTimestamp = Stopwatch.GetTimestamp();
                     await processBatch(batch, cancellationToken).ConfigureAwait(false);
-                    _metrics.RecordRebuildBatchMilliseconds(Environment.TickCount64 - batchStart);
+                    _metrics.RecordRebuildBatchMilliseconds(Stopwatch.GetElapsedTime(batchStartTimestamp).TotalMilliseconds);
                     batch.Clear();
                 }
 
@@ -312,10 +312,10 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <param name="insert">Insert callback.</param>
         /// <param name="byteBudget">Maximum bytes to load.</param>
         /// <returns>Entries loaded.</returns>
-        public int PreloadReverse(ulong nowEpochSeconds, Action<byte[], ulong> insert, long byteBudget)
+        internal int PreloadReverse(ulong nowEpochSeconds, Action<byte[], ulong> insert, long byteBudget)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            long start = Environment.TickCount64;
+            long startTimestamp = Stopwatch.GetTimestamp();
             long bytes = 0;
             int loaded = 0;
             const int EntryBytes = HistoryKeyEncoder.DigestLength + 8;
@@ -339,7 +339,7 @@ namespace Vector.NNTP.HistoryDB.Rocks
                 _ = it.Prev();
             }
 
-            _metrics.RecordPreloadMilliseconds(Environment.TickCount64 - start);
+            _metrics.RecordPreloadMilliseconds(Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
             return loaded;
         }
 
@@ -361,7 +361,8 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// Logs current RocksDB property and ticker statistics to the host logger.
         /// </summary>
         /// <remarks>
-        /// Used by <see cref="HostedServices.HistoryRocksStatsLogHostedService"/> because native periodic LOG dumps are unreliable on RocksDbSharp 6.2.x.
+        /// Used by <see cref="HostedServices.HistoryRocksStatsLogHostedService"/> for predictable operator snapshots
+        /// alongside native <c>stats_dump_period_sec</c> LOG output.
         /// </remarks>
         internal void EmitStatsSnapshot()
         {
@@ -374,19 +375,13 @@ namespace Vector.NNTP.HistoryDB.Rocks
             string dbStats = _db.GetProperty("rocksdb.stats");
             if (!string.IsNullOrWhiteSpace(dbStats))
             {
-                _logger.LogInformation(
-                    "RocksDB rocksdb.stats snapshot ({DbDir}):\n{Stats}",
-                    _dbPath,
-                    dbStats);
+                LogDbStatsSnapshot(_dbPath, dbStats);
             }
 
             string tickerStats = _dbOptions.GetStatisticsString();
             if (!string.IsNullOrWhiteSpace(tickerStats))
             {
-                _logger.LogInformation(
-                    "RocksDB ticker statistics snapshot ({DbDir}):\n{Stats}",
-                    _dbPath,
-                    tickerStats);
+                LogTickerStatsSnapshot(_dbPath, tickerStats);
             }
         }
 
@@ -398,7 +393,8 @@ namespace Vector.NNTP.HistoryDB.Rocks
         internal ulong? GetDigestExpiration(ReadOnlySpan<byte> digest)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            byte[]? existing = _db.Get(digest.ToArray(), _digestCf);
+            digest.CopyTo(_digestKeyScratch);
+            byte[]? existing = _db.Get(_digestKeyScratch, _digestCf);
             return existing is { Length: HistoryRocksKeyEncoding.DigestValueLength }
                 ? HistoryRocksKeyEncoding.DecodeDigestValue(existing)
                 : null;
@@ -413,9 +409,11 @@ namespace Vector.NNTP.HistoryDB.Rocks
             ObjectDisposedException.ThrowIf(_disposed, this);
             int count = 0;
             using Iterator it = _db.NewIterator(_expirationCf);
-            for (it.SeekToFirst(); it.Valid(); it.Next())
+            _ = it.SeekToFirst();
+            while (it.Valid())
             {
                 count++;
+                _ = it.Next();
             }
 
             return count;

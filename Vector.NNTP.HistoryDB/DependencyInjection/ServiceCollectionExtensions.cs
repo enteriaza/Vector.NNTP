@@ -45,7 +45,7 @@ namespace Vector.NNTP.HistoryDB.DependencyInjection
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<HistoryDbOptions>, HistoryDbOptionsValidator>());
 
             _ = services.AddSingleton<HistoryMetrics>();
-            _ = services.AddSingleton<HistoryMemoryCache>(sp =>
+            _ = services.AddSingleton(sp =>
             {
                 HistoryDbOptions opts = sp.GetRequiredService<IOptions<HistoryDbOptions>>().Value;
                 return new HistoryMemoryCache(opts.MemoryLimitBytes, sp.GetRequiredService<HistoryMetrics>());

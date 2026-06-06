@@ -4,59 +4,96 @@
 
 using Microsoft.Extensions.Options;
 using Vector.NNTP.HistoryDB.Configuration;
+using Vector.NNTP.HistoryDB.Metrics;
 
 namespace Vector.NNTP.HistoryDB.Services
 {
     /// <summary>
     /// Persists rebuild generation across crashes within a single rebuild attempt.
     /// </summary>
-    internal sealed class HistoryGenerationStore
+    /// <param name="options">History options.</param>
+    /// <param name="metrics">Metrics.</param>
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    internal sealed partial class HistoryGenerationStore(
+        IOptions<HistoryDbOptions> options,
+        HistoryMetrics metrics,
+        ILogger<HistoryGenerationStore> logger)
     {
         /// <summary>
         /// The path to the generation file.
         /// </summary>
-        private readonly string _generationPath;
+        private readonly string _generationPath = Path.Combine(
+            Path.GetFullPath(options.Value.DbDir),
+            "history.generation");
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="HistoryGenerationStore"/> class.
+        /// The metrics.
         /// </summary>
-        /// <param name="options">History options.</param>
-        public HistoryGenerationStore(IOptions<HistoryDbOptions> options)
-        {
-            string dir = Path.GetFullPath(options.Value.DbDir);
-            this._generationPath = Path.Combine(dir, "history.generation");
-        }
+        private readonly HistoryMetrics _metrics = metrics;
 
         /// <summary>
         /// Allocates a new generation stamp for a fresh rebuild.
         /// </summary>
         /// <returns>Generation value.</returns>
-        public ulong AllocateGeneration()
+        /// <exception cref="IOException">Thrown when generation file I/O fails.</exception>
+        /// <exception cref="UnauthorizedAccessException">Thrown when generation file access is denied.</exception>
+        internal ulong AllocateGeneration()
         {
-            ulong next = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            if (File.Exists(this._generationPath) &&
-                ulong.TryParse(File.ReadAllText(this._generationPath).Trim(), out ulong existing))
+            try
             {
-                next = Math.Max(next, existing + 1);
-            }
+                ulong next = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                if (File.Exists(_generationPath) &&
+                    ulong.TryParse(File.ReadAllText(_generationPath).Trim(), out ulong existing))
+                {
+                    next = Math.Max(next, existing + 1);
+                }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(this._generationPath)!);
-            File.WriteAllText(this._generationPath, next.ToString());
-            return next;
+                _ = Directory.CreateDirectory(Path.GetDirectoryName(_generationPath)!);
+                File.WriteAllText(_generationPath, next.ToString());
+                LogGenerationAllocated(next, _generationPath);
+                return next;
+            }
+            catch (IOException ex)
+            {
+                _metrics.RecordGenerationIoError();
+                LogGenerationIoFailed(ex, _generationPath);
+                throw;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _metrics.RecordGenerationIoError();
+                LogGenerationIoFailed(ex, _generationPath);
+                throw;
+            }
         }
 
         /// <summary>
         /// Reads the persisted generation if present.
         /// </summary>
-        /// <returns>Generation or null.</returns>
-        public ulong? TryReadGeneration()
+        /// <returns>Generation or null when missing or unreadable.</returns>
+        internal ulong? TryReadGeneration()
         {
-            if (!File.Exists(this._generationPath))
+            if (!File.Exists(_generationPath))
             {
                 return null;
             }
 
-            return ulong.TryParse(File.ReadAllText(this._generationPath).Trim(), out ulong gen) ? gen : null;
+            try
+            {
+                return ulong.TryParse(File.ReadAllText(_generationPath).Trim(), out ulong gen) ? gen : null;
+            }
+            catch (IOException ex)
+            {
+                _metrics.RecordGenerationIoError();
+                LogGenerationIoFailed(ex, _generationPath);
+                return null;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _metrics.RecordGenerationIoError();
+                LogGenerationIoFailed(ex, _generationPath);
+                return null;
+            }
         }
     }
 }

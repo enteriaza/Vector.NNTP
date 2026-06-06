@@ -11,7 +11,6 @@
     <Description>Transit CHECK history deduplication (memory, Redis, RocksDB).</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <EnableLoggerMessageGenerator>true</EnableLoggerMessageGenerator>
-    <NoWarn>$(NoWarn);CA1848</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
@@ -22,18 +21,19 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.8" />
-    <PackageReference Include="RocksDbNative" Version="6.2.2" />
-    <PackageReference Include="RocksDbSharp" Version="6.2.2" />
+    <PackageReference Include="RocksDB" Version="10.4.2.64152" />
     <PackageReference Include="StackExchange.Redis" Version="2.13.17" />
     <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="10.0.8" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Vector.NNTP.Session.Redis\Vector.NNTP.Session.Redis.csproj" />
+    <ProjectReference Include="..\Vector.NNTP.Utilities\Vector.NNTP.Utilities.csproj" />
   </ItemGroup>
 
   <ItemGroup>

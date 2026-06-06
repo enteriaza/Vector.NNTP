@@ -74,20 +74,81 @@ At ~2.5B entries plan for **hundreds of GB** on `DbDir`.
 
 ## RocksDB tuning
 
-Expose knobs under `HistoryDb:RocksDb` (block cache, write buffer, compression, background jobs). **Initial code defaults are starting points subject to benchmark validation** on deployment hardware (CHECK rate, sweep volume, retention, SSD, RAM). Do not treat any single ADR example size as immutable.
+Expose knobs under `HistoryDb:RocksDb` (per-CF block cache, Bloom filters, write buffer, background jobs). **Initial code defaults are starting points subject to benchmark validation** on deployment hardware (CHECK rate, sweep volume, retention, SSD, RAM). Do not treat any single ADR example size as immutable.
+
+### Per-column-family block cache
+
+| CF | Config key | Typical role |
+|----|------------|--------------|
+| `by_digest` | `DigestBlockCacheBytes` (JSON alias `BlockCacheBytes`) | Hot point lookups during persist and compaction |
+| `by_expiration` | `ExpirationBlockCacheBytes` (default 8 MB) | Sweep and rebuild iterators; smaller working set |
+
+Digest and expiration caches are **independent LRU instances**. Tuning them separately avoids giving iterator-heavy maintenance work the same RAM budget as digest negative lookups.
+
+### Bloom filters
+
+| CF | Config key | Default |
+|----|------------|---------|
+| `by_digest` | `DigestBloomBitsPerKey` | 10 (BuiltinBloom, whole-key) |
+| `by_expiration` | `ExpirationBloomBitsPerKey` | 0 (disabled) |
+
+CHECK does not consult RocksDB; Bloom accelerates cold-path `by_digest` existence checks and compaction.
+
+### Native library upgrade (RocksDB 10.x)
+
+HistoryDB uses the unified **RocksDB** NuGet package (curiosity-ai, tracks upstream 10.x). RocksDB 10.x is expected to **open databases written by the prior 6.2.2 bindings** without data loss.
+
+**Before production upgrade:**
+
+1. Back up `DbDir` (SSTs + WAL).
+2. Open the copy with the new host build; confirm startup log reports RocksDB 10.x (`rocksdb.version`), Bloom on `by_digest`, and per-CF cache capacities.
+3. Verify sweep still deletes expired pairs (`num_deletions` in native LOG).
+
+**Rollback:** Downgrading the native library after opening with a newer RocksDB version may be unsafe. Restore from the pre-upgrade backup rather than downgrading in place.
 
 ## Non-functional: memory-hit zero allocations
 
 **Duplicate → memory hit → return must incur zero heap allocations** on `CheckAsync` and callees on that branch. Enforced by build-blocking test.
 
-## Metrics
+## CHECK tier observability
 
-- `history.rocks.sweep.keys_deleted`, `history.rocks.sweep.duration_ms`
-- `history.rocks.by_digest.count`, `history.rocks.by_expiration.count`
-- `history.rebuild.keys_per_second`, `history.rebuild.batch.duration_ms`
-- `history.memory.entries`, `history.memory.bytes`, `history.memory.hit_rate`
-- `history.check.memory_hit`, `history.check.memory_miss`
+CHECK path is **memory → Redis** (no Bloom tier in this release). Export tier counters before adding complexity.
+
+| Instrument | When emitted |
+|------------|--------------|
+| `history.check.total` | Terminal Duplicate or Wanted only (successfully processed CHECK) |
+| `history.check.memory_hit` | Memory `TryGetDuplicate` true |
+| `history.check.memory_miss` | Memory miss before Redis |
+| `history.check.redis_probe` | Every `CheckRedisProbeAsync` |
+| `history.check.redis_duplicate` | Redis Lua returns duplicate |
+| `history.check.redis_wanted` | Redis Lua returns wanted |
+| `history.check.redis_ms` | Redis Lua latency histogram |
+
+**Excluded from `history.check.total`:** not operational, malformed message-id, Redis failure/timeout, cancellation before terminal outcome.
+
+**Dashboard rates:**
+
+| Rate | Formula |
+|------|---------|
+| `memory_hit_rate` | `history.check.memory_hit / history.check.total` |
+| `redis_probe_rate` | `history.check.redis_probe / history.check.total` |
+| `redis_duplicate_rate` | `history.check.redis_duplicate / history.check.redis_probe` |
+
+**Invariant:** `history.check.total` = memory hits + completed Redis probes = `history.check.redis_duplicate` + `history.check.redis_wanted`.
+
+### Deferred: CHECK Bloom tier
+
+Not implemented in this release. Gather ~1 week of tier metrics first. Revisit only if Redis probe rate, `history.check.redis_ms` tail, or memory hit rate trends justify a non-counting Bloom between memory and Redis. Bloom positives always confirm via Redis before 438; negatives skip Redis only when Bloom completeness is maintained on record/preload. No counting Bloom or `Bloom.Remove` on memory eviction.
+
+## Metrics (maintenance and record)
+
+- `history.rocks.sweep.deleted`, `history.rocks.sweep.duration_ms`
+- `history.rocks.persist.total`, `history.rocks.persist_failures`
+- `history.rebuild.duration_ms`, `history.rebuild.batch.duration_ms`, `history.rebuild.keys_processed` (gauge)
+- `history.memory.entries`, `history.memory.bytes`, `history.memory.evictions`
+- `history.operational`, `history.queue.depth`, `history.queue.dropped`
 - `history.record.recorded`, `history.record.duplicate`, `history.record.redis_ms`
+- `history.generation.io_errors`, `history.redis.slow_calls`
 
 ## Schema version
 

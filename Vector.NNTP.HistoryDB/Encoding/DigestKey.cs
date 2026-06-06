@@ -33,13 +33,13 @@ namespace Vector.NNTP.HistoryDB.Encoding
         /// Initializes a new instance of the <see cref="DigestKey"/> struct.
         /// </summary>
         /// <param name="digest">BLAKE3 digest bytes.</param>
-        public DigestKey(ReadOnlySpan<byte> digest)
+        internal DigestKey(ReadOnlySpan<byte> digest)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(digest.Length, HistoryKeyEncoder.DigestLength);
-            this._w0 = BitConverter.ToUInt64(digest);
-            this._w1 = BitConverter.ToUInt64(digest[8..]);
-            this._w2 = BitConverter.ToUInt64(digest[16..]);
-            this._w3 = BitConverter.ToUInt64(digest[24..]);
+            _w0 = BitConverter.ToUInt64(digest);
+            _w1 = BitConverter.ToUInt64(digest[8..]);
+            _w2 = BitConverter.ToUInt64(digest[16..]);
+            _w3 = BitConverter.ToUInt64(digest[24..]);
         }
 
         /// <summary>
@@ -47,25 +47,32 @@ namespace Vector.NNTP.HistoryDB.Encoding
         /// </summary>
         /// <param name="other">The other instance to compare to.</param>
         /// <returns>True if the instances are equal, false otherwise.</returns>
-        public bool Equals(DigestKey other) =>
-            this._w0 == other._w0 &&
-            this._w1 == other._w1 &&
-            this._w2 == other._w2 &&
-            this._w3 == other._w3;
+        public bool Equals(DigestKey other)
+        {
+            return _w0 == other._w0 &&
+            _w1 == other._w1 &&
+            _w2 == other._w2 &&
+            _w3 == other._w3;
+        }
 
         /// <summary>
         /// Checks if the current instance is equal to another instance.
         /// </summary>
         /// <param name="obj">The other instance to compare to.</param>
         /// <returns>True if the instances are equal, false otherwise.</returns>
-        public override bool Equals(object? obj) => obj is DigestKey other && this.Equals(other);
+        public override bool Equals(object? obj)
+        {
+            return obj is DigestKey other && Equals(other);
+        }
 
         /// <summary>
         /// Gets the hash code for the current instance.
         /// </summary>
         /// <returns>The hash code for the current instance.</returns>
-        public override int GetHashCode() =>
-            HashCode.Combine(this._w0, this._w1, this._w2, this._w3);
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(_w0, _w1, _w2, _w3);
+        }
 
         /// <summary>
         /// Copies digest bytes into <paramref name="destination"/>.
@@ -74,10 +81,10 @@ namespace Vector.NNTP.HistoryDB.Encoding
         public void CopyTo(Span<byte> destination)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(destination.Length, HistoryKeyEncoder.DigestLength);
-            BitConverter.TryWriteBytes(destination, this._w0);
-            BitConverter.TryWriteBytes(destination[8..], this._w1);
-            BitConverter.TryWriteBytes(destination[16..], this._w2);
-            BitConverter.TryWriteBytes(destination[24..], this._w3);
+            _ = BitConverter.TryWriteBytes(destination, _w0);
+            _ = BitConverter.TryWriteBytes(destination[8..], _w1);
+            _ = BitConverter.TryWriteBytes(destination[16..], _w2);
+            _ = BitConverter.TryWriteBytes(destination[24..], _w3);
         }
     }
 }

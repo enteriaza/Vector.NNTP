@@ -2,12 +2,13 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+using System.Diagnostics;
 using System.Threading.Channels;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.HistoryDB.Configuration;
 using Vector.NNTP.HistoryDB.Metrics;
 using Vector.NNTP.HistoryDB.Rocks;
+using Vector.NNTP.HistoryDB.Telemetry;
 
 namespace Vector.NNTP.HistoryDB.Services
 {
@@ -20,27 +21,35 @@ namespace Vector.NNTP.HistoryDB.Services
     /// before CHECK accepts traffic, independent of generic-host background-service scheduling order.
     /// </para>
     /// </remarks>
-    internal sealed class HistoryRocksPersistPump
+    /// <param name="rocks">Rocks store.</param>
+    /// <param name="metrics">Metrics.</param>
+    /// <param name="options">History options.</param>
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    internal sealed partial class HistoryRocksPersistPump(
+        RocksHistoryStore rocks,
+        HistoryMetrics metrics,
+        IOptions<HistoryDbOptions> options,
+        ILogger<HistoryRocksPersistPump> logger)
     {
+        /// <summary>
+        /// Slow-call logging threshold for persist milestones (every N items).
+        /// </summary>
+        private const long PersistMilestoneInterval = 10_000;
+
         /// <summary>
         /// The RocksDB store.
         /// </summary>
-        private readonly RocksHistoryStore _rocks;
+        private readonly RocksHistoryStore _rocks = rocks;
 
         /// <summary>
         /// The metrics.
         /// </summary>
-        private readonly HistoryMetrics _metrics;
+        private readonly HistoryMetrics _metrics = metrics;
 
         /// <summary>
         /// The options.
         /// </summary>
-        private readonly HistoryDbOptions _options;
-
-        /// <summary>
-        /// The logger.
-        /// </summary>
-        private readonly ILogger<HistoryRocksPersistPump> _logger;
+        private readonly HistoryDbOptions _options = options.Value;
 
         /// <summary>
         /// Whether the pump has started.
@@ -48,103 +57,80 @@ namespace Vector.NNTP.HistoryDB.Services
         private int _started;
 
         /// <summary>
-        /// The persist task.
-        /// </summary>
-        private Task? _persistTask;
-
-        /// <summary>
-        /// The linked cancellation token source.
-        /// </summary>
-        private CancellationTokenSource? _linkedCts;
-
-        /// <summary>
         /// The total number of persisted items.
         /// </summary>
         private long _totalPersisted;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="HistoryRocksPersistPump"/> class.
-        /// </summary>
-        /// <param name="rocks">Rocks store.</param>
-        /// <param name="metrics">Metrics.</param>
-        /// <param name="options">History options.</param>
-        /// <param name="logger">Logger.</param>
-        public HistoryRocksPersistPump(
-            RocksHistoryStore rocks,
-            HistoryMetrics metrics,
-            IOptions<HistoryDbOptions> options,
-            ILogger<HistoryRocksPersistPump> logger)
-        {
-            this._rocks = rocks;
-            this._metrics = metrics;
-            this._options = options.Value;
-            this._logger = logger;
-        }
 
         /// <summary>
         /// Starts the persist loop once (idempotent).
         /// </summary>
         /// <param name="reader">Persist queue reader.</param>
         /// <param name="hostStopping">Host shutdown token.</param>
-        public void Start(ChannelReader<HistoryPersistItem> reader, CancellationToken hostStopping)
+        /// <param name="history">History service for queue depth updates.</param>
+        internal void Start(
+            ChannelReader<HistoryPersistItem> reader,
+            CancellationToken hostStopping,
+            HistoryDatabaseService history)
         {
             ArgumentNullException.ThrowIfNull(reader);
-            if (Interlocked.CompareExchange(ref this._started, 1, 0) != 0)
+            ArgumentNullException.ThrowIfNull(history);
+            if (Interlocked.CompareExchange(ref _started, 1, 0) != 0)
             {
                 return;
             }
 
-            this._linkedCts = CancellationTokenSource.CreateLinkedTokenSource(hostStopping);
-            CancellationToken token = this._linkedCts.Token;
-            this._persistTask = Task.Run(() => this.RunPersistLoopAsync(reader, token), CancellationToken.None);
-            this._logger.LogInformation(
-                "HistoryDB Rocks persist pump started for {DbDir}",
-                Path.GetFullPath(this._options.DbDir));
+            CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(hostStopping);
+            CancellationToken token = linkedCts.Token;
+            _ = Task.Run(() => RunPersistLoopAsync(reader, history, token), CancellationToken.None);
+            LogPumpStarted(Path.GetFullPath(_options.DbDir));
         }
 
         /// <summary>
         /// Drains the persist queue into RocksDB.
         /// </summary>
         /// <param name="reader">Persist queue reader.</param>
+        /// <param name="history">History service for queue depth updates.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-        private async Task RunPersistLoopAsync(ChannelReader<HistoryPersistItem> reader, CancellationToken cancellationToken)
+        private async Task RunPersistLoopAsync(
+            ChannelReader<HistoryPersistItem> reader,
+            HistoryDatabaseService history,
+            CancellationToken cancellationToken)
         {
+            using Activity? activity = HistoryDbTelemetry.ActivitySource.StartActivity("history.rocks.persist");
             try
             {
                 await foreach (HistoryPersistItem item in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                 {
                     try
                     {
-                        this._rocks.PutReservation(item.Digest, item.ExpirationEpochSeconds);
-                        this._metrics.RecordRocksPersist();
-                        long count = Interlocked.Increment(ref this._totalPersisted);
+                        _rocks.PutReservation(item.Digest, item.ExpirationEpochSeconds);
+                        _metrics.RecordRocksPersist();
+                        history.NotifyPersistDequeued();
+                        long count = Interlocked.Increment(ref _totalPersisted);
                         if (count == 1)
                         {
-                            this._logger.LogInformation(
-                                "HistoryDB persist pump wrote first CHECK reservation to RocksDB at {DbDir}",
-                                Path.GetFullPath(this._options.DbDir));
+                            LogFirstPersist(Path.GetFullPath(_options.DbDir));
                         }
-                        else if (count % 10_000 == 0)
+                        else if (count % PersistMilestoneInterval == 0)
                         {
-                            this._logger.LogInformation(
-                                "HistoryDB persist pump has written {Count} reservations to RocksDB",
-                                count);
+                            LogPersistMilestone(count);
                         }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        this._logger.LogError(ex, "Failed to persist history entry to RocksDB");
+                        _metrics.RecordPersistFailure();
+                        LogPersistItemFailed(ex);
                     }
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                this._logger.LogDebug("HistoryDB Rocks persist pump stopped");
+                LogPumpStopped();
             }
             catch (Exception ex)
             {
-                this._logger.LogCritical(ex, "HistoryDB Rocks persist pump terminated unexpectedly");
+                LogPumpFatal(ex);
                 throw;
             }
         }

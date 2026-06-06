@@ -14,11 +14,11 @@ namespace Vector.NNTP.HistoryDB.Services
         /// </summary>
         /// <param name="digest">32-byte digest.</param>
         /// <param name="expirationEpochSeconds">Expiration epoch.</param>
-        public HistoryPersistItem(byte[] digest, ulong expirationEpochSeconds)
+        internal HistoryPersistItem(byte[] digest, ulong expirationEpochSeconds)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(digest.Length, 32);
-            this.Digest = digest;
-            this.ExpirationEpochSeconds = expirationEpochSeconds;
+            Digest = digest;
+            ExpirationEpochSeconds = expirationEpochSeconds;
         }
 
         /// <summary>

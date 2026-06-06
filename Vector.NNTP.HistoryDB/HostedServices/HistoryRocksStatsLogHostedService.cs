@@ -3,7 +3,6 @@
 // </copyright>
 
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.HistoryDB.Configuration;
 using Vector.NNTP.HistoryDB.Rocks;
@@ -16,61 +15,45 @@ namespace Vector.NNTP.HistoryDB.HostedServices
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>SetStatsDumpPeriodSec</c> on RocksDB <c>DbOptions</c> is passed through to RocksDB, but RocksDbSharp 6.2.x /
-    /// bundled native builds often do not emit periodic <c>LOG</c> dumps even when statistics are enabled. This service
-    /// queries <c>rocksdb.stats</c> and ticker statistics explicitly so operators get predictable snapshots.
+    /// <c>SetStatsDumpPeriodSec</c> on RocksDB <c>DbOptions</c> enables native periodic <c>LOG</c> dumps when statistics
+    /// are enabled. This service also queries <c>rocksdb.stats</c> and ticker statistics explicitly so operators receive
+    /// predictable snapshots in the host logger regardless of native LOG verbosity.
     /// </para>
     /// </remarks>
-    internal sealed class HistoryRocksStatsLogHostedService : BackgroundService
+    /// <param name="history">History service (operational gate).</param>
+    /// <param name="rocks">Rocks store.</param>
+    /// <param name="options">History options.</param>
+    /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
+    internal sealed partial class HistoryRocksStatsLogHostedService(
+        HistoryDatabaseService history,
+        RocksHistoryStore rocks,
+        IOptions<HistoryDbOptions> options,
+        ILogger<HistoryRocksStatsLogHostedService> logger) : BackgroundService
     {
         /// <summary>
         /// The history database service.
         /// </summary>
-        private readonly HistoryDatabaseService _history;
+        private readonly HistoryDatabaseService _history = history;
 
         /// <summary>
         /// The rocks history store.
         /// </summary>
-        private readonly RocksHistoryStore _rocks;
+        private readonly RocksHistoryStore _rocks = rocks;
 
         /// <summary>
         /// The history database options.
         /// </summary>
-        private readonly HistoryDbOptions _options;
-
-        /// <summary>
-        /// The logger.
-        /// </summary>
-        private readonly ILogger<HistoryRocksStatsLogHostedService> _logger;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="HistoryRocksStatsLogHostedService"/> class.
-        /// </summary>
-        /// <param name="history">History service (operational gate).</param>
-        /// <param name="rocks">Rocks store.</param>
-        /// <param name="options">History options.</param>
-        /// <param name="logger">Logger.</param>
-        public HistoryRocksStatsLogHostedService(
-            HistoryDatabaseService history,
-            RocksHistoryStore rocks,
-            IOptions<HistoryDbOptions> options,
-            ILogger<HistoryRocksStatsLogHostedService> logger)
-        {
-            this._history = history;
-            this._rocks = rocks;
-            this._options = options.Value;
-            this._logger = logger;
-        }
+        private readonly HistoryDbOptions _options = options.Value;
 
         /// <summary>
         /// Executes the hosted service.
         /// </summary>
         /// <param name="stoppingToken">The stopping token.</param>
         /// <returns>A task that completes when the hosted service is executed.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when the stopping token is canceled.</exception>    
+        /// <exception cref="OperationCanceledException">Thrown when the stopping token is canceled.</exception>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            HistoryRocksDbOptions rocks = this._options.RocksDb;
+            HistoryRocksDbOptions rocks = _options.RocksDb;
             if (!rocks.EnableStatistics || rocks.StatsDumpPeriodSec == 0)
             {
                 return;
@@ -78,24 +61,22 @@ namespace Vector.NNTP.HistoryDB.HostedServices
 
             TimeSpan period = TimeSpan.FromSeconds(rocks.StatsDumpPeriodSec);
             using PeriodicTimer timer = new(period);
-            this._logger.LogDebug(
-                "HistoryDB host Rocks stats logging every {PeriodSeconds}s (native LOG dumps may still be absent on RocksDbSharp 6.2.x)",
-                rocks.StatsDumpPeriodSec);
+            LogStatsInterval(rocks.StatsDumpPeriodSec);
 
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
-                if (!this._history.IsOperational)
+                if (!_history.IsOperational)
                 {
                     continue;
                 }
 
                 try
                 {
-                    this._rocks.EmitStatsSnapshot();
+                    _rocks.EmitStatsSnapshot();
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    this._logger.LogError(ex, "HistoryDB Rocks stats snapshot failed");
+                    LogStatsSnapshotFailed(ex);
                 }
             }
         }

@@ -2,6 +2,8 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+using Microsoft.Extensions.Configuration;
+
 namespace Vector.NNTP.HistoryDB.Configuration
 {
     /// <summary>
@@ -11,8 +13,10 @@ namespace Vector.NNTP.HistoryDB.Configuration
     /// <para><b>Bloom filters:</b> <see cref="DigestBloomBitsPerKey"/> accelerates <c>by_digest</c> point lookups during
     /// Rocks persist. CHECK does not consult RocksDB; Bloom is a cold-path optimization for compaction and
     /// <c>PutReservation</c> existence checks.</para>
+    /// <para><b>Block caches:</b> <see cref="DigestBlockCacheBytes"/> and <see cref="ExpirationBlockCacheBytes"/> are
+    /// independent LRU caches per column family. Digest lookups are hot; expiration sweep/rebuild is maintenance-heavy.</para>
     /// </remarks>
-    public sealed class HistoryRocksDbOptions
+    internal sealed class HistoryRocksDbOptions
     {
         /// <summary>
         /// Default Bloom bits per key for the digest column family (~1% false-positive rate at 10 bits).
@@ -20,9 +24,24 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public const int DefaultDigestBloomBitsPerKey = 10;
 
         /// <summary>
-        /// Gets or sets the block cache size in bytes (0 = use implementation default).
+        /// Default block cache size for the expiration column family (8 MB).
         /// </summary>
-        public long BlockCacheBytes { get; set; }
+        public const long DefaultExpirationBlockCacheBytes = 8 * 1024 * 1024;
+
+        /// <summary>
+        /// Gets or sets the <c>by_digest</c> block cache size in bytes (0 = RocksDB default).
+        /// </summary>
+        /// <remarks>
+        /// JSON key <c>BlockCacheBytes</c> is accepted for backward compatibility via
+        /// <see cref="ConfigurationKeyNameAttribute"/>.
+        /// </remarks>
+        [ConfigurationKeyName("BlockCacheBytes")]
+        public long DigestBlockCacheBytes { get; set; }
+
+        /// <summary>
+        /// Gets or sets the <c>by_expiration</c> block cache size in bytes (0 = RocksDB default).
+        /// </summary>
+        public long ExpirationBlockCacheBytes { get; set; } = DefaultExpirationBlockCacheBytes;
 
         /// <summary>
         /// Gets or sets the memtable write buffer size in bytes (0 = use implementation default).
@@ -35,8 +54,12 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public int MaxWriteBufferNumber { get; set; }
 
         /// <summary>
-        /// Gets or sets the target background compaction jobs passed to RocksDB <c>max_background_compactions</c> (0 = default).
+        /// Gets or sets the target background compaction thread count (0 = RocksDB default).
         /// </summary>
+        /// <remarks>
+        /// Passed to <c>SetMaxBackgroundCompactions</c> on open. The RocksDB 10.4.x C# bindings do not yet expose
+        /// <c>max_background_jobs</c> as a single setter; this knob preserves the production mapping from the 6.2.2 host.
+        /// </remarks>
         public int MaxBackgroundJobs { get; set; }
 
         /// <summary>
@@ -101,8 +124,6 @@ namespace Vector.NNTP.HistoryDB.Configuration
         /// <remarks>
         /// <para>Default 600 (10 minutes). Passed to RocksDB as <c>stats_dump_period_sec</c> and used by the host
         /// <c>HistoryRocksStatsLogHostedService</c> to log <c>rocksdb.stats</c> and ticker statistics.</para>
-        /// <para>RocksDbSharp 6.2.x often does not emit periodic dumps into the RocksDB <c>LOG</c> file even when statistics
-        /// are enabled; rely on host logs for scheduled snapshots.</para>
         /// </remarks>
         public uint StatsDumpPeriodSec { get; set; } = 600;
     }

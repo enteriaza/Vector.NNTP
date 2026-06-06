@@ -47,6 +47,7 @@ namespace Vector.NNTP.Tests.HistoryDB
                 var redis = new HistoryRedisStore(
                     options,
                     new UnreachableRedisAccessor(),
+                    metrics,
                     NullLogger<HistoryRedisStore>.Instance);
                 var history = new HistoryDatabaseService(
                     options,

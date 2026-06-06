@@ -9,7 +9,7 @@ namespace Vector.NNTP.HistoryDB.Encoding
     /// <summary>
     /// Centralized RocksDB key/value encoding for history column families.
     /// </summary>
-    public static class HistoryRocksKeyEncoding
+    internal static class HistoryRocksKeyEncoding
     {
         /// <summary>
         /// Length of a <c>by_expiration</c> key.

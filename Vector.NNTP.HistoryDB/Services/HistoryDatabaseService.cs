@@ -5,7 +5,6 @@
 using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.HistoryDB.Configuration;
@@ -13,6 +12,7 @@ using Vector.NNTP.HistoryDB.Encoding;
 using Vector.NNTP.HistoryDB.Memory;
 using Vector.NNTP.HistoryDB.Metrics;
 using Vector.NNTP.HistoryDB.Redis;
+using Vector.NNTP.HistoryDB.Telemetry;
 using Vector.NNTP.Session.Redis.Exceptions;
 
 namespace Vector.NNTP.HistoryDB.Services
@@ -20,7 +20,7 @@ namespace Vector.NNTP.HistoryDB.Services
     /// <summary>
     /// Transit history: read-only CHECK probe and TAKETHIS/IHAVE record with async Rocks backfill.
     /// </summary>
-    internal sealed class HistoryDatabaseService : IHistoryDatabase
+    internal sealed partial class HistoryDatabaseService : IHistoryDatabase
     {
         /// <summary>
         /// The options.
@@ -68,6 +68,11 @@ namespace Vector.NNTP.HistoryDB.Services
         private volatile bool _operational;
 
         /// <summary>
+        /// Approximate persist queue depth for metrics.
+        /// </summary>
+        private long _queueDepth;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="HistoryDatabaseService"/> class.
         /// </summary>
         /// <param name="options">Options.</param>
@@ -77,7 +82,7 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <param name="persistPump">Rocks persist pump.</param>
         /// <param name="lifetime">Host lifetime for queue completion on shutdown.</param>
         /// <param name="logger">Logger.</param>
-        public HistoryDatabaseService(
+        internal HistoryDatabaseService(
             IOptions<HistoryDbOptions> options,
             HistoryMemoryCache memory,
             HistoryRedisStore redis,
@@ -86,106 +91,125 @@ namespace Vector.NNTP.HistoryDB.Services
             IHostApplicationLifetime lifetime,
             ILogger<HistoryDatabaseService> logger)
         {
-            this._options = options.Value;
-            this._memory = memory;
-            this._redis = redis;
-            this._metrics = metrics;
-            this._persistPump = persistPump;
-            this._lifetime = lifetime;
-            this._logger = logger;
-            BoundedChannelOptions channelOptions = new BoundedChannelOptions(this._options.QueueCapacity)
+            _options = options.Value;
+            _memory = memory;
+            _redis = redis;
+            _metrics = metrics;
+            _persistPump = persistPump;
+            _lifetime = lifetime;
+            _logger = logger;
+            BoundedChannelOptions channelOptions = new(_options.QueueCapacity)
             {
                 FullMode = BoundedChannelFullMode.DropWrite,
                 SingleReader = true,
                 SingleWriter = false,
             };
-            this._queue = Channel.CreateBounded<HistoryPersistItem>(channelOptions);
-            this._lifetime.ApplicationStopping.Register(() => this._queue.Writer.TryComplete());
+            _queue = Channel.CreateBounded<HistoryPersistItem>(channelOptions);
+            _ = _lifetime.ApplicationStopping.Register(() => _queue.Writer.TryComplete());
+            _metrics.SetOperational(false);
+            _metrics.SetQueueDepth(0);
         }
 
         /// <summary>
         /// Gets a value indicating whether CHECK may proceed against Redis.
         /// </summary>
-        public bool IsOperational => this._operational;
+        internal bool IsOperational => _operational;
 
         /// <summary>
         /// Gets the persist queue for the background worker.
         /// </summary>
-        public ChannelReader<HistoryPersistItem> PersistReader => this._queue.Reader;
+        internal ChannelReader<HistoryPersistItem> PersistReader => _queue.Reader;
 
         /// <summary>
         /// Marks the database operational after startup rebuild and starts the Rocks persist pump.
         /// </summary>
-        public void SetOperational()
+        internal void SetOperational()
         {
-            this._operational = true;
-            this._persistPump.Start(this._queue.Reader, this._lifetime.ApplicationStopping);
+            _operational = true;
+            _metrics.SetOperational(true);
+            _persistPump.Start(_queue.Reader, _lifetime.ApplicationStopping, this);
         }
 
         /// <summary>
-        /// Read-only Redis CHECK probe (no writes on wanted).
+        /// Notifies the service that a persist queue item was written to RocksDB.
         /// </summary>
-        /// <param name="messageId">Message ID.</param>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>CHECK result.</returns>
+        internal void NotifyPersistDequeued()
+        {
+            long depth = Interlocked.Decrement(ref _queueDepth);
+            if (depth < 0)
+            {
+                _ = Interlocked.Exchange(ref _queueDepth, 0);
+                depth = 0;
+            }
+
+            _metrics.SetQueueDepth(depth);
+        }
+
+        /// <summary>
+        /// Checks if the message ID is a duplicate.
+        /// </summary>
+        /// <param name="messageId">The message ID to check.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The check result.</returns>
         public ValueTask<HistoryCheckResult> CheckAsync(string messageId, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(messageId);
-            if (!this._operational)
+            if (!_operational)
             {
-                this._metrics.RecordUnavailable();
+                _metrics.RecordUnavailable();
+                LogCheckNotOperational();
                 return new ValueTask<HistoryCheckResult>(HistoryCheckResult.Unavailable);
             }
 
             Span<byte> digest = stackalloc byte[HistoryKeyEncoder.DigestLength];
             if (!HistoryKeyEncoder.TryComputeDigest(messageId, digest))
             {
-                this._metrics.RecordTryAgain();
+                _metrics.RecordTryAgain();
                 return new ValueTask<HistoryCheckResult>(HistoryCheckResult.TryAgainLater);
             }
 
-            DigestKey digestKey = new DigestKey(digest);
+            DigestKey digestKey = new(digest);
             ulong now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            if (this._memory.TryGetDuplicate(in digestKey, now))
+            if (_memory.TryGetDuplicate(in digestKey, now))
             {
-                this._metrics.RecordDuplicate();
+                RecordCheckDuplicate();
                 return new ValueTask<HistoryCheckResult>(HistoryCheckResult.Duplicate);
             }
 
-            return this.CheckRedisProbeAsync(digestKey, now, cancellationToken);
+            return CheckRedisProbeAsync(digestKey, now, cancellationToken);
         }
 
         /// <summary>
-        /// Atomic Redis record on TAKETHIS/IHAVE accept.
+        /// Tries to record the message ID as a TAKETHIS/IHAVE record.
         /// </summary>
-        /// <param name="messageId">Message ID.</param>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Record result.</returns>
+        /// <param name="messageId">The message ID to record.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The record result.</returns>
         public ValueTask<HistoryRecordResult> TryRecordAsync(string messageId, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(messageId);
-            if (!this._operational)
+            if (!_operational)
             {
-                this._metrics.RecordRecordUnavailable();
+                _metrics.RecordRecordUnavailable();
                 return new ValueTask<HistoryRecordResult>(HistoryRecordResult.Unavailable);
             }
 
             Span<byte> digest = stackalloc byte[HistoryKeyEncoder.DigestLength];
             if (!HistoryKeyEncoder.TryComputeDigest(messageId, digest))
             {
-                this._metrics.RecordRecordTryAgain();
+                _metrics.RecordRecordTryAgain();
                 return new ValueTask<HistoryRecordResult>(HistoryRecordResult.TryAgainLater);
             }
 
-            var digestKey = new DigestKey(digest);
+            DigestKey digestKey = new(digest);
             ulong now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            if (this._memory.TryGetDuplicate(in digestKey, now))
+            if (_memory.TryGetDuplicate(in digestKey, now))
             {
-                this._metrics.RecordRecordDuplicate();
+                _metrics.RecordRecordDuplicate();
                 return new ValueTask<HistoryRecordResult>(HistoryRecordResult.Duplicate);
             }
 
-            return this.RecordRedisAsync(digestKey, now, cancellationToken);
+            return RecordRedisAsync(digestKey, now, cancellationToken);
         }
 
         /// <summary>
@@ -197,7 +221,21 @@ namespace Vector.NNTP.HistoryDB.Services
         internal bool TryEnqueuePersist(ReadOnlySpan<byte> digest, ulong expirationEpochSeconds)
         {
             byte[] digestBytes = digest.ToArray();
-            return this._queue.Writer.TryWrite(new HistoryPersistItem(digestBytes, expirationEpochSeconds));
+            if (!_queue.Writer.TryWrite(new HistoryPersistItem(digestBytes, expirationEpochSeconds)))
+            {
+                return false;
+            }
+
+            IncrementQueueDepth();
+            return true;
+        }
+
+        /// <summary>
+        /// Records a terminal CHECK duplicate and increments the total processed counter.
+        /// </summary>
+        private void RecordCheckDuplicate()
+        {
+            _metrics.RecordDuplicate();
         }
 
         /// <summary>
@@ -212,27 +250,34 @@ namespace Vector.NNTP.HistoryDB.Services
             ulong now,
             CancellationToken cancellationToken)
         {
+            _metrics.RecordRedisProbe();
+            using Activity? activity = HistoryDbTelemetry.ActivitySource.StartActivity("history.check.redis");
             try
             {
                 Stopwatch sw = Stopwatch.StartNew();
                 byte[] digestBytes = new byte[HistoryKeyEncoder.DigestLength];
                 digestKey.CopyTo(digestBytes);
-                int code = await this._redis.CheckProbeAsync(digestBytes, now, cancellationToken)
+                int code = await _redis.CheckProbeAsync(digestBytes, now, cancellationToken)
                     .ConfigureAwait(false);
-                this._metrics.RecordRedisMilliseconds(sw.Elapsed.TotalMilliseconds);
-                return this.MapCheckProbeResult(code);
+                _metrics.RecordRedisMilliseconds(sw.Elapsed.TotalMilliseconds);
+                return MapCheckProbeResult(code);
             }
             catch (RedisUnavailableException ex)
             {
-                this._logger.LogWarning(ex, "History Redis unavailable for CHECK");
-                this._metrics.RecordTryAgain();
+                LogCheckRedisUnavailable(ex);
+                _metrics.RecordTryAgain();
                 return HistoryCheckResult.TryAgainLater;
             }
             catch (TimeoutException ex)
             {
-                this._logger.LogWarning(ex, "History Redis timeout for CHECK");
-                this._metrics.RecordTryAgain();
+                LogCheckRedisTimeout(ex);
+                _metrics.RecordTryAgain();
                 return HistoryCheckResult.TryAgainLater;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                _metrics.RecordTryAgain();
+                throw;
             }
         }
 
@@ -248,29 +293,35 @@ namespace Vector.NNTP.HistoryDB.Services
             ulong now,
             CancellationToken cancellationToken)
         {
-            ulong expiration = now + ((ulong)this._options.RememberDays * 86_400UL);
+            ulong expiration = now + ((ulong)_options.RememberDays * 86_400UL);
             int ttl = (int)Math.Max(1, expiration - now);
+            using Activity? activity = HistoryDbTelemetry.ActivitySource.StartActivity("history.record.redis");
             try
             {
                 Stopwatch sw = Stopwatch.StartNew();
                 byte[] digestBytes = new byte[HistoryKeyEncoder.DigestLength];
                 digestKey.CopyTo(digestBytes);
-                int code = await this._redis.TryRecordAsync(digestBytes, now, expiration, ttl, cancellationToken)
+                int code = await _redis.TryRecordAsync(digestBytes, now, expiration, ttl, cancellationToken)
                     .ConfigureAwait(false);
-                this._metrics.RecordRecordRedisMilliseconds(sw.Elapsed.TotalMilliseconds);
-                return this.MapRecordResult(code, digestBytes, expiration, digestKey);
+                _metrics.RecordRecordRedisMilliseconds(sw.Elapsed.TotalMilliseconds);
+                return MapRecordResult(code, digestBytes, expiration, digestKey);
             }
             catch (RedisUnavailableException ex)
             {
-                this._logger.LogWarning(ex, "History Redis unavailable for record");
-                this._metrics.RecordRecordTryAgain();
+                LogRecordRedisUnavailable(ex);
+                _metrics.RecordRecordTryAgain();
                 return HistoryRecordResult.TryAgainLater;
             }
             catch (TimeoutException ex)
             {
-                this._logger.LogWarning(ex, "History Redis timeout for record");
-                this._metrics.RecordRecordTryAgain();
+                LogRecordRedisTimeout(ex);
+                _metrics.RecordRecordTryAgain();
                 return HistoryRecordResult.TryAgainLater;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                _metrics.RecordRecordTryAgain();
+                throw;
             }
         }
 
@@ -284,13 +335,15 @@ namespace Vector.NNTP.HistoryDB.Services
             switch (code)
             {
                 case 1:
-                    this._metrics.RecordDuplicate();
+                    _metrics.RecordRedisDuplicate();
+                    RecordCheckDuplicate();
                     return HistoryCheckResult.Duplicate;
                 case 0:
-                    this._metrics.RecordWanted();
+                    _metrics.RecordRedisWanted();
+                    _metrics.RecordWanted();
                     return HistoryCheckResult.Wanted;
                 default:
-                    this._metrics.RecordTryAgain();
+                    _metrics.RecordTryAgain();
                     return HistoryCheckResult.TryAgainLater;
             }
         }
@@ -312,28 +365,39 @@ namespace Vector.NNTP.HistoryDB.Services
             switch (code)
             {
                 case 1:
-                    this._metrics.RecordRecordDuplicate();
+                    _metrics.RecordRecordDuplicate();
                     return HistoryRecordResult.Duplicate;
                 case 2:
-                    this._metrics.RecordRecordTryAgain();
+                    _metrics.RecordRecordTryAgain();
                     return HistoryRecordResult.TryAgainLater;
                 case 0:
-                    this._memory.InsertOrUpdate(in digestKey, expiration);
-                    var item = new HistoryPersistItem(digest, expiration);
-                    if (!this._queue.Writer.TryWrite(item))
+                    _memory.InsertOrUpdate(in digestKey, expiration);
+                    HistoryPersistItem item = new(digest, expiration);
+                    if (!_queue.Writer.TryWrite(item))
                     {
-                        this._metrics.RecordQueueDropped();
-                        this._logger.LogError(
-                            "History persist queue full; Rocks backfill dropped after Redis record (queue capacity {Capacity})",
-                            this._options.QueueCapacity);
+                        _metrics.RecordQueueDropped();
+                        LogPersistQueueFull(_options.QueueCapacity);
+                    }
+                    else
+                    {
+                        IncrementQueueDepth();
                     }
 
-                    this._metrics.RecordRecorded();
+                    _metrics.RecordRecorded();
                     return HistoryRecordResult.Recorded;
                 default:
-                    this._metrics.RecordRecordTryAgain();
+                    _metrics.RecordRecordTryAgain();
                     return HistoryRecordResult.TryAgainLater;
             }
+        }
+
+        /// <summary>
+        /// Increments the approximate persist queue depth gauge.
+        /// </summary>
+        private void IncrementQueueDepth()
+        {
+            long depth = Interlocked.Increment(ref _queueDepth);
+            _metrics.SetQueueDepth(depth);
         }
     }
 }

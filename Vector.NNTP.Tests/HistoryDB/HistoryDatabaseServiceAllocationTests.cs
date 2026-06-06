@@ -44,6 +44,7 @@ namespace Vector.NNTP.Tests.HistoryDB
             var redis = new HistoryRedisStore(
                 options,
                 new UnreachableRedisAccessor(),
+                metrics,
                 NullLogger<HistoryRedisStore>.Instance);
             string rocksDir = Path.Combine(Path.GetTempPath(), "historydb-alloc-" + Guid.NewGuid().ToString("N"));
             var rocksOptions = Options.Create(new HistoryDbOptions { DbDir = rocksDir, RememberDays = 2, QueueCapacity = 1024 });

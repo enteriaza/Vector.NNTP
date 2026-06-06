@@ -32,7 +32,7 @@ namespace Vector.NNTP.Tests.HistoryDB
                     RocksDb = new HistoryRocksDbOptions
                     {
                         DigestBloomBitsPerKey = HistoryRocksDbOptions.DefaultDigestBloomBitsPerKey,
-                        BlockCacheBytes = 8 * 1024 * 1024,
+                        DigestBlockCacheBytes = 8 * 1024 * 1024,
                         BlockSizeBytes = 4096,
                     },
                 };
@@ -45,6 +45,43 @@ namespace Vector.NNTP.Tests.HistoryDB
                 ulong exp = (ulong)DateTimeOffset.UtcNow.AddDays(2).ToUnixTimeSeconds();
                 store.PutReservation(digest, exp);
                 Assert.That(store.GetDigestExpiration(digest), Is.EqualTo(exp));
+            }
+            finally
+            {
+                DeleteTempDbDir(dir);
+            }
+        }
+
+        /// <summary>
+        /// Ensures distinct per-CF block cache sizes allow open and dual-CF persistence.
+        /// </summary>
+        [Test]
+        public void Open_WithDistinctPerCfBlockCaches_PutReservationSucceeds()
+        {
+            string dir = CreateTempDbDir();
+            try
+            {
+                HistoryDbOptions options = new()
+                {
+                    DbDir = dir,
+                    RememberDays = 2,
+                    RocksDb = new HistoryRocksDbOptions
+                    {
+                        DigestBloomBitsPerKey = HistoryRocksDbOptions.DefaultDigestBloomBitsPerKey,
+                        DigestBlockCacheBytes = 64 * 1024 * 1024,
+                        ExpirationBlockCacheBytes = HistoryRocksDbOptions.DefaultExpirationBlockCacheBytes,
+                    },
+                };
+                using RocksHistoryStore store = new(
+                    Options.Create(options),
+                    new HistoryMetrics(),
+                    NullLogger<RocksHistoryStore>.Instance);
+                Span<byte> digest = stackalloc byte[32];
+                digest.Fill(0xDE);
+                ulong exp = (ulong)DateTimeOffset.UtcNow.AddDays(2).ToUnixTimeSeconds();
+                store.PutReservation(digest, exp);
+                Assert.That(store.GetDigestExpiration(digest), Is.EqualTo(exp));
+                Assert.That(store.CountExpirationKeys(), Is.EqualTo(1));
             }
             finally
             {

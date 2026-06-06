@@ -4,7 +4,7 @@
 // COLD PATH: RocksDB block-based Bloom filter and table factory wiring for HistoryDB column families.
 //
 // Builds per-CF ColumnFamilyOptions with native RocksDB BloomFilterPolicy instances. Native filter and cache handles
-// must outlive the open database; this type owns them until Dispose.
+// must outlive the open database; this type retains them for the database lifetime.
 
 using RocksDbSharp;
 using Vector.NNTP.HistoryDB.Configuration;
@@ -18,18 +18,23 @@ namespace Vector.NNTP.HistoryDB.Rocks
     /// <para><b>Hot path impact:</b> Bloom filters accelerate <c>by_digest</c> point lookups during
     /// <see cref="RocksHistoryStore.PutReservation"/> by skipping SST blocks when a digest is absent. CHECK remains
     /// memory→Redis only; this is a cold-path Rocks optimization.</para>
-    /// <para><b>Digest CF:</b> Fixed 32-byte keys use whole-key filtering with a block-based Bloom policy.</para>
-    /// <para><b>Expiration CF:</b> Iterator-heavy (sweep/rebuild); Bloom is optional and disabled by default.</para>
+    /// <para><b>Digest CF:</b> Fixed 32-byte keys use whole-key filtering with a block-based Bloom policy and a
+    /// dedicated LRU block cache.</para>
+    /// <para><b>Expiration CF:</b> Iterator-heavy (sweep/rebuild); uses a smaller separate block cache; Bloom is optional.</para>
     /// <para><b>Lifetime:</b> <see cref="BloomFilterPolicy"/>, <see cref="Cache"/>, and table factories are retained on
-    /// this instance for the open database because RocksDB keeps native pointers after
-    /// <see cref="RocksDb.Open(DbOptions, string, ColumnFamilies)"/>.</para>
+    /// this instance for the open database because RocksDB keeps native pointers after open.</para>
     /// </remarks>
     internal sealed class RocksHistoryBloomFilterConfigurator
     {
         /// <summary>
-        /// Shared LRU block cache reused across column families when configured.
+        /// LRU block cache for the digest column family.
         /// </summary>
-        private Cache? _blockCache;
+        private Cache? _digestBlockCache;
+
+        /// <summary>
+        /// LRU block cache for the expiration column family.
+        /// </summary>
+        private Cache? _expirationBlockCache;
 
         /// <summary>
         /// Bloom policies kept alive for the database lifetime.
@@ -53,6 +58,8 @@ namespace Vector.NNTP.HistoryDB.Rocks
             BlockBasedTableOptions tableOptions = CreateBlockBasedTableOptions(
                 rocks,
                 rocks.DigestBloomBitsPerKey,
+                rocks.DigestBlockCacheBytes,
+                ref _digestBlockCache,
                 wholeKeyFiltering: true);
             _ = options.SetBlockBasedTableFactory(tableOptions);
             if (rocks.OptimizeDigestFiltersForHits)
@@ -72,14 +79,13 @@ namespace Vector.NNTP.HistoryDB.Rocks
         {
             ArgumentNullException.ThrowIfNull(rocks);
             ColumnFamilyOptions options = CreateBaseColumnFamilyOptions(rocks);
-            if (rocks.ExpirationBloomBitsPerKey > 0)
-            {
-                BlockBasedTableOptions tableOptions = CreateBlockBasedTableOptions(
-                    rocks,
-                    rocks.ExpirationBloomBitsPerKey,
-                    wholeKeyFiltering: true);
-                _ = options.SetBlockBasedTableFactory(tableOptions);
-            }
+            BlockBasedTableOptions tableOptions = CreateBlockBasedTableOptions(
+                rocks,
+                rocks.ExpirationBloomBitsPerKey,
+                rocks.ExpirationBlockCacheBytes,
+                ref _expirationBlockCache,
+                wholeKeyFiltering: true);
+            _ = options.SetBlockBasedTableFactory(tableOptions);
 
             if (rocks.ExpirationMemtablePrefixBloomRatio > 0)
             {
@@ -111,15 +117,19 @@ namespace Vector.NNTP.HistoryDB.Rocks
         }
 
         /// <summary>
-        /// Creates block-based table options with an optional Bloom filter policy.
+        /// Creates block-based table options with an optional Bloom filter policy and per-CF block cache.
         /// </summary>
         /// <param name="rocks">RocksDB tuning snapshot.</param>
         /// <param name="bloomBitsPerKey">Bloom bits per key; zero disables the filter policy.</param>
+        /// <param name="blockCacheBytes">LRU block cache size; zero uses RocksDB default.</param>
+        /// <param name="blockCacheField">Per-CF cache field to initialize once.</param>
         /// <param name="wholeKeyFiltering">Whether to use whole-key Bloom checks (recommended for fixed-width digest keys).</param>
         /// <returns>Configured table factory options.</returns>
         private BlockBasedTableOptions CreateBlockBasedTableOptions(
             HistoryRocksDbOptions rocks,
             int bloomBitsPerKey,
+            long blockCacheBytes,
+            ref Cache? blockCacheField,
             bool wholeKeyFiltering)
         {
             BlockBasedTableOptions tableOptions = new();
@@ -129,10 +139,10 @@ namespace Vector.NNTP.HistoryDB.Rocks
                 _ = tableOptions.SetBlockSize((ulong)rocks.BlockSizeBytes);
             }
 
-            if (rocks.BlockCacheBytes > 0)
+            if (blockCacheBytes > 0)
             {
-                _blockCache ??= Cache.CreateLru((ulong)rocks.BlockCacheBytes);
-                _ = tableOptions.SetBlockCache(_blockCache);
+                blockCacheField ??= Cache.CreateLru((ulong)blockCacheBytes);
+                _ = tableOptions.SetBlockCache(blockCacheField);
             }
 
             if (rocks.CacheIndexAndFilterBlocks)

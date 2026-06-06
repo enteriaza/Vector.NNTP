@@ -9,7 +9,7 @@ namespace Vector.NNTP.HistoryDB.Configuration
     /// <summary>
     /// History database paths, retention, memory cache, rebuild, and RocksDB tuning.
     /// </summary>
-    public sealed class HistoryDbOptions
+    internal sealed class HistoryDbOptions
     {
         /// <summary>
         /// Configuration section name under <c>NntpServer</c>.

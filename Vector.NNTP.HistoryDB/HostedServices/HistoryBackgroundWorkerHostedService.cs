@@ -2,17 +2,18 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Vector.NNTP.HistoryDB.Rocks;
 using Vector.NNTP.HistoryDB.Services;
+using Vector.NNTP.HistoryDB.Telemetry;
 
 namespace Vector.NNTP.HistoryDB.HostedServices
 {
     /// <summary>
     /// Runs periodic RocksDB expiry sweep (CHECK persist is handled by <see cref="HistoryRocksPersistPump"/>).
     /// </summary>
-    internal sealed class HistoryBackgroundWorkerHostedService : BackgroundService
+    internal sealed partial class HistoryBackgroundWorkerHostedService : BackgroundService
     {
         /// <summary>
         /// The history service.
@@ -35,14 +36,14 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         /// <param name="history">History service.</param>
         /// <param name="rocks">Rocks store.</param>
         /// <param name="logger">Logger.</param>
-        public HistoryBackgroundWorkerHostedService(
+        internal HistoryBackgroundWorkerHostedService(
             HistoryDatabaseService history,
             RocksHistoryStore rocks,
             ILogger<HistoryBackgroundWorkerHostedService> logger)
         {
-            this._history = history;
-            this._rocks = rocks;
-            this._logger = logger;
+            _history = history;
+            _rocks = rocks;
+            _logger = logger;
         }
 
         /// <summary>
@@ -50,24 +51,35 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         /// </summary>
         /// <param name="stoppingToken">Stopping token.</param>
         /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        /// <exception cref="OperationCanceledException">Thrown when the stopping token is canceled.</exception>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             using PeriodicTimer timer = new(TimeSpan.FromMinutes(5));
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
-                if (!this._history.IsOperational)
+                if (!_history.IsOperational)
                 {
                     continue;
                 }
 
+                using Activity? activity = HistoryDbTelemetry.ActivitySource.StartActivity("history.rocks.sweep");
+                long sweepStartTimestamp = Stopwatch.GetTimestamp();
                 try
                 {
                     ulong now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                    _ = this._rocks.SweepExpired(now, maxDeletes: 10_000);
+                    int deleted = _rocks.SweepExpired(now, maxDeletes: 10_000);
+                    double elapsedMs = Stopwatch.GetElapsedTime(sweepStartTimestamp).TotalMilliseconds;
+                    _ = (activity?.SetTag("history.sweep.deleted", deleted));
+                    _ = (activity?.SetTag("history.sweep.duration_ms", elapsedMs));
+                    if (deleted > 0)
+                    {
+                        LogSweepCompleted(deleted, elapsedMs);
+                    }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    this._logger.LogError(ex, "History RocksDB sweep failed");
+                    LogSweepFailed(ex);
+                    _ = (activity?.SetStatus(ActivityStatusCode.Error, ex.Message));
                 }
             }
         }
