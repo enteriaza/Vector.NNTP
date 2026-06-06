@@ -40,6 +40,30 @@ namespace Vector.NNTP.HistoryDB.Configuration
                     $"{nameof(HistoryRocksDbOptions.StatsDumpPeriodSec)} requires {nameof(HistoryRocksDbOptions.EnableStatistics)} = true for periodic RocksDB LOG dumps.");
             }
 
+            if (options.RocksDb.DigestBloomBitsPerKey is < 0 or > 30)
+            {
+                return ValidateOptionsResult.Fail(
+                    $"{nameof(HistoryRocksDbOptions.DigestBloomBitsPerKey)} must be between 0 and 30.");
+            }
+
+            if (options.RocksDb.ExpirationBloomBitsPerKey is < 0 or > 30)
+            {
+                return ValidateOptionsResult.Fail(
+                    $"{nameof(HistoryRocksDbOptions.ExpirationBloomBitsPerKey)} must be between 0 and 30.");
+            }
+
+            if (options.RocksDb.BlockSizeBytes is < 0 or > 1_048_576)
+            {
+                return ValidateOptionsResult.Fail(
+                    $"{nameof(HistoryRocksDbOptions.BlockSizeBytes)} must be between 0 and 1048576.");
+            }
+
+            if (options.RocksDb.ExpirationMemtablePrefixBloomRatio is < 0 or > 0.5)
+            {
+                return ValidateOptionsResult.Fail(
+                    $"{nameof(HistoryRocksDbOptions.ExpirationMemtablePrefixBloomRatio)} must be between 0 and 0.5.");
+            }
+
             return ValidateOptionsResult.Success;
         }
     }

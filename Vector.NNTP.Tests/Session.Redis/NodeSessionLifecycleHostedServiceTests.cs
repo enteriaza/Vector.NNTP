@@ -94,6 +94,7 @@ namespace Vector.NNTP.Tests.Session.Redis
             SessionContext survivor = new(
                 "survivor",
                 System.Net.IPAddress.Loopback,
+                "[127.0.0.1:0]",
                 DateTimeOffset.UtcNow,
                 "v1",
                 "nntpd01",

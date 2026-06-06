@@ -72,6 +72,11 @@ namespace Vector.NNTP.HistoryDB.Rocks
         private readonly ColumnFamilyHandle _expirationCf;
 
         /// <summary>
+        /// Owns native Bloom filter and block-cache handles for the database lifetime.
+        /// </summary>
+        private readonly RocksHistoryBloomFilterConfigurator _bloomConfigurator;
+
+        /// <summary>
         /// The expiration key scratch buffer.
         /// </summary>
         private readonly byte[] _expKeyScratch = new byte[HistoryRocksKeyEncoding.ExpirationKeyLength];
@@ -102,56 +107,60 @@ namespace Vector.NNTP.HistoryDB.Rocks
             HistoryMetrics metrics,
             ILogger<RocksHistoryStore> logger)
         {
-            this._options = options.Value;
-            this._metrics = metrics;
-            this._logger = logger;
-            this._dbPath = Path.GetFullPath(this._options.DbDir);
-            Directory.CreateDirectory(this._dbPath);
+            _options = options.Value;
+            _metrics = metrics;
+            _logger = logger;
+            _dbPath = Path.GetFullPath(_options.DbDir);
+            _ = Directory.CreateDirectory(_dbPath);
 
-            HistoryRocksDbOptions rocks = this._options.RocksDb;
-            this._dbOptions = new DbOptions()
+            HistoryRocksDbOptions rocks = _options.RocksDb;
+            _dbOptions = new DbOptions()
                 .SetCreateIfMissing(true)
                 .SetCreateMissingColumnFamilies(true)
                 .SetStatsDumpPeriodSec(rocks.StatsDumpPeriodSec);
             if (rocks.EnableStatistics)
             {
-                _ = this._dbOptions.EnableStatistics();
+                _ = _dbOptions.EnableStatistics();
+            }
+
+            if (rocks.MaxBackgroundJobs > 0)
+            {
+                _ = _dbOptions.SetMaxBackgroundCompactions(rocks.MaxBackgroundJobs);
             }
 
             if (rocks.StatsDumpPeriodSec > 0 && rocks.EnableStatistics)
             {
-                this._logger.LogInformation(
+                _logger.LogInformation(
                     "RocksDB statistics enabled at {DbDir}; native stats_dump_period_sec={StatsDumpPeriodSec}. Host logger snapshots use the same interval (RocksDbSharp 6.2.x may not emit periodic LOG dumps).",
-                    this._dbPath,
+                    _dbPath,
                     rocks.StatsDumpPeriodSec);
             }
             else if (rocks.StatsDumpPeriodSec > 0 && !rocks.EnableStatistics)
             {
-                this._logger.LogWarning(
+                _logger.LogWarning(
                     "RocksDB StatsDumpPeriodSec is {StatsDumpPeriodSec} but EnableStatistics is false; stats snapshots will not include ticker data",
                     rocks.StatsDumpPeriodSec);
             }
 
-            ColumnFamilyOptions cfOptions = new ColumnFamilyOptions();
-            if (rocks.WriteBufferBytes > 0)
+            _bloomConfigurator = new RocksHistoryBloomFilterConfigurator();
+            ColumnFamilyOptions digestCfOptions = _bloomConfigurator.CreateDigestColumnFamilyOptions(rocks);
+            ColumnFamilyOptions expirationCfOptions = _bloomConfigurator.CreateExpirationColumnFamilyOptions(rocks);
+            ColumnFamilies families = new()
             {
-                _ = cfOptions.SetWriteBufferSize((ulong)rocks.WriteBufferBytes);
-            }
-
-            if (rocks.MaxWriteBufferNumber > 0)
-            {
-                _ = cfOptions.SetMaxWriteBufferNumber(rocks.MaxWriteBufferNumber);
-            }
-
-            ColumnFamilies families = new ColumnFamilies
-            {
-                { CfByDigest, cfOptions },
-                { CfByExpiration, cfOptions },
+                { CfByDigest, digestCfOptions },
+                { CfByExpiration, expirationCfOptions },
             };
 
-            this._db = RocksDb.Open(this._dbOptions, this._dbPath, families);
-            this._digestCf = this._db.GetColumnFamily(CfByDigest);
-            this._expirationCf = this._db.GetColumnFamily(CfByExpiration);
+            _db = RocksDb.Open(_dbOptions, _dbPath, families);
+            _logger.LogInformation(
+                "RocksDB opened at {DbDir} with digest BloomBitsPerKey={DigestBloomBitsPerKey}, expiration BloomBitsPerKey={ExpirationBloomBitsPerKey}, BlockCacheBytes={BlockCacheBytes}, BlockSizeBytes={BlockSizeBytes}.",
+                _dbPath,
+                rocks.DigestBloomBitsPerKey,
+                rocks.ExpirationBloomBitsPerKey,
+                rocks.BlockCacheBytes,
+                rocks.BlockSizeBytes);
+            _digestCf = _db.GetColumnFamily(CfByDigest);
+            _expirationCf = _db.GetColumnFamily(CfByExpiration);
         }
 
         /// <summary>
@@ -161,10 +170,10 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <param name="expirationEpochSeconds">New expiration epoch.</param>
         public void PutReservation(ReadOnlySpan<byte> digest, ulong expirationEpochSeconds)
         {
-            ObjectDisposedException.ThrowIf(this._disposed, this);
+            ObjectDisposedException.ThrowIf(_disposed, this);
             ulong oldExp = 0;
             bool hadOld = false;
-            byte[]? existing = this._db.Get(digest.ToArray(), this._digestCf);
+            byte[]? existing = _db.Get(digest.ToArray(), _digestCf);
             if (existing is { Length: HistoryRocksKeyEncoding.DigestValueLength })
             {
                 oldExp = HistoryRocksKeyEncoding.DecodeDigestValue(existing);
@@ -175,18 +184,18 @@ namespace Vector.NNTP.HistoryDB.Rocks
                 }
             }
 
-            using WriteBatch batch = new WriteBatch();
+            using WriteBatch batch = new();
             if (hadOld)
             {
-                HistoryRocksKeyEncoding.EncodeExpirationKey(oldExp, digest, this._expKeyScratch);
-                batch.Delete(this._expKeyScratch, this._expirationCf);
+                HistoryRocksKeyEncoding.EncodeExpirationKey(oldExp, digest, _expKeyScratch);
+                _ = batch.Delete(_expKeyScratch, _expirationCf);
             }
 
-            HistoryRocksKeyEncoding.EncodeExpirationKey(expirationEpochSeconds, digest, this._expKeyScratch);
-            batch.Put(this._expKeyScratch, TombstoneValue, this._expirationCf);
-            HistoryRocksKeyEncoding.EncodeDigestValue(expirationEpochSeconds, this._digestValueScratch);
-            batch.Put(digest.ToArray(), this._digestValueScratch, this._digestCf);
-            this._db.Write(batch);
+            HistoryRocksKeyEncoding.EncodeExpirationKey(expirationEpochSeconds, digest, _expKeyScratch);
+            _ = batch.Put(_expKeyScratch, TombstoneValue, _expirationCf);
+            HistoryRocksKeyEncoding.EncodeDigestValue(expirationEpochSeconds, _digestValueScratch);
+            _ = batch.Put(digest.ToArray(), _digestValueScratch, _digestCf);
+            _db.Write(batch);
         }
 
         /// <summary>
@@ -197,16 +206,16 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <returns>Number of keys deleted.</returns>
         public int SweepExpired(ulong nowEpochSeconds, int maxDeletes)
         {
-            ObjectDisposedException.ThrowIf(this._disposed, this);
+            ObjectDisposedException.ThrowIf(_disposed, this);
             long start = Environment.TickCount64;
             int deleted = 0;
-            using Iterator it = this._db.NewIterator(this._expirationCf);
-            it.SeekToFirst();
-            using WriteBatch batch = new WriteBatch();
+            using Iterator it = _db.NewIterator(_expirationCf);
+            _ = it.SeekToFirst();
+            using WriteBatch batch = new();
             while (it.Valid() && deleted < maxDeletes)
             {
                 ReadOnlySpan<byte> key = it.Key();
-                if (!HistoryRocksKeyEncoding.TryDecodeExpirationKey(key, out ulong exp, this._digestKeyScratch))
+                if (!HistoryRocksKeyEncoding.TryDecodeExpirationKey(key, out ulong exp, _digestKeyScratch))
                 {
                     break;
                 }
@@ -216,18 +225,18 @@ namespace Vector.NNTP.HistoryDB.Rocks
                     break;
                 }
 
-                batch.Delete(key.ToArray(), this._expirationCf);
-                batch.Delete(this._digestKeyScratch, this._digestCf);
+                _ = batch.Delete(key.ToArray(), _expirationCf);
+                _ = batch.Delete(_digestKeyScratch, _digestCf);
                 deleted++;
-                it.Next();
+                _ = it.Next();
             }
 
             if (deleted > 0)
             {
-                this._db.Write(batch);
+                _db.Write(batch);
             }
 
-            this._metrics.RecordSweepMilliseconds(Environment.TickCount64 - start);
+            _metrics.RecordSweepMilliseconds(Environment.TickCount64 - start);
             return deleted;
         }
 
@@ -245,47 +254,47 @@ namespace Vector.NNTP.HistoryDB.Rocks
             Func<IReadOnlyList<(byte[] ExpirationKey, ulong Expiration, byte[] Digest)>, CancellationToken, Task> processBatch,
             CancellationToken cancellationToken)
         {
-            ObjectDisposedException.ThrowIf(this._disposed, this);
+            ObjectDisposedException.ThrowIf(_disposed, this);
             long processed = 0;
-            int batchSize = this._options.RebuildRedisBatchSize;
-            List<(byte[] ExpirationKey, ulong Expiration, byte[] Digest)> batch = new List<(byte[] ExpirationKey, ulong Expiration, byte[] Digest)>(batchSize);
-            using Iterator it = this._db.NewIterator(this._expirationCf);
+            int batchSize = _options.RebuildRedisBatchSize;
+            List<(byte[] ExpirationKey, ulong Expiration, byte[] Digest)> batch = new(batchSize);
+            using Iterator it = _db.NewIterator(_expirationCf);
             if (resumeKey is { Length: HistoryRocksKeyEncoding.ExpirationKeyLength })
             {
-                it.Seek(resumeKey);
-                it.Next();
+                _ = it.Seek(resumeKey);
+                _ = it.Next();
             }
             else
             {
-                it.SeekToFirst();
+                _ = it.SeekToFirst();
             }
 
             while (it.Valid())
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ReadOnlySpan<byte> key = it.Key();
-                if (!HistoryRocksKeyEncoding.TryDecodeExpirationKey(key, out ulong exp, this._digestKeyScratch))
+                if (!HistoryRocksKeyEncoding.TryDecodeExpirationKey(key, out ulong exp, _digestKeyScratch))
                 {
                     break;
                 }
 
                 if (exp <= nowEpochSeconds)
                 {
-                    it.Next();
+                    _ = it.Next();
                     continue;
                 }
 
-                batch.Add((key.ToArray(), exp, this._digestKeyScratch.ToArray()));
+                batch.Add((key.ToArray(), exp, _digestKeyScratch.ToArray()));
                 processed++;
                 if (batch.Count >= batchSize)
                 {
                     long batchStart = Environment.TickCount64;
                     await processBatch(batch, cancellationToken).ConfigureAwait(false);
-                    this._metrics.RecordRebuildBatchMilliseconds(Environment.TickCount64 - batchStart);
+                    _metrics.RecordRebuildBatchMilliseconds(Environment.TickCount64 - batchStart);
                     batch.Clear();
                 }
 
-                it.Next();
+                _ = it.Next();
             }
 
             if (batch.Count > 0)
@@ -305,32 +314,32 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <returns>Entries loaded.</returns>
         public int PreloadReverse(ulong nowEpochSeconds, Action<byte[], ulong> insert, long byteBudget)
         {
-            ObjectDisposedException.ThrowIf(this._disposed, this);
+            ObjectDisposedException.ThrowIf(_disposed, this);
             long start = Environment.TickCount64;
             long bytes = 0;
             int loaded = 0;
-            const int entryBytes = HistoryKeyEncoder.DigestLength + 8;
-            using Iterator it = this._db.NewIterator(this._expirationCf);
-            it.SeekToLast();
+            const int EntryBytes = HistoryKeyEncoder.DigestLength + 8;
+            using Iterator it = _db.NewIterator(_expirationCf);
+            _ = it.SeekToLast();
             while (it.Valid() && bytes < byteBudget)
             {
                 ReadOnlySpan<byte> key = it.Key();
-                if (!HistoryRocksKeyEncoding.TryDecodeExpirationKey(key, out ulong exp, this._digestKeyScratch))
+                if (!HistoryRocksKeyEncoding.TryDecodeExpirationKey(key, out ulong exp, _digestKeyScratch))
                 {
                     break;
                 }
 
                 if (exp > nowEpochSeconds)
                 {
-                    insert(this._digestKeyScratch.ToArray(), exp);
-                    bytes += entryBytes;
+                    insert([.. _digestKeyScratch], exp);
+                    bytes += EntryBytes;
                     loaded++;
                 }
 
-                it.Prev();
+                _ = it.Prev();
             }
 
-            this._metrics.RecordPreloadMilliseconds(Environment.TickCount64 - start);
+            _metrics.RecordPreloadMilliseconds(Environment.TickCount64 - start);
             return loaded;
         }
 
@@ -339,13 +348,13 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// </summary>
         public void Dispose()
         {
-            if (this._disposed)
+            if (_disposed)
             {
                 return;
             }
 
-            this._disposed = true;
-            this._db.Dispose();
+            _disposed = true;
+            _db.Dispose();
         }
 
         /// <summary>
@@ -356,27 +365,27 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// </remarks>
         internal void EmitStatsSnapshot()
         {
-            ObjectDisposedException.ThrowIf(this._disposed, this);
-            if (!this._options.RocksDb.EnableStatistics)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!_options.RocksDb.EnableStatistics)
             {
                 return;
             }
 
-            string dbStats = this._db.GetProperty("rocksdb.stats");
+            string dbStats = _db.GetProperty("rocksdb.stats");
             if (!string.IsNullOrWhiteSpace(dbStats))
             {
-                this._logger.LogInformation(
+                _logger.LogInformation(
                     "RocksDB rocksdb.stats snapshot ({DbDir}):\n{Stats}",
-                    this._dbPath,
+                    _dbPath,
                     dbStats);
             }
 
-            string tickerStats = this._dbOptions.GetStatisticsString();
+            string tickerStats = _dbOptions.GetStatisticsString();
             if (!string.IsNullOrWhiteSpace(tickerStats))
             {
-                this._logger.LogInformation(
+                _logger.LogInformation(
                     "RocksDB ticker statistics snapshot ({DbDir}):\n{Stats}",
-                    this._dbPath,
+                    _dbPath,
                     tickerStats);
             }
         }
@@ -388,8 +397,8 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <returns>Expiration epoch when present; otherwise <see langword="null"/>.</returns>
         internal ulong? GetDigestExpiration(ReadOnlySpan<byte> digest)
         {
-            ObjectDisposedException.ThrowIf(this._disposed, this);
-            byte[]? existing = this._db.Get(digest.ToArray(), this._digestCf);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            byte[]? existing = _db.Get(digest.ToArray(), _digestCf);
             return existing is { Length: HistoryRocksKeyEncoding.DigestValueLength }
                 ? HistoryRocksKeyEncoding.DecodeDigestValue(existing)
                 : null;
@@ -401,9 +410,9 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <returns>Key count from iterator.</returns>
         internal int CountExpirationKeys()
         {
-            ObjectDisposedException.ThrowIf(this._disposed, this);
+            ObjectDisposedException.ThrowIf(_disposed, this);
             int count = 0;
-            using Iterator it = this._db.NewIterator(this._expirationCf);
+            using Iterator it = _db.NewIterator(_expirationCf);
             for (it.SeekToFirst(); it.Valid(); it.Next())
             {
                 count++;
