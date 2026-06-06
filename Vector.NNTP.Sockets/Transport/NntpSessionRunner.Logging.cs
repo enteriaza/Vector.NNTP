@@ -38,5 +38,28 @@ namespace Vector.NNTP.Sockets.Transport
             Exception exception,
             string sessionId,
             string peerId);
+
+        /// <summary>
+        /// Logs an expected client disconnect during the command loop (for example reset after rejecting offers).
+        /// </summary>
+        /// <param name="logger">Logger instance.</param>
+        /// <param name="exception">Disconnect exception.</param>
+        /// <param name="sessionId">Session identifier.</param>
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Client disconnect SessionId={SessionId}")]
+        public static partial void SessionClientDisconnect(ILogger logger, Exception exception, string sessionId);
+
+        /// <summary>
+        /// Logs an unhandled session-loop failure before emitting <c>503 Program fault</c>.
+        /// </summary>
+        /// <param name="logger">Logger instance.</param>
+        /// <param name="exception">Unhandled exception.</param>
+        /// <param name="sessionId">Session identifier.</param>
+        /// <param name="transitPeerId">Transit peer identifier when the connection is a trusted peer; otherwise empty.</param>
+        [LoggerMessage(Level = LogLevel.Error, Message = "Session program fault SessionId={SessionId} TransitPeerId={TransitPeerId}")]
+        public static partial void SessionProgramFault(
+            ILogger logger,
+            Exception exception,
+            string sessionId,
+            string transitPeerId);
     }
 }

@@ -166,16 +166,31 @@ namespace Vector.NNTP.Sockets.Transport
             {
                 teardownReason = cancellationToken.IsCancellationRequested ? "shutdown" : "idle_timeout";
             }
-            catch (Exception)
+            catch (IOException ex)
+            {
+                teardownReason = "disconnect";
+                NntpSessionRunnerLog.SessionClientDisconnect(_logger, ex, context.SessionId);
+            }
+            catch (SocketException ex)
+            {
+                teardownReason = "disconnect";
+                NntpSessionRunnerLog.SessionClientDisconnect(_logger, ex, context.SessionId);
+            }
+            catch (Exception ex)
             {
                 teardownReason = "fault";
+                NntpSessionRunnerLog.SessionProgramFault(
+                    _logger,
+                    ex,
+                    context.SessionId,
+                    context.TransitPeerId ?? string.Empty);
                 try
                 {
                     await session.Writer.WritePreencodedAsync(NntpPreencodedResponses.ProgramFault503, CancellationToken.None).ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception writeEx)
                 {
-                    // Best-effort 503; connection may already be closed.
+                    NntpSessionRunnerLog.SessionClientDisconnect(_logger, writeEx, context.SessionId);
                 }
             }
             finally
