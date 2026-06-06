@@ -1,36 +1,43 @@
 // <copyright file="ServiceCollectionExtensions.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
+// ServiceCollectionExtensions.cs -- DI entry points for MySQL-backed NNTP authentication.
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Vector.NNTP.Auth.MySql.Configuration;
+using Vector.NNTP.Auth.MySql.Credentials;
+using Vector.NNTP.Auth.MySql.HostedServices;
+using Vector.NNTP.Auth.MySql.Records;
+using Vector.NNTP.Auth.MySql.Telemetry;
 using Vector.NNTP.Session.Accounts;
 using Vector.NNTP.Sockets.Authentication;
 
-namespace Vector.NNTP.Auth.MySql
+namespace Vector.NNTP.Auth.MySql.DependencyInjection
 {
     /// <summary>
     /// Extension methods for wiring MySQL-backed NNTP authentication into a host.
     /// </summary>
+    /// <remarks>
+    /// <para><b>Host contract:</b> Call after <c>AddNntpSocketsReader</c> or <c>AddNntpSocketsTransit</c> so MySQL
+    /// credential services replace the development authentication stubs from the sockets assembly.</para>
+    /// </remarks>
     public static class ServiceCollectionExtensions
     {
         /// <summary>
         /// Registers MySQL-backed NNTP authentication when a connection string is available on the host configuration.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// Uses the connection string named <c>MainDB</c>.
-        /// </para>
-        /// <para>
-        /// <b>Fatal startup behavior:</b> MySQL authentication depends on the main database connection. If <c>MainDB</c>
-        /// is missing or blank, this method throws and host startup fails.
-        /// </para>
+        /// <para>Uses the connection string named <c>MainDB</c>.</para>
+        /// <para><b>Fatal startup behavior:</b> Missing or blank <c>MainDB</c> throws and host startup fails.</para>
         /// </remarks>
         /// <param name="services">Service collection.</param>
         /// <param name="configuration">Root host configuration.</param>
         /// <returns>The service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> or <paramref name="configuration"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when <c>ConnectionStrings:MainDB</c> is missing or blank.</exception>
         public static IServiceCollection AddNntpMySqlAuthFromHostConfiguration(
             this IServiceCollection services,
             IConfiguration configuration)
@@ -46,29 +53,13 @@ namespace Vector.NNTP.Auth.MySql
         }
 
         /// <summary>
-        /// Registers MySQL-backed <see cref="INntpCredentialValidator"/> and <see cref="ICramMd5CredentialStore"/> services.
+        /// Registers MySQL-backed <see cref="INntpCredentialValidator"/> and SASL credential store services.
         /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Configuration:</b> The MySQL command timeouts and pooling policy are supplied through the connection string
-        /// (for example <c>DefaultCommandTimeout</c>). There is no additional options section bound by this method.
-        /// </para>
-        /// <para>
-        /// <b>Registration:</b> <see cref="MySqlAuthOptions"/> is registered as a singleton with the validated connection
-        /// string, and <see cref="INntpUserRecordStore"/> is registered as
-        /// <c>AddSingleton&lt;INntpUserRecordStore, MySqlUserRecordStore&gt;</c> so the container constructs the store by
-        /// type rather than a factory delegate.
-        /// </para>
-        /// <para>
-        /// <b>Integration:</b> Hosts should call this after <c>AddNntpSocketsReader</c> or <c>AddNntpSocketsTransit</c>.
-        /// The MySQL services will override the development <see cref="INntpCredentialValidator"/> stub registered by the
-        /// sockets assembly while leaving other stubs (such as storage) in place.
-        /// </para>
-        /// </remarks>
         /// <param name="services">Service collection.</param>
         /// <param name="connectionString">MySQL connection string for the <c>nntpusers</c> table.</param>
         /// <returns>The service collection for chaining.</returns>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="connectionString"/> is null or whitespace.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="connectionString"/> is invalid.</exception>
         public static IServiceCollection AddNntpMySqlAuth(this IServiceCollection services, string connectionString)
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -77,12 +68,32 @@ namespace Vector.NNTP.Auth.MySql
             _ = services.RemoveAll<INntpSaslAccountAuthenticator>();
             _ = services.RemoveAll<ICramMd5CredentialStore>();
             _ = services.RemoveAll<IScramCredentialStore>();
+            _ = services.RemoveAll<INntpUserRecordStore>();
+            _ = services.RemoveAll<MySqlUserRecordStore>();
+            _ = services.RemoveAll<MySqlUserRecordCache>();
+            _ = services.RemoveAll<AuthMySqlMetrics>();
 
             _ = services.AddSingleton(new MySqlAuthOptions(connectionString));
-            _ = services.AddSingleton<INntpUserRecordStore, MySqlUserRecordStore>();
-            _ = services.AddSingleton(static (IServiceProvider sp) => new MySqlNntpCredentialValidator(
+            _ = services.AddSingleton(static _ => new AuthMySqlMetrics());
+            _ = services.AddSingleton(static sp =>
+            {
+                MySqlAuthOptions options = sp.GetRequiredService<MySqlAuthOptions>();
+                return new MySqlUserRecordCache(options.AuthCacheTtl);
+            });
+            _ = services.AddSingleton(static sp => new MySqlUserRecordStore(
+                sp.GetRequiredService<MySqlAuthOptions>(),
+                sp.GetRequiredService<ILogger<MySqlUserRecordStore>>(),
+                sp.GetRequiredService<AuthMySqlMetrics>()));
+            _ = services.AddSingleton<INntpUserRecordStore>(static sp => new CachingMySqlUserRecordStore(
+                sp.GetRequiredService<MySqlUserRecordStore>(),
+                sp.GetRequiredService<MySqlUserRecordCache>(),
+                sp.GetRequiredService<AuthMySqlMetrics>(),
+                sp.GetRequiredService<ILogger<CachingMySqlUserRecordStore>>()));
+            _ = services.AddSingleton(static sp => new MySqlNntpCredentialValidator(
                 sp.GetRequiredService<INntpUserRecordStore>(),
                 sp.GetRequiredService<IAccountKeyNormalizer>(),
+                sp.GetRequiredService<MySqlUserRecordCache>(),
+                sp.GetRequiredService<AuthMySqlMetrics>(),
                 sp.GetRequiredService<ILogger<MySqlNntpCredentialValidator>>()));
             _ = services.AddSingleton<INntpCredentialValidator>(static sp => sp.GetRequiredService<MySqlNntpCredentialValidator>());
             _ = services.AddSingleton<INntpSaslAccountAuthenticator>(static sp => sp.GetRequiredService<MySqlNntpCredentialValidator>());
@@ -92,6 +103,7 @@ namespace Vector.NNTP.Auth.MySql
             _ = services.AddSingleton<IScramCredentialStore>(static sp => new MySqlScramCredentialStore(
                 sp.GetRequiredService<INntpUserRecordStore>(),
                 sp.GetRequiredService<ILogger<MySqlScramCredentialStore>>()));
+            _ = services.AddHostedService<MySqlAuthConnectivityValidator>();
 
             return services;
         }

@@ -2,7 +2,7 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-namespace Vector.NNTP.Auth.MySql
+namespace Vector.NNTP.Auth.MySql.Records
 {
     /// <summary>
     /// Materialised NNTP user record from the backing MySQL <c>nntpusers</c> table.
@@ -110,7 +110,7 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <remarks>
         /// Zero indicates SCRAM material is not provisioned for the account; positive values are required before
-        /// <see cref="MySqlScramCredentialStore"/> will return stored keys.
+        /// <see cref="Credentials.MySqlScramCredentialStore"/> will return stored keys.
         /// </remarks>
         public int ScramIterations { get; }
 

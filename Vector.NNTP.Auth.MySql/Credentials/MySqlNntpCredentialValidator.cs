@@ -2,33 +2,33 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+using System.Buffers;
 using System.Net;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
+using Vector.NNTP.Auth.MySql.Configuration;
+using Vector.NNTP.Auth.MySql.Records;
+using Vector.NNTP.Auth.MySql.Telemetry;
 using Vector.NNTP.Session.Accounts;
-using Vector.NNTP.Session.Coordination;
 using Vector.NNTP.Session.Policy;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Utilities.Diagnostics;
 using Vector.NNTP.Utilities.Encoding;
 
-namespace Vector.NNTP.Auth.MySql
+namespace Vector.NNTP.Auth.MySql.Credentials
 {
     /// <summary>
     /// MySQL-backed implementation of <see cref="INntpCredentialValidator"/> and <see cref="INntpSaslAccountAuthenticator"/>
     /// that validates credentials and policy against rows in the <c>nntpusers</c> table.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>Password handling:</b> The underlying <see cref="INntpUserRecordStore"/> executes a parameterised query that
-    /// decrypts <c>account_pass</c> using <c>AES_DECRYPT</c> and casts it to <c>CHAR</c>. This validator compares the
-    /// supplied password with the decrypted value using a constant-time ASCII comparison. Passwords must be US-ASCII;
-    /// non-ASCII input is rejected without comparison.
-    /// </para>
-    /// <para>
-    /// <b>Session admission:</b> Credential validation returns <see cref="NntpSessionPolicy"/> only. Distributed admission
-    /// is performed by <see cref="NntpAuthenticationService"/> via <see cref="INntpSessionCoordinator"/>.
-    /// </para>
+    /// <para><b>Outcomes:</b> Invalid credentials return <see cref="NntpAuthResult.InvalidCredentials"/>; backend failures
+    /// return <see cref="NntpAuthResult.TransientFailure"/> so the sockets layer can answer with 503.</para>
+    /// <para><b>Burst cache:</b> Successful AUTHINFO and SASL completions populate <see cref="MySqlUserRecordCache"/> with
+    /// AES-256-GCM protected snapshots and a short TTL for concurrent duplicate logons.</para>
+    /// <para><b>SASL staging:</b> Credential stores stash records in <see cref="MySqlUserRecordSaslCache"/> for the
+    /// completion step; <see cref="AbandonSaslExchange"/> clears that slot on auth reset.</para>
+    /// <para><b>Password compare:</b> <see cref="PasswordEquals"/> uses constant-time ASCII comparison for AUTHINFO paths.</para>
     /// </remarks>
     public sealed partial class MySqlNntpCredentialValidator : INntpCredentialValidator, INntpSaslAccountAuthenticator
     {
@@ -43,6 +43,16 @@ namespace Vector.NNTP.Auth.MySql
         private readonly IAccountKeyNormalizer _accountKeyNormalizer;
 
         /// <summary>
+        /// Successful-authentication cache for burst deduplication.
+        /// </summary>
+        private readonly MySqlUserRecordCache _authCache;
+
+        /// <summary>
+        /// Metrics for validation outcomes.
+        /// </summary>
+        private readonly AuthMySqlMetrics _metrics;
+
+        /// <summary>
         /// Logger for backend/auth failures.
         /// </summary>
         private readonly ILogger<MySqlNntpCredentialValidator> _logger;
@@ -52,27 +62,37 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <param name="recordStore">Backing user record store.</param>
         /// <param name="accountKeyNormalizer">Account key normalizer for policy construction.</param>
+        /// <param name="authCache">Successful-authentication cache.</param>
+        /// <param name="metrics">Metrics for validation outcomes.</param>
         /// <param name="logger">Logger for backend/auth failures.</param>
+        /// <exception cref="ArgumentNullException">Thrown when any parameter is null.</exception>
         internal MySqlNntpCredentialValidator(
             INntpUserRecordStore recordStore,
             IAccountKeyNormalizer accountKeyNormalizer,
+            MySqlUserRecordCache authCache,
+            AuthMySqlMetrics metrics,
             ILogger<MySqlNntpCredentialValidator> logger)
         {
             _recordStore = recordStore ?? throw new ArgumentNullException(nameof(recordStore));
             _accountKeyNormalizer = accountKeyNormalizer ?? throw new ArgumentNullException(nameof(accountKeyNormalizer));
+            _authCache = authCache ?? throw new ArgumentNullException(nameof(authCache));
+            _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         /// <summary>
-        /// Completes SASL authentication for the given account.
+        /// Completes a SASL account authentication.
         /// </summary>
-        /// <param name="mechanism">The mechanism to use for authentication.</param>
-        /// <param name="username">The username to authenticate.</param>
-        /// <param name="clientIp">The client IP address.</param>
+        /// <param name="mechanism">The SASL mechanism used for authentication.</param>
+        /// <param name="username">The username of the authenticated account.</param>
+        /// <param name="clientIp">The IP address of the client.</param>
         /// <param name="isTls">Whether the connection is TLS-protected.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
         /// <returns>The authentication result.</returns>
-        /// <exception cref="ArgumentException">Thrown when the mechanism is not supported.</exception>
+        /// <exception cref="ArgumentException">Thrown when the SASL mechanism is unsupported.</exception>
+        /// <remarks>
+        /// <see cref="OperationCanceledException"/> propagates when the backing user lookup is cancelled.
+        /// </remarks>
         public async ValueTask<NntpAuthResult> CompleteSaslAccountAsync(
             string mechanism,
             string username,
@@ -99,24 +119,32 @@ namespace Vector.NNTP.Auth.MySql
         }
 
         /// <summary>
-        /// Abandons the SASL exchange and clears the cached user record.
+        /// Abandons a SASL exchange.
         /// </summary>
+        /// <remarks>
+        /// <para>Clears the per-exchange <see cref="MySqlUserRecordSaslCache"/> slot and logs the abandoned exchange.</para>
+        /// <para>Idempotent: safe to call when no SASL exchange is in progress.</para>
+        /// </remarks>
         public void AbandonSaslExchange()
         {
+            SaslExchangeAbandoned(_logger);
             MySqlUserRecordSaslCache.Clear();
         }
 
         /// <summary>
-        /// Validates the password for the given account.
+        /// Validates a password for AUTHINFO PASS or SASL password mechanisms against the MySQL user store.
         /// </summary>
-        /// <param name="mechanism">The mechanism to use for authentication.</param>
-        /// <param name="username">The username to authenticate.</param>
-        /// <param name="password">The password to authenticate.</param>
-        /// <param name="clientIp">The client IP address.</param>
+        /// <param name="mechanism">Authentication mechanism label (for example AUTHINFO PASS or SASL PLAIN).</param>
+        /// <param name="username">Username supplied by the client.</param>
+        /// <param name="password">Password supplied by the client.</param>
+        /// <param name="clientIp">Client IP address.</param>
         /// <param name="isTls">Whether the connection is TLS-protected.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The authentication result.</returns>
-        /// <exception cref="ArgumentException">Thrown when the mechanism is not supported.</exception>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Authentication outcome and optional session policy.</returns>
+        /// <remarks>
+        /// A null or whitespace <paramref name="username"/> yields <see cref="NntpAuthResult.InvalidCredentials"/> rather
+        /// than throwing. <see cref="OperationCanceledException"/> propagates when the backing lookup is cancelled.
+        /// </remarks>
         public async ValueTask<NntpAuthResult> ValidatePasswordAsync(
             string mechanism,
             string username,
@@ -133,36 +161,54 @@ namespace Vector.NNTP.Auth.MySql
             string clientIpText = FormatClientIp(clientIp);
             AuthenticationFinalizing(_logger, mechanism, username, clientIpText, isTls);
 
+            using Activity? activity = AuthMySqlTelemetry.ActivitySource.StartActivity(
+                "auth.mysql.validate.password",
+                ActivityKind.Internal);
+
             try
             {
-                MySqlUserRecord? record = await _recordStore
-                    .TryGetUserAsync(username, cancellationToken)
-                    .ConfigureAwait(false);
+                byte[] fingerprint = MySqlUserRecordCache.ComputePasswordFingerprint(password);
+                if (_authCache.TryGet(username, fingerprint, out MySqlUserRecord? record))
+                {
+                    _metrics.RecordLookup("cache_hit");
+                }
+                else
+                {
+                    record = await _recordStore
+                        .TryGetUserAsync(username, cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
                 if (record is null)
                 {
                     AuthenticationRejectedUserNotFound(_logger, mechanism, username, clientIpText);
+                    _metrics.RecordValidate("invalid_credentials", MapMechanismMetric(mechanism));
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!record.IsEnabled)
                 {
                     AuthenticationRejectedAccountDisabled(_logger, mechanism, username, clientIpText);
+                    _metrics.RecordValidate("invalid_credentials", MapMechanismMetric(mechanism));
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!record.AllowAuthPlain)
                 {
                     AuthenticationRejectedInvalidCredentials(_logger, mechanism, username, clientIpText);
+                    _metrics.RecordValidate("invalid_credentials", MapMechanismMetric(mechanism));
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!PasswordEquals(record.AccountPassword, password))
                 {
                     AuthenticationRejectedInvalidCredentials(_logger, mechanism, username, clientIpText);
+                    _metrics.RecordValidate("invalid_credentials", MapMechanismMetric(mechanism));
                     return NntpAuthResult.InvalidCredentials();
                 }
 
+                CacheSuccessfulAuth(username, fingerprint, record);
+                _metrics.RecordValidate("success", MapMechanismMetric(mechanism));
                 return Succeed(mechanism, record, clientIp);
             }
             catch (OperationCanceledException)
@@ -171,7 +217,11 @@ namespace Vector.NNTP.Auth.MySql
             }
             catch (Exception ex)
             {
-                AuthenticationBackendFailed(_logger, ex, mechanism, username);
+                AuthMySqlFailureReason reason = AuthMySqlFailureClassifier.Classify(ex);
+                AuthenticationBackendFailed(_logger, ex, mechanism, username, reason);
+                AuthenticationTransientFailure(_logger, mechanism, username, reason);
+                _metrics.RecordValidate("transient_failure", MapMechanismMetric(mechanism));
+                _ = (activity?.SetStatus(ActivityStatusCode.Error, reason.ToString()));
                 return NntpAuthResult.TransientFailure();
             }
         }
@@ -181,13 +231,8 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <param name="storedPassword">Decrypted password from the data store.</param>
         /// <param name="suppliedPassword">Password supplied by the client.</param>
-        /// <returns><see langword="true"/> when the passwords match.</returns>
-        /// <remarks>
-        /// <para><b>Charset:</b> Both operands must be pure US-ASCII. Non-ASCII input returns <see langword="false"/>
-        /// without throwing.</para>
-        /// <para><b>Encoding:</b> Uses <see cref="EncodingUtilities.AsciiToSpan"/> (BCL SIMD on x64) into zero-padded
-        /// compare buffers; no intermediate heap byte arrays for password material.</para>
-        /// </remarks>
+        /// <returns><see langword="true"/> when the passwords match; <see langword="false"/> when either argument is null,
+        /// non-ASCII, or the values differ.</returns>
         internal bool PasswordEquals(string storedPassword, string suppliedPassword)
         {
             if (storedPassword is null || suppliedPassword is null)
@@ -243,9 +288,22 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <param name="clientIp">Client IP address.</param>
         /// <returns>Normalised textual IP representation.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="clientIp"/> is null.</exception>
         private static string FormatClientIp(IPAddress clientIp)
         {
             return FormattingUtilities.NormaliseAddress(clientIp).ToString();
+        }
+
+        /// <summary>
+        /// Maps mechanism labels to bounded metric mechanism names.
+        /// </summary>
+        /// <param name="mechanism">Authentication mechanism label.</param>
+        /// <returns>Bounded metric label.</returns>
+        private static string MapMechanismMetric(string mechanism)
+        {
+            return string.Equals(mechanism, NntpAuthMechanisms.SaslScramSha256, StringComparison.Ordinal)
+                ? "sasl_scram"
+                : string.Equals(mechanism, NntpAuthMechanisms.SaslCramMd5, StringComparison.Ordinal) ? "sasl_cram" : "authinfo";
         }
 
         /// <summary>
@@ -287,10 +345,19 @@ namespace Vector.NNTP.Auth.MySql
             string clientIpText = FormatClientIp(clientIp);
             AuthenticationFinalizing(_logger, mechanism, username, clientIpText, isTls);
 
+            using Activity? activity = AuthMySqlTelemetry.ActivitySource.StartActivity(
+                "auth.mysql.validate.sasl",
+                ActivityKind.Internal);
+
             try
             {
-                if (!MySqlUserRecordSaslCache.TryTake(username, out MySqlUserRecord? record))
+                if (MySqlUserRecordSaslCache.TryTake(username, out MySqlUserRecord? record))
                 {
+                    SaslCacheHit(_logger, username);
+                }
+                else
+                {
+                    SaslCacheMiss(_logger, username);
                     record = await _recordStore
                         .TryGetUserAsync(username, cancellationToken)
                         .ConfigureAwait(false);
@@ -299,21 +366,26 @@ namespace Vector.NNTP.Auth.MySql
                 if (record is null)
                 {
                     AuthenticationRejectedUserNotFound(_logger, mechanism, username, clientIpText);
+                    _metrics.RecordValidate("invalid_credentials", MapMechanismMetric(mechanism));
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!record.IsEnabled)
                 {
                     AuthenticationRejectedAccountDisabled(_logger, mechanism, username, clientIpText);
+                    _metrics.RecordValidate("invalid_credentials", MapMechanismMetric(mechanism));
                     return NntpAuthResult.InvalidCredentials();
                 }
 
                 if (!isMechanismPermitted(record))
                 {
                     AuthenticationRejectedInvalidCredentials(_logger, mechanism, username, clientIpText);
+                    _metrics.RecordValidate("invalid_credentials", MapMechanismMetric(mechanism));
                     return NntpAuthResult.InvalidCredentials();
                 }
 
+                CacheSuccessfulAuth(username, MySqlUserRecordCache.UsernameOnlyFingerprint, record);
+                _metrics.RecordValidate("success", MapMechanismMetric(mechanism));
                 return Succeed(mechanism, record, clientIp);
             }
             catch (OperationCanceledException)
@@ -322,13 +394,31 @@ namespace Vector.NNTP.Auth.MySql
             }
             catch (Exception ex)
             {
-                AuthenticationBackendFailed(_logger, ex, mechanism, username);
+                AuthMySqlFailureReason reason = AuthMySqlFailureClassifier.Classify(ex);
+                AuthenticationBackendFailed(_logger, ex, mechanism, username, reason);
+                AuthenticationTransientFailure(_logger, mechanism, username, reason);
+                _metrics.RecordValidate("transient_failure", MapMechanismMetric(mechanism));
+                _ = (activity?.SetStatus(ActivityStatusCode.Error, reason.ToString()));
                 return NntpAuthResult.TransientFailure();
             }
             finally
             {
                 MySqlUserRecordSaslCache.Clear();
             }
+        }
+
+        /// <summary>
+        /// Caches a successful authentication record for burst deduplication.
+        /// </summary>
+        /// <param name="username">Authenticated username.</param>
+        /// <param name="fingerprint">Credential fingerprint or username-only sentinel.</param>
+        /// <param name="record">Validated user record.</param>
+        /// <remarks>
+        /// The cache encrypts password and SCRAM key material at rest and expires entries within a short TTL window.
+        /// </remarks>
+        private void CacheSuccessfulAuth(string username, byte[] fingerprint, MySqlUserRecord record)
+        {
+            _authCache.Put(username, fingerprint, record);
         }
 
         /// <summary>

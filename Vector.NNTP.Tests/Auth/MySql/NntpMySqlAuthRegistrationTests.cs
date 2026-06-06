@@ -5,7 +5,9 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Vector.NNTP.Auth.MySql;
+using Vector.NNTP.Auth.MySql.Credentials;
+using Vector.NNTP.Auth.MySql.DependencyInjection;
+using Vector.NNTP.Auth.MySql.Records;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Hosting;
 
@@ -44,11 +46,10 @@ namespace Vector.NNTP.Tests.Auth.MySql
         }
 
         /// <summary>
-        /// Verifies <c>ConnectionStrings:MainDB</c> registers <see cref="MySqlUserRecordStore"/> by type for
-        /// <see cref="INntpUserRecordStore"/>.
+        /// Verifies <c>ConnectionStrings:MainDB</c> registers the caching record store for <see cref="INntpUserRecordStore"/>.
         /// </summary>
         [Test]
-        public void AddNntpMySqlAuthFromHostConfiguration_RegistersUserRecordStoreByType()
+        public void AddNntpMySqlAuthFromHostConfiguration_RegistersCachingUserRecordStore()
         {
             IConfiguration configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
@@ -63,7 +64,8 @@ namespace Vector.NNTP.Tests.Auth.MySql
 
             using ServiceProvider provider = services.BuildServiceProvider();
             INntpUserRecordStore store = provider.GetRequiredService<INntpUserRecordStore>();
-            Assert.That(store, Is.InstanceOf<MySqlUserRecordStore>());
+            Assert.That(store, Is.InstanceOf<CachingMySqlUserRecordStore>());
+            Assert.That(provider.GetService<MySqlUserRecordStore>(), Is.Not.Null);
         }
 
         /// <summary>

@@ -2,7 +2,7 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-namespace Vector.NNTP.Auth.MySql
+namespace Vector.NNTP.Auth.MySql.Records
 {
     /// <summary>
     /// Stashes a user record fetched during SASL credential lookup so completion can avoid a second database round-trip.
@@ -12,8 +12,8 @@ namespace Vector.NNTP.Auth.MySql
     /// Concurrent SASL attempts for the same username on different connections remain independent.</para>
     /// <para><b>Lifecycle:</b> <see cref="TryTake"/> clears the slot after a successful username match so records are not
     /// reused across unrelated authentications. <see cref="Clear"/> is invoked from
-    /// <see cref="MySqlNntpCredentialValidator.AbandonSaslExchange"/> (session auth reset) and from a <c>finally</c> block
-    /// after <see cref="MySqlNntpCredentialValidator.CompleteSaslAccountAsync"/> so a prior <see cref="Set"/> does not
+    /// <see cref="Credentials.MySqlNntpCredentialValidator.AbandonSaslExchange"/> (session auth reset) and from a <c>finally</c> block
+    /// after <see cref="Credentials.MySqlNntpCredentialValidator.CompleteSaslAccountAsync"/> so a prior <see cref="Set"/> does not
     /// linger when the exchange aborts before <see cref="TryTake"/> runs.</para>
     /// </remarks>
     internal static class MySqlUserRecordSaslCache
@@ -27,6 +27,7 @@ namespace Vector.NNTP.Auth.MySql
         /// Stores a user record for the current SASL exchange after a successful credential-store lookup.
         /// </summary>
         /// <param name="record">Record materialised from the backing store.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="record"/> is null.</exception>
         internal static void Set(MySqlUserRecord record)
         {
             ArgumentNullException.ThrowIfNull(record);

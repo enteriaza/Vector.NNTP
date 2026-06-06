@@ -4,10 +4,12 @@
 // COLD PATH: ICramMd5CredentialStore implementation backed by the MySQL nntpusers table.
 
 using Microsoft.Extensions.Logging;
+using Vector.NNTP.Auth.MySql.Configuration;
+using Vector.NNTP.Auth.MySql.Records;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Utilities.Encoding;
 
-namespace Vector.NNTP.Auth.MySql
+namespace Vector.NNTP.Auth.MySql.Credentials
 {
     /// <summary>
     /// MySQL-backed implementation of <see cref="ICramMd5CredentialStore"/> that reuses the NNTP user record query.
@@ -39,6 +41,7 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <param name="recordStore">Backing user record store.</param>
         /// <param name="logger">Logger instance.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="recordStore"/> or <paramref name="logger"/> is null.</exception>
         internal MySqlCramMd5CredentialStore(
             INntpUserRecordStore recordStore,
             ILogger<MySqlCramMd5CredentialStore> logger)
@@ -53,6 +56,11 @@ namespace Vector.NNTP.Auth.MySql
         /// <param name="username">Username supplied by the client.</param>
         /// <param name="secret">Shared secret derived from the stored password, when available.</param>
         /// <returns><see langword="true"/> when a secret was retrieved; otherwise <see langword="false"/>.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> is null or empty.</exception>
+        /// <exception cref="NntpCredentialStoreTransientException">Thrown when the backing store fails due to a backend error.</exception>
+        /// <remarks>
+        /// <see cref="OperationCanceledException"/> propagates when the backing lookup is cancelled.
+        /// </remarks>
         public bool TryGetCramSecret(string username, out ReadOnlyMemory<byte> secret)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);
@@ -61,11 +69,7 @@ namespace Vector.NNTP.Auth.MySql
 
             try
             {
-                // ICramMd5CredentialStore is synchronous; CancellationToken.None is required by that contract (see type remarks).
-                MySqlUserRecord? record = _recordStore
-                    .TryGetUserAsync(username, CancellationToken.None)
-                    .GetAwaiter()
-                    .GetResult();
+                MySqlUserRecord? record = _recordStore.TryGetUser(username);
                 if (record is null)
                 {
                     CramLookupUserNotFound(_logger, username);
@@ -89,7 +93,7 @@ namespace Vector.NNTP.Auth.MySql
 
                 if (!EncodingUtilities.IsAscii(record.AccountPassword.AsSpan()))
                 {
-                    CramLookupNotPermitted(_logger, username);
+                    CramLookupNonAsciiPassword(_logger, username);
                     secret = ReadOnlyMemory<byte>.Empty;
                     return false;
                 }
@@ -100,11 +104,17 @@ namespace Vector.NNTP.Auth.MySql
                 CramLookupSucceeded(_logger, username);
                 return true;
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
-                CramLookupFailed(_logger, ex, username);
-                secret = ReadOnlyMemory<byte>.Empty;
-                return false;
+                AuthMySqlFailureReason reason = AuthMySqlFailureClassifier.Classify(ex);
+                CramLookupFailed(_logger, ex, username, reason);
+                throw new NntpCredentialStoreTransientException(
+                    "MySQL CRAM-MD5 credential lookup failed due to a backend error.",
+                    ex);
             }
         }
     }

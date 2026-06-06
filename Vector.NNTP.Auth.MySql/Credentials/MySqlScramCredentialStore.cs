@@ -4,9 +4,11 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
+using Vector.NNTP.Auth.MySql.Configuration;
+using Vector.NNTP.Auth.MySql.Records;
 using Vector.NNTP.Sockets.Authentication;
 
-namespace Vector.NNTP.Auth.MySql
+namespace Vector.NNTP.Auth.MySql.Credentials
 {
     /// <summary>
     /// MySQL-backed implementation of <see cref="IScramCredentialStore"/> that supplies SCRAM-SHA-256 stored keys
@@ -22,16 +24,9 @@ namespace Vector.NNTP.Auth.MySql
     /// is <c>Y</c> and all SCRAM columns are present.
     /// </para>
     /// <para>
-    /// <b>I/O model:</b> The underlying <see cref="INntpUserRecordStore"/> is asynchronous because it performs database I/O.
-    /// The SCRAM contract (<see cref="IScramCredentialStore"/>) is synchronous, so this implementation blocks on
-    /// <c>TryGetUserAsync</c> during credential lookup on the connection's command-loop context. Authentication volume is
-    /// negligible relative to article traffic on an NNTP server, so this is acceptable today; if SASL ever becomes hot-path,
-    /// introduce an async lookup contract (for example <c>ValueTask&lt;ScramStoredCredential?&gt;</c>) end-to-end instead of
-    /// deepening synchronous waits here.
-    /// </para>
-    /// <para>
-    /// <b>Cancellation:</b> <see cref="IScramCredentialStore"/> exposes no token, so lookups use
-    /// <see cref="CancellationToken.None"/> and cannot be aborted when the client disconnects mid-query.
+    /// <b>I/O model:</b> The synchronous <see cref="IScramCredentialStore"/> contract is satisfied via
+    /// <see cref="INntpUserRecordStore.TryGetUser"/>, which performs synchronous MySqlConnector I/O on the connection
+    /// command-loop context. Authentication is control-plane traffic; ADO.NET connection and command timeouts bound wait time.
     /// </para>
     /// <para>
     /// <b>Cache contract:</b> A successful lookup calls <see cref="MySqlUserRecordSaslCache.Set"/>; hosts must call
@@ -56,6 +51,7 @@ namespace Vector.NNTP.Auth.MySql
         /// </summary>
         /// <param name="recordStore">Backing user record store.</param>
         /// <param name="logger">Logger instance.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="recordStore"/> or <paramref name="logger"/> is null.</exception>
         internal MySqlScramCredentialStore(
             INntpUserRecordStore recordStore,
             ILogger<MySqlScramCredentialStore> logger)
@@ -70,6 +66,11 @@ namespace Vector.NNTP.Auth.MySql
         /// <param name="username">Username to lookup.</param>
         /// <param name="credential">The resulting SCRAM credential, or <see langword="null"/> if the lookup failed.</param>
         /// <returns><see langword="true"/> if a credential was found and returned; <see langword="false"/> otherwise.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> is null or empty.</exception>
+        /// <exception cref="NntpCredentialStoreTransientException">Thrown when the backing store fails due to a backend error.</exception>
+        /// <remarks>
+        /// <see cref="OperationCanceledException"/> propagates when the backing lookup is cancelled.
+        /// </remarks>
         public bool TryGetScramCredential(string username, [NotNullWhen(true)] out ScramStoredCredential? credential)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);
@@ -78,11 +79,7 @@ namespace Vector.NNTP.Auth.MySql
 
             try
             {
-                // IScramCredentialStore is synchronous; CancellationToken.None is required by that contract (see type remarks).
-                MySqlUserRecord? record = _recordStore
-                    .TryGetUserAsync(username, CancellationToken.None)
-                    .GetAwaiter()
-                    .GetResult();
+                MySqlUserRecord? record = _recordStore.TryGetUser(username);
                 if (record is null)
                 {
                     ScramLookupUserNotFound(_logger, username);
@@ -123,11 +120,17 @@ namespace Vector.NNTP.Auth.MySql
                 ScramLookupSucceeded(_logger, username, record.ScramIterations);
                 return true;
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
-                ScramLookupFailed(_logger, ex, username);
-                credential = null;
-                return false;
+                AuthMySqlFailureReason reason = AuthMySqlFailureClassifier.Classify(ex);
+                ScramLookupFailed(_logger, ex, username, reason);
+                throw new NntpCredentialStoreTransientException(
+                    "MySQL SCRAM credential lookup failed due to a backend error.",
+                    ex);
             }
         }
     }

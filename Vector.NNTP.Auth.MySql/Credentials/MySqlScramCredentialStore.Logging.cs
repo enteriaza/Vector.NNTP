@@ -3,12 +3,13 @@
 // </copyright>
 
 using Microsoft.Extensions.Logging;
+using Vector.NNTP.Auth.MySql.Configuration;
 
-namespace Vector.NNTP.Auth.MySql
+namespace Vector.NNTP.Auth.MySql.Credentials
 {
-    /// <summary>
+    /// <remarks>
     /// Source-generated <see cref="LoggerMessageAttribute"/> helpers for <see cref="MySqlScramCredentialStore"/>.
-    /// </summary>
+    /// </remarks>
     public sealed partial class MySqlScramCredentialStore
     {
         /// <summary>
@@ -19,7 +20,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 320,
             Level = LogLevel.Debug,
-            Message = "MySQL SASL SCRAM-SHA-256 credential lookup started for user '{Username}'")]
+            Message = "Auth.MySql SASL SCRAM-SHA-256 credential lookup started for user '{Username}'")]
         private static partial void ScramLookupStarted(ILogger logger, string username);
 
         /// <summary>
@@ -30,7 +31,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 321,
             Level = LogLevel.Debug,
-            Message = "MySQL SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': user not found")]
+            Message = "Auth.MySql SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': user not found")]
         private static partial void ScramLookupUserNotFound(ILogger logger, string username);
 
         /// <summary>
@@ -41,7 +42,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 322,
             Level = LogLevel.Warning,
-            Message = "MySQL SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': account disabled")]
+            Message = "Auth.MySql SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': account disabled")]
         private static partial void ScramLookupAccountDisabled(ILogger logger, string username);
 
         /// <summary>
@@ -52,7 +53,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 323,
             Level = LogLevel.Debug,
-            Message = "MySQL SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': SCRAM-SHA-256 not permitted")]
+            Message = "Auth.MySql SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': SCRAM-SHA-256 not permitted")]
         private static partial void ScramLookupNotPermitted(ILogger logger, string username);
 
         /// <summary>
@@ -63,7 +64,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 324,
             Level = LogLevel.Warning,
-            Message = "MySQL SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': SCRAM material missing")]
+            Message = "Auth.MySql SASL SCRAM-SHA-256 credential lookup rejected for user '{Username}': SCRAM material missing")]
         private static partial void ScramLookupMaterialMissing(ILogger logger, string username);
 
         /// <summary>
@@ -75,7 +76,7 @@ namespace Vector.NNTP.Auth.MySql
         [LoggerMessage(
             EventId = 325,
             Level = LogLevel.Debug,
-            Message = "MySQL SASL SCRAM-SHA-256 credential lookup succeeded for user '{Username}' (Iterations={Iterations})")]
+            Message = "Auth.MySql SASL SCRAM-SHA-256 credential lookup succeeded for user '{Username}' (Iterations={Iterations})")]
         private static partial void ScramLookupSucceeded(ILogger logger, string username, int iterations);
 
         /// <summary>
@@ -84,10 +85,15 @@ namespace Vector.NNTP.Auth.MySql
         /// <param name="logger">Logger instance.</param>
         /// <param name="ex">Underlying exception.</param>
         /// <param name="username">Username being looked up.</param>
+        /// <param name="failureReason">Classified failure reason.</param>
         [LoggerMessage(
             EventId = 326,
             Level = LogLevel.Error,
-            Message = "MySQL SASL SCRAM-SHA-256 credential lookup failed for user '{Username}' due to backend error")]
-        private static partial void ScramLookupFailed(ILogger logger, Exception ex, string username);
+            Message = "Auth.MySql SASL SCRAM-SHA-256 credential lookup failed for user '{Username}' due to backend error (Reason={FailureReason})")]
+        private static partial void ScramLookupFailed(
+            ILogger logger,
+            Exception ex,
+            string username,
+            AuthMySqlFailureReason failureReason);
     }
 }

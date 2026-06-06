@@ -2,7 +2,7 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
-using Vector.NNTP.Auth.MySql;
+using Vector.NNTP.Auth.MySql.DependencyInjection;
 using Vector.NNTP.HistoryDB.DependencyInjection;
 using Vector.NNTP.Session.Redis.DependencyInjection;
 using Vector.NNTP.Sockets.Hosting;

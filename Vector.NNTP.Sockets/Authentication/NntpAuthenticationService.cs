@@ -379,11 +379,29 @@ namespace Vector.NNTP.Sockets.Authentication
             }
 
             string clientFirst = DecodeMaybeBase64(initial);
-            if (!ScramMechanismBegin.TryGetUsername(clientFirst, out string? username) ||
-                !_scramStore.TryGetScramCredential(username, out ScramStoredCredential? cred))
+            if (!ScramMechanismBegin.TryGetUsername(clientFirst, out string? username))
             {
                 ResetAuth(session);
                 await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            ScramStoredCredential cred;
+            try
+            {
+                if (!_scramStore.TryGetScramCredential(username, out ScramStoredCredential? scramCredential))
+                {
+                    ResetAuth(session);
+                    await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                cred = scramCredential;
+            }
+            catch (NntpCredentialStoreTransientException)
+            {
+                ResetAuth(session);
+                await session.Writer.WriteLineAsync("503 Temporary authentication failure", cancellationToken).ConfigureAwait(false);
                 return;
             }
 
@@ -419,8 +437,24 @@ namespace Vector.NNTP.Sockets.Authentication
             }
 
             string user = decoded[..space];
-            if (!_cramStore.TryGetCramSecret(user, out ReadOnlyMemory<byte> secret) ||
-                !CramMd5Mechanism.Verify(user, decoded, challenge, secret.Span))
+            ReadOnlyMemory<byte> secret;
+            try
+            {
+                if (!_cramStore.TryGetCramSecret(user, out secret))
+                {
+                    ResetAuth(session);
+                    await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+            }
+            catch (NntpCredentialStoreTransientException)
+            {
+                ResetAuth(session);
+                await session.Writer.WriteLineAsync("503 Temporary authentication failure", cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            if (!CramMd5Mechanism.Verify(user, decoded, challenge, secret.Span))
             {
                 ResetAuth(session);
                 await session.Writer.WriteLineAsync("481 Authentication failed", cancellationToken).ConfigureAwait(false);
