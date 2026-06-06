@@ -35,7 +35,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="pool"/> or <paramref name="options"/> is
     /// <see langword="null"/>.</exception>
-    public sealed partial class RabbitMqBackgroundScaler(
+    internal sealed partial class RabbitMqBackgroundScaler(
         ConnectionPool pool,
         IOptions<RabbitMQOptions> options,
         ILogger<RabbitMqBackgroundScaler> logger) : BackgroundService

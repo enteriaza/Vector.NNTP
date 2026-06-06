@@ -17,7 +17,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>Thread safety:</b> Written only from pool/supervisor paths that own the connection entry; read concurrently
     /// from slot acquisition and health aggregation.</para>
     /// </remarks>
-    public enum PooledConnectionState
+    internal enum PooledConnectionState
     {
         /// <summary>
         /// TCP/AMQP handshake in progress; not yet eligible for publisher slots.

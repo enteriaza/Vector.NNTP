@@ -55,7 +55,8 @@ namespace Vector.NNTP.MessageBus.Connections
     /// call with structured logging for all three outcomes: success (negotiated parameters), cancellation (expected
     /// during host shutdown), and failure (all endpoints unreachable).</para>
     ///
-    /// <para><b>Caller:</b> <see cref="CreateConnectionAsync"/> in <c>RabbitMqConnectionFactory.cs</c> delegates here after
+    /// <para><b>Caller:</b> <see cref="IRabbitMqConnectionFactory.CreateConnectionAsync(RabbitMQOptions, CancellationToken)"/>
+    /// in <c>RabbitMqConnectionFactory.cs</c> delegates here after
     /// constructing the <see cref="ConnectionFactory"/> and <see cref="AmqpTcpEndpoint"/> list.  The
     /// <see cref="Stopwatch.GetTimestamp"/> is captured <em>after</em> factory construction so the elapsed time
     /// reflects only the async TCP/AMQP handshake.</para>
@@ -82,7 +83,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>SIMD applicability:</b> Not applicable.  No data processing or vectorisable computation
     /// paths.</para>
     /// </remarks>
-    public sealed partial class RabbitMqConnectionFactory
+    internal sealed partial class RabbitMqConnectionFactory
     {
 
         #region Private Methods -- Connection Attempt

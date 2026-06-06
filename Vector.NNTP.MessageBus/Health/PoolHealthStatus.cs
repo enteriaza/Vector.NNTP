@@ -24,7 +24,7 @@ namespace Vector.NNTP.MessageBus.Health
     ///   <item><description><see cref="Unhealthy"/> — insufficient connected capacity; fail readiness or shed load.</description></item>
     /// </list>
     /// </remarks>
-    public enum PoolHealthStatus
+    internal enum PoolHealthStatus
     {
         /// <summary>
         /// Connected fraction meets healthy SLO; pool can serve publisher and consumer workloads at full capacity.

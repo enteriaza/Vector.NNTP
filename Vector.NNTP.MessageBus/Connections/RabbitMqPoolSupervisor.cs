@@ -36,7 +36,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="pool"/>, <paramref name="health"/>, or
     /// <paramref name="options"/> is <see langword="null"/>.</exception>
-    public sealed partial class RabbitMqPoolSupervisor(
+    internal sealed partial class RabbitMqPoolSupervisor(
         ConnectionPool pool,
         IRabbitMqPoolHealth health,
         IOptions<RabbitMQOptions> options,
@@ -59,7 +59,9 @@ namespace Vector.NNTP.MessageBus.Connections
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             await _pool.StartAsync(cancellationToken).ConfigureAwait(false);
-            _health.UpdateFromPool(_pool, _options.Value);
+            RabbitMQOptions options = _options.Value;
+            _health.UpdateFromPool(_pool, options);
+            LogMessageBusInitialized(options.Hosts.Length, options.MinConnections, options.MaxConnections, options.EnableSsl, true);
             LogSupervisorStarted();
         }
 

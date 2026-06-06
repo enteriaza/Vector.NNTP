@@ -16,6 +16,9 @@
 //   RabbitMQOptions.WarnOnDuplicateHosts        -- duplicate host advisory (56).
 //   RabbitMQOptions.ValidateHostProductionSafety -- IPv6 link-local (57), private range (58) advisories.
 //
+// EventId range allocation:
+//   validator: 50-59.
+//
 // Log level policy (aligned with CONTRIBUTING.md Log Levels):
 //   Information -- Successful validation summary (startup banner).
 //   Warning     -- Port/SSL mismatch, duplicate hosts, private/reserved IP ranges, IPv6 link-local.
@@ -42,7 +45,7 @@ namespace Vector.NNTP.MessageBus.Configuration
     /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="RabbitMQOptions"/>.
     /// </summary>
     /// <remarks>
-    /// <para><b>Event ID range:</b> 53--58 -- reserved for <see cref="RabbitMQOptions"/>.</para>
+    /// <para><b>Event ID range:</b> 50-59 -- reserved for <see cref="RabbitMQOptions"/> validation.</para>
     ///
     /// <para><b>Pattern:</b> Each method is a <see langword="static"/> <see langword="partial"/> method annotated
     /// with <see cref="LoggerMessageAttribute"/> and an explicit <see cref="ILogger"/> parameter.  The source

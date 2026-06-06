@@ -15,7 +15,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <remarks>
     /// <para><b>Event ID range:</b> 1--2 -- reserved for <see cref="RabbitMqPoolFlowControlMonitor"/>.</para>
     /// </remarks>
-    public sealed partial class RabbitMqPoolFlowControlMonitor
+    internal sealed partial class RabbitMqPoolFlowControlMonitor
     {
 
         #region Logging -- Flow Control (1-2)

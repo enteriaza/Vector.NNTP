@@ -36,7 +36,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="pool"/>, <paramref name="health"/>, or
     /// <paramref name="options"/> is <see langword="null"/>.</exception>
-    public sealed partial class RabbitMqPoolFlowControlMonitor(
+    internal sealed partial class RabbitMqPoolFlowControlMonitor(
         ConnectionPool pool,
         IRabbitMqPoolHealth health,
         IOptions<RabbitMQOptions> options,

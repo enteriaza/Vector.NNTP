@@ -35,7 +35,7 @@ namespace Vector.NNTP.MessageBus.Configuration
     /// is <see langword="true"/>, production
     /// host safety checks are enabled. When <see langword="null"/>, production checks are skipped.
     /// </param>
-    public sealed class RabbitMQOptionsValidator(ILogger<RabbitMQOptionsValidator> logger, IHostEnvironment? hostEnvironment = null)
+    internal sealed class RabbitMQOptionsValidator(ILogger<RabbitMQOptionsValidator> logger, IHostEnvironment? hostEnvironment = null)
         : IValidateOptions<RabbitMQOptions>
     {
         /// <summary>

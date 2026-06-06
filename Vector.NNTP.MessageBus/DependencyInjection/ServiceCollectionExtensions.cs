@@ -14,6 +14,7 @@ using Vector.NNTP.MessageBus.Configuration;
 using Vector.NNTP.MessageBus.Connections;
 using Vector.NNTP.MessageBus.Consuming;
 using Vector.NNTP.MessageBus.Health;
+using Vector.NNTP.MessageBus.Metrics;
 using Vector.NNTP.MessageBus.Publishing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -49,12 +50,14 @@ namespace Vector.NNTP.MessageBus.DependencyInjection
 
         public static IServiceCollection AddMessageBus(this IServiceCollection services)
         {
-            services.TryAddSingleton<RabbitMqConnectionFactory>();
+            services.TryAddSingleton<IValidateOptions<RabbitMQOptions>, RabbitMQOptionsValidator>();
+            services.TryAddSingleton<IRabbitMqConnectionFactory, RabbitMqConnectionFactory>();
             services.TryAddSingleton<HostHealthTracker>();
             services.TryAddSingleton<ConnectionPool>();
             services.TryAddSingleton<IRabbitMqPoolHealth, RabbitMqPoolHealth>();
             services.TryAddSingleton<IRabbitMqPublisherPool, RabbitMqPublisherPool>();
             services.TryAddSingleton<IRabbitMqConsumerManager, RabbitMqConsumerManager>();
+            services.TryAddSingleton(static _ => new MessageBusMetrics());
             _ = services.AddHostedService<RabbitMqBackgroundScaler>();
             _ = services.AddHostedService<RabbitMqPoolFlowControlMonitor>();
             _ = services.AddHostedService<RabbitMqPoolSupervisor>();

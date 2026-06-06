@@ -25,7 +25,7 @@ namespace Vector.NNTP.MessageBus.Health
     /// <para><b>Stability:</b> <see cref="Status"/> is a snapshot at the time of the last
     /// <see cref="UpdateFromPool"/> — not a live stream of per-connection events.</para>
     /// </remarks>
-    public interface IRabbitMqPoolHealth
+    internal interface IRabbitMqPoolHealth
     {
         /// <summary>
         /// Current aggregate status after the most recent <see cref="UpdateFromPool"/>.

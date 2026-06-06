@@ -40,13 +40,13 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="connectionFactory"/> or <paramref name="options"/> is
     /// <see langword="null"/>.</exception>
-    public sealed partial class ConnectionPool(
-        RabbitMqConnectionFactory connectionFactory,
+    internal sealed partial class ConnectionPool(
+        IRabbitMqConnectionFactory connectionFactory,
         IOptions<RabbitMQOptions> options,
         ILogger<ConnectionPool> logger) : IAsyncDisposable
     {
         /// <summary>Factory used to open new AMQP TCP connections.</summary>
-        private readonly RabbitMqConnectionFactory _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        private readonly IRabbitMqConnectionFactory _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
 
         /// <summary>Validated RabbitMQ options snapshot.</summary>
         private readonly IOptions<RabbitMQOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -157,9 +157,12 @@ namespace Vector.NNTP.MessageBus.Connections
                     }
                     catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                     {
+                        if (logger.IsEnabled(LogLevel.Debug))
+                            LogSlotWaitCanceled();
                         break;
                     }
                 }
+                LogSlotLeaseTimeout(options.ChannelLeaseTimeout);
                 throw new MessageBusLeaseTimeoutException(
                     $"Timed out waiting for a publisher slot after {options.ChannelLeaseTimeout}.");
             }

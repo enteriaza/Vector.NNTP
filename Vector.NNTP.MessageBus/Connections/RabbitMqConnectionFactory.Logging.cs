@@ -30,7 +30,7 @@
 //                                         LogRecoveryFailed, LogRecoveryFatal, LogConsumerTagChanged,
 //                                         LogEventHandlersAttached
 //
-// Event ID allocation:
+// Event ID allocation (factory: 100-119):
 //   100  Connecting                       -- Connection attempt parameters (Information)
 //   101  Connected                        -- Connection established with negotiated parameters (Information)
 //   102  ConnectionCancelled              -- Connection attempt cancelled (Information)
@@ -81,8 +81,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="RabbitMqConnectionFactory"/>.
     /// </summary>
     /// <remarks>
-    /// <para><b>Event ID ranges:</b> 100-105 for connection lifecycle events; 110-119 for connection event
-    /// handler events.</para>
+    /// <para><b>Event ID range:</b> 100-119 for connection lifecycle and handler events.</para>
     ///
     /// <para><b>Pattern:</b> Each method is a <see langword="private"/> <see langword="partial"/> method annotated
     /// with <see cref="LoggerMessageAttribute"/>.  The source generator emits the implementation at compile time,
@@ -104,7 +103,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>SIMD applicability:</b> Not applicable.  Log method stubs are compile-time generated; no runtime
     /// data processing occurs in these declarations.</para>
     /// </remarks>
-    public sealed partial class RabbitMqConnectionFactory
+    internal sealed partial class RabbitMqConnectionFactory
     {
 
         #region Logging -- Connection Lifecycle (100-105)
@@ -113,8 +112,8 @@ namespace Vector.NNTP.MessageBus.Connections
         /// Logs the connection attempt parameters at <see cref="LogLevel.Information"/>.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="CreateConnectionAsync"/> -- immediately before factory and endpoint
-        /// construction.</para>
+        /// <para><b>Caller:</b> <see cref="IRabbitMqConnectionFactory"/> usage from the connection pool -- immediately
+        /// before factory and endpoint construction.</para>
         ///
         /// <para><b>Security:</b> Logs only transport parameters.
         /// <see cref="Configuration.RabbitMQOptions.Username"/> and

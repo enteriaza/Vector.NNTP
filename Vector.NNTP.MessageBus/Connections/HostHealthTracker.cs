@@ -25,7 +25,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>Thread safety:</b> Dictionary access is serialized with a lock; per-host counters use
     /// <see cref="Interlocked"/>.</para>
     /// </remarks>
-    public sealed class HostHealthTracker
+    internal sealed class HostHealthTracker
     {
         /// <summary>Bound RabbitMQ options snapshot.</summary>
         private readonly IOptions<RabbitMQOptions> _options;

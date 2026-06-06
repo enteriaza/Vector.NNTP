@@ -12,7 +12,7 @@
 //   consistent with the last UpdateFromPool call.
 //
 // Logging:
-//   Emits OpenTelemetry counters via MessageBusMeters.RecordHealth; no ILogger on this type.
+//   Emits OpenTelemetry counters via MessageBusMetrics.RecordHealth; no ILogger on this type.
 
 using Vector.NNTP.MessageBus.Configuration;
 using Vector.NNTP.MessageBus.Connections;
@@ -36,14 +36,32 @@ namespace Vector.NNTP.MessageBus.Health
     /// first <see cref="UpdateFromPool"/> after <see cref="RabbitMqPoolSupervisor.StartAsync"/>.</para>
     ///
     /// <para><b>Observability:</b> Each transition records a bounded OpenTelemetry counter via
-    /// <see cref="MessageBusMeters.RecordHealth(string)"/> with a lowercase status label.</para>
+    /// <see cref="MessageBusMetrics.RecordHealth(string)"/> with a lowercase status label.</para>
     ///
     /// <para><b>Thread safety:</b> No synchronisation; callers should invoke <see cref="UpdateFromPool"/> from a single
     /// logical updater (supervisor + flow-control monitor) or accept last-write wins on concurrent updates.</para>
     /// </remarks>
-    public sealed class RabbitMqPoolHealth : IRabbitMqPoolHealth
+    internal sealed class RabbitMqPoolHealth : IRabbitMqPoolHealth
     {
-        /// <inheritdoc />
+        /// <summary>Metrics sink for health transition counters.</summary>
+        private readonly MessageBusMetrics _metrics;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RabbitMqPoolHealth"/> class.
+        /// </summary>
+        /// <param name="metrics">Metrics sink for health transitions.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="metrics"/> is <see langword="null"/>.</exception>
+        internal RabbitMqPoolHealth(MessageBusMetrics metrics)
+        {
+            _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
+        }
+
+        /// <summary>
+        /// Gets the latest computed aggregate pool health status.
+        /// </summary>
+        /// <remarks>
+        /// Defaults to <see cref="PoolHealthStatus.Recovering"/> until the first update from pool state.
+        /// </remarks>
         public PoolHealthStatus Status { get; private set; } = PoolHealthStatus.Recovering;
 
         /// <summary>
@@ -54,7 +72,7 @@ namespace Vector.NNTP.MessageBus.Health
         /// <see cref="RabbitMQOptions.UnhealthyThreshold"/>).</param>
         /// <remarks>
         /// <para><b>Algorithm:</b> Counts connections in <see cref="PooledConnectionState.Connected"/>, computes faulted
-        /// fraction, maps to <see cref="PoolHealthStatus"/>, then calls <see cref="MessageBusMeters.RecordHealth(string)"/>.</para>
+        /// fraction, maps to <see cref="PoolHealthStatus"/>, then calls <see cref="MessageBusMetrics.RecordHealth(string)"/>.</para>
         /// </remarks>
         public void UpdateFromPool(ConnectionPool pool, RabbitMQOptions options)
         {
@@ -62,7 +80,7 @@ namespace Vector.NNTP.MessageBus.Health
             if (total == 0)
             {
                 Status = PoolHealthStatus.Unhealthy;
-                MessageBusMeters.RecordHealth("unhealthy");
+                _metrics.RecordHealth("unhealthy");
                 return;
             }
             int connected = pool.Snapshot.Count(c => c.State == PooledConnectionState.Connected);
@@ -72,7 +90,7 @@ namespace Vector.NNTP.MessageBus.Health
                 : faultedFraction >= options.DegradedThreshold
                     ? PoolHealthStatus.Degraded
                     : PoolHealthStatus.Healthy;
-            MessageBusMeters.RecordHealth(Status.ToString().ToLowerInvariant());
+            _metrics.RecordHealth(Status.ToString().ToLowerInvariant());
         }
     }
 }

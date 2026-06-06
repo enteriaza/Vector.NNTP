@@ -27,7 +27,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>Thread safety:</b> Not thread-safe — a single scope/thread must own the lease. Concurrent dispose is
     /// idempotent (second dispose is a no-op).</para>
     /// </remarks>
-    public sealed class PublisherSlotLease : IAsyncDisposable
+    internal sealed class PublisherSlotLease : IAsyncDisposable
     {
         /// <summary>Pool that granted this lease.</summary>
         private readonly ConnectionPool _pool;

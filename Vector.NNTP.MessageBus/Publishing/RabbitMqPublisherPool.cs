@@ -39,7 +39,7 @@ namespace Vector.NNTP.MessageBus.Publishing
     /// <para><b>Allocation:</b> One channel object per scope; slot wait may allocate a continuation when the pool is
     /// contended.</para>
     /// </remarks>
-    public sealed partial class RabbitMqPublisherPool : IRabbitMqPublisherPool
+    internal sealed partial class RabbitMqPublisherPool : IRabbitMqPublisherPool
     {
         /// <summary>Source of publisher slot leases and TCP connections.</summary>
         private readonly ConnectionPool _pool;
@@ -50,54 +50,72 @@ namespace Vector.NNTP.MessageBus.Publishing
         /// <summary>Logger for scope creation diagnostics.</summary>
         private readonly ILogger<RabbitMqPublisherPool> _logger;
 
+        /// <summary>Metrics sink for publish and slot counters.</summary>
+        private readonly MessageBusMetrics _metrics;
+
+        /// <summary>Logger factory used to create scope loggers without storing extra ILogger fields.</summary>
+        private readonly ILoggerFactory _loggerFactory;
+
         /// <summary>Initializes a new instance of the <see cref="RabbitMqPublisherPool"/> class.</summary>
         /// <param name="pool">Connection pool for slot acquisition.</param>
         /// <param name="options">RabbitMQ options (<see cref="RabbitMQOptions.PublishConfirmTimeout"/>).</param>
         /// <param name="logger">Logger for debug scope creation events.</param>
+        /// <param name="loggerFactory">Factory used to create <see cref="RabbitMqPublisherScope"/> loggers.</param>
+        /// <param name="metrics">Metrics sink for slot and publish counters.</param>
         /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
         public RabbitMqPublisherPool(
             ConnectionPool pool,
             IOptions<RabbitMQOptions> options,
-            ILogger<RabbitMqPublisherPool> logger)
+            ILogger<RabbitMqPublisherPool> logger,
+            ILoggerFactory loggerFactory,
+            MessageBusMetrics metrics)
         {
             ArgumentNullException.ThrowIfNull(pool);
             ArgumentNullException.ThrowIfNull(options);
             ArgumentNullException.ThrowIfNull(logger);
+            ArgumentNullException.ThrowIfNull(loggerFactory);
+            ArgumentNullException.ThrowIfNull(metrics);
             _pool = pool;
             _options = options;
             _logger = logger;
+            _loggerFactory = loggerFactory;
+            _metrics = metrics;
         }
 
-        /// <inheritdoc />
-        /// <exception cref="MessageBusUnavailableException">
-        /// Thrown when the pool is not accepting slots or waiter limits are exceeded.
-        /// </exception>
-        /// <exception cref="MessageBusLeaseTimeoutException">
-        /// Thrown when no slot becomes available before <see cref="RabbitMQOptions.ChannelLeaseTimeout"/>.
-        /// </exception>
-        /// <exception cref="MessageBusConnectionFaultException">
-        /// Thrown when channel creation fails after a slot was acquired (lease is released).
-        /// </exception>
-        public async Task<IPublisherScope> CreateScopeAsync(CancellationToken cancellationToken)
+        /// <summary>
+        /// Creates a publisher scope from a leased slot and a confirms-enabled channel.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token for slot wait and channel creation.</param>
+        /// <returns>A publisher scope bound to a single channel and slot lease.</returns>
+        /// <exception cref="MessageBusUnavailableException">Thrown when the pool is not accepting new leases.</exception>
+        /// <exception cref="MessageBusLeaseTimeoutException">Thrown when lease acquisition exceeds the configured timeout.</exception>
+        /// <exception cref="MessageBusConnectionFaultException">Thrown when channel creation fails after lease acquisition.</exception>
+        async Task<IPublisherScope> IRabbitMqPublisherPool.CreateScopeAsync(CancellationToken cancellationToken)
         {
             PublisherSlotLease slot = await _pool.AcquirePublisherSlotAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                Guid scopeId = Guid.NewGuid();
                 CreateChannelOptions channelOptions = new(
                     publisherConfirmationsEnabled: true,
                     publisherConfirmationTrackingEnabled: true);
                 IChannel channel = await slot.Connection.Connection
                     .CreateChannelAsync(channelOptions, cancellationToken)
                     .ConfigureAwait(false);
-                MessageBusMeters.RecordSlotAcquired();
+                _metrics.RecordSlotAcquired();
                 if (_logger.IsEnabled(LogLevel.Debug))
-                    LogScopeCreated();
+                    LogScopeCreated(scopeId);
                 RabbitMQOptions options = _options.Value;
-                return new RabbitMqPublisherScope(slot, channel, options.PublishConfirmTimeout);
+                ILogger<RabbitMqPublisherScope> scopeLogger = _loggerFactory.CreateLogger<RabbitMqPublisherScope>();
+                return new RabbitMqPublisherScope(scopeId, slot, channel, options.PublishConfirmTimeout, _metrics, scopeLogger);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 await slot.DisposeAsync().ConfigureAwait(false);
+                string failureClass = MessageBusFailureClassifier.Classify(ex);
+                _metrics.RecordPublishFailure(failureClass);
+                if (_logger.IsEnabled(LogLevel.Error))
+                    LogChannelFault(failureClass);
                 throw new MessageBusConnectionFaultException("Failed to create publisher channel.", ex);
             }
         }

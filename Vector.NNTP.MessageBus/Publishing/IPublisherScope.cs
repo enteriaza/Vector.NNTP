@@ -30,11 +30,20 @@ namespace Vector.NNTP.MessageBus.Publishing
     public interface IPublisherScope : IAsyncDisposable
     {
         /// <summary>
+        /// Stable identifier for this publisher scope instance.
+        /// </summary>
+        /// <remarks>
+        /// Primarily used for structured logging and correlating publish failures with scope lifecycle events.
+        /// </remarks>
+        public Guid ScopeId { get; }
+
+        /// <summary>
         /// Publishes a message on the scope channel and awaits publisher confirmation.
         /// </summary>
         /// <param name="exchange">Target exchange name.</param>
         /// <param name="routingKey">AMQP routing key.</param>
         /// <param name="body">Message body bytes.</param>
+        /// <param name="correlationId">Optional correlation id to propagate via AMQP headers.</param>
         /// <param name="cancellationToken">Caller cancellation token (distinct from confirm timeout).</param>
         /// <returns>A <see cref="ValueTask"/> that completes when the broker acknowledges the publish.</returns>
         /// <remarks>
@@ -46,7 +55,7 @@ namespace Vector.NNTP.MessageBus.Publishing
         /// Thrown when confirmation is not received before the configured confirm timeout and the caller did not cancel.
         /// </exception>
         /// <exception cref="ObjectDisposedException">Thrown when the scope was already disposed.</exception>
-        public ValueTask PublishAsync(string exchange, string routingKey, ReadOnlyMemory<byte> body, CancellationToken cancellationToken);
+        public ValueTask PublishAsync(string exchange, string routingKey, ReadOnlyMemory<byte> body, string? correlationId = null, CancellationToken cancellationToken = default);
     }
 }
 

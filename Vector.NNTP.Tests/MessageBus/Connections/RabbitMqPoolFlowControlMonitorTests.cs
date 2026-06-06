@@ -10,6 +10,7 @@ using RabbitMQ.Client;
 using Vector.NNTP.MessageBus.Configuration;
 using Vector.NNTP.MessageBus.Connections;
 using Vector.NNTP.MessageBus.Health;
+using Vector.NNTP.MessageBus.Metrics;
 
 namespace Vector.NNTP.Tests.MessageBus.Connections;
 
@@ -37,7 +38,7 @@ public sealed class RabbitMqPoolFlowControlMonitorTests
         pooled.SetBlocked(true, DateTimeOffset.UtcNow.AddMinutes(-5));
         pool.SeedSnapshotForTesting(pooled);
 
-        RabbitMqPoolHealth health = new();
+        RabbitMqPoolHealth health = new(new MessageBusMetrics());
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(3));
         RabbitMqPoolFlowControlMonitor monitor = new(
             pool,

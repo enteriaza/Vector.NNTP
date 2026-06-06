@@ -45,7 +45,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// Client property diagnostic formatting for <see cref="RabbitMqConnectionFactory"/>.
     /// </summary>
     /// <remarks>
-    /// <para><b>Responsibility:</b> Iterates all <see cref="RabbitMQ.Client.ConnectionFactory.ClientProperties"/> and
+    /// <para><b>Responsibility:</b> Iterates all <see cref="ConnectionFactory.ClientProperties"/> and
     /// emits a <see cref="LogLevel.Debug"/>-level log entry per property via the <c>[LoggerMessage]</c>
     /// source-generated <see cref="LogClientProperty"/> method defined in <c>RabbitMqConnectionFactory.Logging.cs</c>.</para>
     ///
@@ -55,9 +55,9 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <see cref="FormattingUtilities.FormatObjectValue"/> detects <c>byte[]</c> values and decodes them as UTF-8
     /// with a length cap of <see cref="MaxClientPropertyValueLength"/> (1 KB).</para>
     ///
-    /// <para><b>Security:</b> <see cref="RabbitMQ.Client.ConnectionFactory.ClientProperties"/> is a separate
-    /// dictionary from the credential fields (<see cref="RabbitMQ.Client.ConnectionFactory.UserName"/>,
-    /// <see cref="RabbitMQ.Client.ConnectionFactory.Password"/>).  No credentials are present in client
+    /// <para><b>Security:</b> <see cref="ConnectionFactory.ClientProperties"/> is a separate
+    /// dictionary from the credential fields (<see cref="ConnectionFactory.UserName"/>,
+    /// <see cref="ConnectionFactory.Password"/>).  No credentials are present in client
     /// properties.</para>
     ///
     /// <para><b>Cross-platform:</b> Fully portable.  All APIs used are BCL types available on all .NET 8 runtimes
@@ -66,18 +66,18 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>SIMD applicability:</b> Not applicable.  Dictionary iteration and string formatting have no
     /// vectorisable computation paths.</para>
     /// </remarks>
-    public sealed partial class RabbitMqConnectionFactory
+    internal sealed partial class RabbitMqConnectionFactory
     {
 
         #region Private Methods -- Client Property Formatting
 
         /// <summary>
-        /// Logs all <see cref="RabbitMQ.Client.ConnectionFactory.ClientProperties"/> at <see cref="LogLevel.Debug"/>
+        /// Logs all <see cref="ConnectionFactory.ClientProperties"/> at <see cref="LogLevel.Debug"/>
         /// for operational diagnostics.
         /// </summary>
         /// <remarks>
-        /// <para><b>Caller:</b> <see cref="CreateConnectionAsync"/> -- after factory and endpoint construction, before
-        /// the connection attempt.</para>
+        /// <para><b>Caller:</b> <see cref="IRabbitMqConnectionFactory"/> usage from the connection pool -- after factory
+        /// and endpoint construction, before the connection attempt.</para>
         ///
         /// <para><b>AMQP long-string decoding:</b> The RabbitMQ.Client library stores its default properties
         /// (<c>product</c>, <c>version</c>, <c>copyright</c>, <c>information</c>) as AMQP long-strings -- <c>byte[]</c>
@@ -92,9 +92,9 @@ namespace Vector.NNTP.MessageBus.Connections
         /// disabled (the common production configuration), the method is a no-op: a single <c>IsEnabled</c> check with
         /// no allocations.</para>
         ///
-        /// <para><b>Security:</b> <see cref="RabbitMQ.Client.ConnectionFactory.ClientProperties"/> is a separate
-        /// dictionary from the credential fields (<see cref="RabbitMQ.Client.ConnectionFactory.UserName"/>,
-        /// <see cref="RabbitMQ.Client.ConnectionFactory.Password"/>).  The dictionary contains only operational metadata
+        /// <para><b>Security:</b> <see cref="ConnectionFactory.ClientProperties"/> is a separate
+        /// dictionary from the credential fields (<see cref="ConnectionFactory.UserName"/>,
+        /// <see cref="ConnectionFactory.Password"/>).  The dictionary contains only operational metadata
         /// (<c>product</c>, <c>version</c>, <c>platform</c>, <c>application</c>, <c>machine</c>, etc.) populated by
         /// <see cref="PopulateClientProperties"/> and the library's defaults.  No credentials are present.</para>
         /// </remarks>

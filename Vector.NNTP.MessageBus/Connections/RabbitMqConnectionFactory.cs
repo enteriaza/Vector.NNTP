@@ -73,8 +73,9 @@ namespace Vector.NNTP.MessageBus.Connections
     /// </summary>
     /// <remarks>
     /// <para><b>DI registration:</b> Registered as a DI singleton in <c>host Program.*.cs</c> via
-    /// <c>builder.Services.AddSingleton&lt;RabbitMqConnectionFactory&gt;()</c>.  Injected into <see cref="ConnectionPool"/>
-    /// which calls <see cref="CreateConnectionAsync"/> during the host's "starting" lifecycle phase.</para>
+    /// <c>builder.Services.AddSingleton&lt;IRabbitMqConnectionFactory, RabbitMqConnectionFactory&gt;()</c>.  Injected into
+    /// <see cref="ConnectionPool"/> which calls <see cref="IRabbitMqConnectionFactory.CreateConnectionAsync(RabbitMQOptions, CancellationToken)"/>
+    /// during the host's "starting" lifecycle phase.</para>
     ///
     /// <para><b>Multi-host failover:</b> The <see cref="RabbitMQOptions.Hosts"/> array may contain one or more broker
     /// addresses (e.g., an AWS Amazon MQ HA cluster providing 3 nodes).  Each host is mapped to an
@@ -175,7 +176,8 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>SIMD applicability:</b> Not applicable.  All methods perform object construction, dictionary population,
     /// and string formatting.  No vectorisable computation paths.</para>
     /// </remarks>
-    public sealed partial class RabbitMqConnectionFactory(ILogger<RabbitMqConnectionFactory> logger, IHostApplicationLifetime hostLifetime)
+    internal sealed partial class RabbitMqConnectionFactory(ILogger<RabbitMqConnectionFactory> logger, IHostApplicationLifetime hostLifetime)
+        : IRabbitMqConnectionFactory
     {
 
         #region Constants
@@ -338,7 +340,21 @@ namespace Vector.NNTP.MessageBus.Connections
         /// connect.</exception>
         /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before a
         /// connection could be established.</exception>
-        public Task<IConnection> CreateConnectionAsync(RabbitMQOptions options, CancellationToken cancellationToken = default)
+        Task<IConnection> IRabbitMqConnectionFactory.CreateConnectionAsync(RabbitMQOptions options, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            return CreateConnectionAsyncCore(options, cancellationToken);
+        }
+
+        /// <summary>
+        /// Implements the connection creation workflow for <see cref="IRabbitMqConnectionFactory"/>.
+        /// </summary>
+        /// <param name="options">Validated options used to construct the RabbitMQ connection factory and endpoints.</param>
+        /// <param name="cancellationToken">Cancellation token for the connect operation.</param>
+        /// <returns>A task that resolves to an initialized connection with lifecycle handlers attached.</returns>
+        /// <exception cref="OperationCanceledException">Thrown when the connect operation is cancelled.</exception>
+        /// <exception cref="RabbitMQ.Client.Exceptions.BrokerUnreachableException">Thrown when all endpoints fail.</exception>
+        private Task<IConnection> CreateConnectionAsyncCore(RabbitMQOptions options, CancellationToken cancellationToken)
         {
             string endpointSummary = FormattingUtilities.FormatEndpointSummary(options.Hosts, options.Port);
             LogConnecting(endpointSummary, options.VirtualHost, options.EnableSsl,

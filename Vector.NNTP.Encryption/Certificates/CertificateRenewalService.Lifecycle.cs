@@ -166,7 +166,7 @@ namespace Vector.NNTP.Encryption.Certificates
 
             if (_options.ClusterEnabled)
             {
-                RabbitMqConnectionFactory? connectionFactory = serviceProvider.GetService<RabbitMqConnectionFactory>();
+                IRabbitMqConnectionFactory? connectionFactory = serviceProvider.GetService<IRabbitMqConnectionFactory>();
                 IRabbitMqPublisherPool? publisherPool = serviceProvider.GetService<IRabbitMqPublisherPool>();
                 IRabbitMqConsumerManager? consumerManager = serviceProvider.GetService<IRabbitMqConsumerManager>();
                 RabbitMQOptions? rabbitOptions = serviceProvider.GetService<IOptions<RabbitMQOptions>>()?.Value;
@@ -446,7 +446,7 @@ namespace Vector.NNTP.Encryption.Certificates
                             X509Certificate2? activated = GetCurrentCertificate();
                             if (activated is not null)
                             {
-                                await _clusterSync.PublishAndRecordAsync(activated, pfxBytes, ct).ConfigureAwait(false);
+                                await _clusterSync.PublishAndRecordAsync(activated, pfxBytes, ct, _renewalCorrelationId).ConfigureAwait(false);
                             }
                         }
                     }

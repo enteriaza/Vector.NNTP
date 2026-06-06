@@ -13,7 +13,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <remarks>
     /// <para><b>Event ID range:</b> 1--2 -- reserved for <see cref="RabbitMqBackgroundScaler"/>.</para>
     /// </remarks>
-    public sealed partial class RabbitMqBackgroundScaler
+    internal sealed partial class RabbitMqBackgroundScaler
     {
 
         #region Logging -- Scale Events (1-2)

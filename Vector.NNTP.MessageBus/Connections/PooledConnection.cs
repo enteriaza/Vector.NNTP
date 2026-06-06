@@ -27,7 +27,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <see cref="Volatile"/>. <see cref="State"/> and <see cref="IsStalled"/> are updated from pool monitor paths and
     /// RabbitMQ client event handlers — callers must not mutate state outside those owners.</para>
     /// </remarks>
-    public sealed class PooledConnection : IAsyncDisposable
+    internal sealed class PooledConnection : IAsyncDisposable
     {
         /// <summary>Number of active publisher scopes holding a slot on this connection.</summary>
         private int _activePublisherSlots;

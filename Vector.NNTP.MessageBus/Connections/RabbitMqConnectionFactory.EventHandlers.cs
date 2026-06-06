@@ -88,7 +88,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// <para><b>SIMD applicability:</b> Not applicable.  No data processing or vectorisable computation
     /// paths.</para>
     /// </remarks>
-    public sealed partial class RabbitMqConnectionFactory
+    internal sealed partial class RabbitMqConnectionFactory
     {
 
         #region Private Methods -- Connection Lifecycle Events

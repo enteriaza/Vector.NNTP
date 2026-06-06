@@ -4,8 +4,12 @@
 // RabbitMqPoolSupervisor.Logging.cs -- Source-generated [LoggerMessage] partial methods for RabbitMqPoolSupervisor.
 //
 // Centralises supervisor lifecycle log events per CONTRIBUTING.md.  Callers in RabbitMqPoolSupervisor.cs invoke
-// LogSupervisorStarted after the pool reaches MinConnections and LogShutdownDrainTimeout when pool disposal exceeds
-// MaximumShutdownDrainTimeout.
+// LogMessageBusInitialized and LogSupervisorStarted after the pool reaches MinConnections, and LogShutdownDrainTimeout
+// when pool disposal exceeds MaximumShutdownDrainTimeout.
+//
+// EventId range allocation:
+//   supervisor startup: 105
+//   supervisor operational: 500-509.
 //
 // Thread safety:
 //   Source-generated methods use the primary-constructor logger parameter; ILogger is thread-safe by contract.
@@ -21,7 +25,7 @@ namespace Vector.NNTP.MessageBus.Connections
     /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="RabbitMqPoolSupervisor"/>.
     /// </summary>
     /// <remarks>
-    /// <para><b>Event ID range:</b> 1--2 -- reserved for <see cref="RabbitMqPoolSupervisor"/>.</para>
+    /// <para><b>Event ID range:</b> 105 and 501-502 -- reserved for <see cref="RabbitMqPoolSupervisor"/>.</para>
     ///
     /// <para><b>Pattern:</b> Each method is a <see langword="private"/> <see langword="partial"/> method annotated with
     /// <see cref="LoggerMessageAttribute"/>.  The source generator emits the implementation at compile time using the
@@ -29,10 +33,29 @@ namespace Vector.NNTP.MessageBus.Connections
     ///
     /// <para><b>ASCII compliance:</b> All <c>Message</c> strings contain only ASCII characters per CONTRIBUTING.md.</para>
     /// </remarks>
-    public sealed partial class RabbitMqPoolSupervisor
+    internal sealed partial class RabbitMqPoolSupervisor
     {
 
-        #region Logging -- Supervisor Lifecycle (1-2)
+        #region Logging -- Supervisor Lifecycle (105, 501-502)
+
+        /// <summary>
+        /// Logs MessageBus pool initialization details after startup succeeds.
+        /// </summary>
+        /// <param name="brokerCount">Configured RabbitMQ broker endpoint count.</param>
+        /// <param name="minConnections">Configured minimum connection count.</param>
+        /// <param name="maxConnections">Configured maximum connection count.</param>
+        /// <param name="tlsEnabled">Whether TLS is enabled for AMQP connections.</param>
+        /// <param name="publisherConfirmsEnabled">Whether publisher confirmations are enabled by design.</param>
+        [LoggerMessage(
+            EventId = 105,
+            Level = LogLevel.Information,
+            Message = "MessageBus: MessageBus initialized -- BrokerCount={BrokerCount} MinConnections={MinConnections} MaxConnections={MaxConnections} Tls={TlsEnabled} PublisherConfirms={PublisherConfirmsEnabled}")]
+        private partial void LogMessageBusInitialized(
+            int brokerCount,
+            int minConnections,
+            int maxConnections,
+            bool tlsEnabled,
+            bool publisherConfirmsEnabled);
 
         /// <summary>
         /// Logs supervisor startup after the pool reaches minimum connections.
@@ -43,7 +66,7 @@ namespace Vector.NNTP.MessageBus.Connections
         ///
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Information"/> -- startup banner per CONTRIBUTING.md.</para>
         /// </remarks>
-        [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "RabbitMQ pool supervisor started.")]
+        [LoggerMessage(EventId = 501, Level = LogLevel.Information, Message = "RabbitMQ pool supervisor started.")]
         private partial void LogSupervisorStarted();
 
         /// <summary>
@@ -56,7 +79,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <para><b>Level rationale:</b> <see cref="LogLevel.Warning"/> -- shutdown did not complete within the drain
         /// budget; operators may need to investigate stuck publisher scopes or broker back-pressure.</para>
         /// </remarks>
-        [LoggerMessage(EventId = 2, Level = LogLevel.Warning,
+        [LoggerMessage(EventId = 502, Level = LogLevel.Warning,
             Message = "Pool shutdown exceeded MaximumShutdownDrainTimeout.")]
         private partial void LogShutdownDrainTimeout();
 

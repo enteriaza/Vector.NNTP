@@ -3,7 +3,6 @@
 // </copyright>
 
 using Vector.NNTP.MessageBus.Configuration;
-using Microsoft.Extensions.Options;
 using Vector.NNTP.MessageBus.DependencyInjection;
 
 namespace Vector.NNTP.NNTPD
@@ -20,8 +19,6 @@ namespace Vector.NNTP.NNTPD
         private static void ConfigureMessageBus(HostApplicationBuilder builder)
         {
             ArgumentNullException.ThrowIfNull(builder);
-
-            _ = builder.Services.AddSingleton<IValidateOptions<RabbitMQOptions>, RabbitMQOptionsValidator>();
 
             _ = builder.Services
                 .AddOptions<RabbitMQOptions>()

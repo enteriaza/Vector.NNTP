@@ -43,7 +43,7 @@ namespace Vector.NNTP.Encryption.Cluster
         ILogger logger,
         Func<LetsEncryptOptions> getOptions,
         IHostEnvironment hostEnvironment,
-        RabbitMqConnectionFactory connectionFactory,
+        IRabbitMqConnectionFactory connectionFactory,
         RabbitMQOptions rabbitOptions,
         IRabbitMqPublisherPool publisherPool,
         IRabbitMqConsumerManager consumerManager,
@@ -84,7 +84,7 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <summary>
         /// The RabbitMQ connection factory.
         /// </summary>
-        private readonly RabbitMqConnectionFactory _connectionFactory = connectionFactory;
+        private readonly IRabbitMqConnectionFactory _connectionFactory = connectionFactory;
 
         /// <summary>
         /// The RabbitMQ options.
@@ -216,8 +216,13 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <param name="certificate">Issued certificate with private key.</param>
         /// <param name="pfxBytes">Exported PFX bytes.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
+        /// <param name="correlationId">Optional renewal correlation id propagated to cluster subscribers via MessageBus headers.</param>
         /// <returns>A task that completes when publish and local state update finish.</returns>
-        internal async Task PublishAndRecordAsync(X509Certificate2 certificate, byte[] pfxBytes, CancellationToken cancellationToken)
+        internal async Task PublishAndRecordAsync(
+            X509Certificate2 certificate,
+            byte[] pfxBytes,
+            CancellationToken cancellationToken,
+            string? correlationId = null)
         {
             using Activity? activity = EncryptionTelemetry.ActivitySource.StartActivity(
                 "encryption.cluster.publish",
@@ -265,7 +270,7 @@ namespace Vector.NNTP.Encryption.Cluster
                 IPublisherScope scope = await _publisherPool.CreateScopeAsync(cancellationToken).ConfigureAwait(false);
                 await using (scope.ConfigureAwait(false))
                 {
-                    await scope.PublishAsync(exchange, string.Empty, body, cancellationToken).ConfigureAwait(false);
+                    await scope.PublishAsync(exchange, string.Empty, body, correlationId, cancellationToken).ConfigureAwait(false);
                 }
 
                 LogClusterCertificatePublished(epoch, exchange);
