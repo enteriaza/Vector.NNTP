@@ -36,9 +36,15 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             ArgumentNullException.ThrowIfNull(line);
 
             string? messageId = NntpCommandLineHelpers.ExtractArgument(line);
-            if (string.IsNullOrEmpty(messageId) || !MessageIdSyntax.IsValid(messageId))
+            if (string.IsNullOrEmpty(messageId))
             {
                 await session.Writer.WriteLineAsync("501 Message-ID required", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            if (!MessageIdSyntax.IsValid(messageId))
+            {
+                await session.Writer.WriteLineAsync("501 Invalid Message-ID", cancellationToken).ConfigureAwait(false);
                 return true;
             }
 
@@ -67,8 +73,11 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         /// <param name="result">History probe result.</param>
         /// <param name="messageId">Message-id from the command line.</param>
         /// <returns>Single-line NNTP response without CRLF.</returns>
-        /// <exception cref="NotImplementedException">
+        /// <exception cref="InvalidOperationException">
         /// Thrown when <paramref name="result"/> is <see cref="HistoryCheckResult.Unavailable"/>; callers must handle that case before mapping.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Thrown when <paramref name="result"/> is not a known <see cref="HistoryCheckResult"/> value.
         /// </exception>
         private static string MapCheckResponse(HistoryCheckResult result, string messageId)
         {
@@ -77,8 +86,12 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 HistoryCheckResult.Wanted => $"238 {messageId}",
                 HistoryCheckResult.Duplicate => $"438 {messageId}",
                 HistoryCheckResult.TryAgainLater => $"431 {messageId}",
-                HistoryCheckResult.Unavailable => throw new NotImplementedException(),
-                _ => "503 Service unavailable",
+                HistoryCheckResult.Unavailable => throw new InvalidOperationException(
+                    $"{nameof(HistoryCheckResult.Unavailable)} must be handled before calling {nameof(MapCheckResponse)}."),
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(result),
+                    result,
+                    "Unknown HistoryCheckResult value."),
             };
         }
     }
