@@ -29,6 +29,7 @@ namespace Vector.NNTP.Utilities.Internal
         /// Throws when a required input span is empty.
         /// </summary>
         /// <param name="paramName">Parameter name for the thrown exception.</param>
+        /// <exception cref="ArgumentException">Always thrown.</exception>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void EmptySource(string paramName)
@@ -41,6 +42,7 @@ namespace Vector.NNTP.Utilities.Internal
         /// </summary>
         /// <param name="length">Length of the offending input.</param>
         /// <param name="paramName">Parameter name for the thrown exception.</param>
+        /// <exception cref="ArgumentException">Always thrown.</exception>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void NonAsciiInput(int length, string paramName)
@@ -53,6 +55,7 @@ namespace Vector.NNTP.Utilities.Internal
         /// </summary>
         /// <param name="length">Length of the offending input.</param>
         /// <param name="paramName">Parameter name for the thrown exception.</param>
+        /// <exception cref="ArgumentException">Always thrown.</exception>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void NonAsciiSpanInput(int length, string paramName)
@@ -65,6 +68,7 @@ namespace Vector.NNTP.Utilities.Internal
         /// </summary>
         /// <param name="length">Length of the offending input.</param>
         /// <param name="paramName">Parameter name for the thrown exception.</param>
+        /// <exception cref="ArgumentException">Always thrown.</exception>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void NonAsciiByteInput(int length, string paramName)
@@ -78,6 +82,7 @@ namespace Vector.NNTP.Utilities.Internal
         /// <param name="requiredLength">Required destination length.</param>
         /// <param name="actualLength">Actual destination length.</param>
         /// <param name="paramName">Parameter name for the thrown exception.</param>
+        /// <exception cref="ArgumentException">Always thrown.</exception>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void DestinationTooShort(int requiredLength, int actualLength, string paramName)
@@ -93,6 +98,7 @@ namespace Vector.NNTP.Utilities.Internal
         /// <param name="requiredLength">Required destination length.</param>
         /// <param name="actualLength">Actual destination length.</param>
         /// <param name="paramName">Parameter name for the thrown exception.</param>
+        /// <exception cref="ArgumentException">Always thrown.</exception>
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void DestinationTooShortForAsciiEncode(int requiredLength, int actualLength, string paramName)
@@ -106,6 +112,7 @@ namespace Vector.NNTP.Utilities.Internal
         /// Throws when an inner stream does not support reading.
         /// </summary>
         /// <param name="paramName">Parameter name for the thrown exception.</param>
+        /// <exception cref="ArgumentException">Always thrown.</exception>
         [DoesNotReturn]
         public static void InnerStreamNotReadable(string paramName)
         {

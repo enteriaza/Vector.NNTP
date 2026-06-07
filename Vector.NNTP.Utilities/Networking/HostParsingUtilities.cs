@@ -26,6 +26,7 @@ namespace Vector.NNTP.Utilities.Networking
         /// </summary>
         /// <param name="host">Host string to inspect.</param>
         /// <returns><see langword="true"/> if the host appears to contain a port suffix.</returns>
+        /// <remarks>Delegates to the span overload after null/empty checks.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool HasPortSuffix(string? host)
         {
@@ -37,6 +38,11 @@ namespace Vector.NNTP.Utilities.Networking
         /// </summary>
         /// <param name="host">Host span to inspect.</param>
         /// <returns><see langword="true"/> if the host appears to contain a port suffix.</returns>
+        /// <remarks>
+        /// Literal IP addresses parsed by <see cref="IPAddress.TryParse(ReadOnlySpan{char}, out IPAddress?)"/> return
+        /// <see langword="false"/> even when they contain colons (IPv6). For hostnames, the last colon must be followed
+        /// only by decimal digits to be treated as a port suffix.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool HasPortSuffix(ReadOnlySpan<char> host)
         {

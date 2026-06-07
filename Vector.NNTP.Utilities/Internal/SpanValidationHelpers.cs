@@ -29,6 +29,7 @@ namespace Vector.NNTP.Utilities.Internal
         /// <param name="requiredLength">Minimum required length.</param>
         /// <param name="actualLength">Actual destination length.</param>
         /// <param name="paramName">Parameter name for the thrown exception.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="actualLength"/> is less than <paramref name="requiredLength"/>.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void EnsureDestinationLength(int requiredLength, int actualLength, string paramName)
         {

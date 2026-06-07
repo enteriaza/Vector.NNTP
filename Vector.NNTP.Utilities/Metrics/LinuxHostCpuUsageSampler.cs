@@ -51,7 +51,7 @@ namespace Vector.NNTP.Utilities.Metrics
         private bool _seeded;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="LinuxHostCpuUsageSampler"/> class that reads <c>/proc/stat</c>.
+        /// Initializes a new instance of the <see cref="LinuxHostCpuUsageSampler"/> class that reads live <c>/proc/stat</c> on each sample.
         /// </summary>
         public LinuxHostCpuUsageSampler()
             : this(static () => File.ReadAllText("/proc/stat"))

@@ -65,6 +65,7 @@ namespace Vector.NNTP.Utilities.Retry
         /// <param name="jitterMaxMs">Jitter window in milliseconds.</param>
         /// <param name="ct">Cancellation token.</param>
         /// <returns><see langword="true"/> if the delay elapsed; <see langword="false"/> if cancelled.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when any delay argument passed to <see cref="CalculateBackOff"/> is negative.</exception>
         public static Task<bool> DelayWithBackOffAsync(int attempt, int baseDelayMs, int maxDelayMs, int jitterMaxMs, CancellationToken ct)
         {
             int delayMs = CalculateBackOff(attempt, baseDelayMs, maxDelayMs, jitterMaxMs);

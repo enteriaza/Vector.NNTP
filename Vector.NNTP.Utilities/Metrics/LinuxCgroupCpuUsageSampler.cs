@@ -92,7 +92,7 @@ namespace Vector.NNTP.Utilities.Metrics
         private bool _seeded;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="LinuxCgroupCpuUsageSampler"/> class using default Linux paths.
+        /// Initializes a new instance of the <see cref="LinuxCgroupCpuUsageSampler"/> class that reads <c>/proc/self/cgroup</c> and resolves paths under <see cref="CgroupPathResolver.DefaultCgroupRoot"/>.
         /// </summary>
         public LinuxCgroupCpuUsageSampler()
             : this(static () => File.ReadAllText("/proc/self/cgroup"), CgroupPathResolver.DefaultCgroupRoot)

@@ -27,7 +27,7 @@ namespace Vector.NNTP.Utilities.Metrics
         public const string DefaultCgroupRoot = "/sys/fs/cgroup";
 
         /// <summary>
-        /// Attempts to resolve the cgroup directory for the current process using default paths.
+        /// Attempts to resolve the cgroup directory for the current process by reading <c>/proc/self/cgroup</c>.
         /// </summary>
         /// <param name="cgroupDirectory">
         /// When this method returns <see langword="true"/>, receives the absolute cgroup directory path.
@@ -36,12 +36,35 @@ namespace Vector.NNTP.Utilities.Metrics
         /// When this method returns <see langword="true"/>, receives whether cgroup v2 layout was detected.
         /// </param>
         /// <returns>
-        /// <see langword="true"/> when <see cref="TryResolveFromCgroupFile"/> succeeds for
-        /// <c>/proc/self/cgroup</c> and <see cref="DefaultCgroupRoot"/>.
+        /// <see langword="true"/> when cgroup membership can be read and <see cref="TryResolveFromCgroupFile"/>
+        /// resolves an existing directory under <see cref="DefaultCgroupRoot"/>; otherwise <see langword="false"/>.
         /// </returns>
+        /// <remarks>
+        /// Returns <see langword="false"/> on non-Linux hosts and when <c>/proc/self/cgroup</c> cannot be read
+        /// (missing file, permission denied, or I/O error).
+        /// </remarks>
         public static bool TryResolveCurrent(out string cgroupDirectory, out bool isV2)
         {
-            return TryResolveFromCgroupFile("/proc/self/cgroup", DefaultCgroupRoot, out cgroupDirectory, out isV2);
+            cgroupDirectory = string.Empty;
+            isV2 = false;
+            if (!OperatingSystem.IsLinux())
+            {
+                return false;
+            }
+
+            try
+            {
+                string content = File.ReadAllText("/proc/self/cgroup");
+                return TryResolveFromCgroupFile(content, DefaultCgroupRoot, out cgroupDirectory, out isV2);
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
         }
 
         /// <summary>

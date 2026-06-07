@@ -33,11 +33,18 @@ namespace Vector.NNTP.Utilities.Diagnostics
         /// </summary>
         public static readonly string InformationalVersionFull;
 
+        /// <summary>
+        /// Fallback application name when <see cref="Assembly.GetEntryAssembly"/> is unavailable.
+        /// </summary>
         private const string DefaultApplicationName = "TaskExecutioner";
+
+        /// <summary>
+        /// Fallback version string when no informational or assembly version is present.
+        /// </summary>
         private const string DefaultVersion = "0.0.0";
 
         /// <summary>
-        /// Initializes static members of the <see cref="AssemblyInfoUtilities"/> class.
+        /// Initializes cached entry-assembly name and version fields from the current process entry assembly.
         /// </summary>
         static AssemblyInfoUtilities()
         {

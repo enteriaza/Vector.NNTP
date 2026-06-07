@@ -181,9 +181,7 @@ namespace Vector.NNTP.Utilities.IO
         private readonly string _operation;
 
         /// <summary>
-        /// Optional logger for diagnostic messages.  <see langword="null"/> when the caller does not require logging
-        /// (e.g. unit tests).  All log methods are guarded by null-checks so the class operates identically with or
-        /// without a logger.
+        /// Logger for limit-exceeded warnings. Uses <see cref="NullLogger.Instance"/> when the caller omits logging.
         /// </summary>
         private readonly ILogger _logger;
 
@@ -272,13 +270,14 @@ namespace Vector.NNTP.Utilities.IO
         /// Gets the length of the stream.
         /// </summary>
         /// <remarks>Always throws <see cref="NotSupportedException"/> -- this is a read-only decorator.</remarks>
+        /// <exception cref="NotSupportedException">Always thrown -- HTTP response streams are forward-only.</exception>
         public override long Length => throw new NotSupportedException();
 
         /// <summary>
-        /// Gets or sets the position of the stream.
+        /// Gets the current position within the stream.
         /// </summary>
-        /// <remarks>Always throws <see cref="NotSupportedException"/> -- this is a read-only decorator.</remarks>
-        /// <exception cref="NotSupportedException">Always thrown -- HTTP response streams are forward-only.</exception>
+        /// <remarks>Always throws <see cref="NotSupportedException"/> -- seeking is not supported.</remarks>
+        /// <exception cref="NotSupportedException">Always thrown on get or set -- HTTP response streams are forward-only.</exception>
         public override long Position
         {
             get => throw new NotSupportedException();
@@ -296,10 +295,10 @@ namespace Vector.NNTP.Utilities.IO
         }
 
         /// <summary>
-        /// Gets or sets the write timeout.
+        /// Gets the write timeout for the stream.
         /// </summary>
-        /// <remarks>Always throws <see cref="NotSupportedException"/> -- this is a read-only decorator.</remarks>
-        /// <exception cref="NotSupportedException">Always thrown -- this is a read-only decorator.</exception>
+        /// <remarks>Always throws <see cref="NotSupportedException"/> -- write is not supported on this decorator.</remarks>
+        /// <exception cref="NotSupportedException">Always thrown on get or set -- this is a read-only decorator.</exception>
         public override int WriteTimeout
         {
             get => throw new NotSupportedException();
@@ -743,26 +742,27 @@ namespace Vector.NNTP.Utilities.IO
         }
 
         /// <summary>
-        /// Does nothing.
+        /// Performs no work because this read-only decorator has no buffered output to flush.
         /// </summary>
         public override void Flush()
         {
         }
 
         /// <summary>
-        /// Returns a completed task.
+        /// Completes immediately unless <paramref name="cancellationToken"/> is already canceled.
         /// </summary>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A completed task.</returns>
+        /// <param name="cancellationToken">Cancellation token checked before returning.</param>
+        /// <returns>A completed task, or a canceled task when <paramref name="cancellationToken"/> requests cancellation.</returns>
         public override Task FlushAsync(CancellationToken cancellationToken)
         {
             return cancellationToken.IsCancellationRequested ? Task.FromCanceled(cancellationToken) : Task.CompletedTask;
         }
 
         /// <summary>
-        /// Disposes the stream.
+        /// Marks this decorator disposed without closing the inner stream.
         /// </summary>
-        /// <param name="disposing">Whether the stream is being disposed.</param>
+        /// <param name="disposing">Whether dispose was invoked from <see cref="IDisposable.Dispose"/>.</param>
+        /// <remarks>The inner stream lifetime remains the caller's responsibility.</remarks>
         protected override void Dispose(bool disposing)
         {
             _ = Interlocked.Exchange(ref _disposed, 1);
@@ -772,10 +772,10 @@ namespace Vector.NNTP.Utilities.IO
         }
 
         /// <summary>
-        /// Disposes the stream asynchronously.
+        /// Marks this decorator disposed asynchronously without closing the inner stream.
         /// </summary>
-        /// <returns>A completed task.</returns>
-        /// <remarks>Sets the <c>_disposed</c> flag and returns a completed <see cref="ValueTask"/>.</remarks>
+        /// <returns>A completed <see cref="ValueTask"/> when already disposed; otherwise the base no-op result.</returns>
+        /// <remarks>The inner stream lifetime remains the caller's responsibility.</remarks>
         public override ValueTask DisposeAsync()
         {
             return Interlocked.Exchange(ref _disposed, 1) != 0 ? default : base.DisposeAsync();

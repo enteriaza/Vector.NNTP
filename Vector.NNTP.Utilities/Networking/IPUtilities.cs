@@ -16,6 +16,9 @@ namespace Vector.NNTP.Utilities.Networking
     /// </summary>
     public static class IPUtilities
     {
+        /// <summary>
+        /// Minimum address prefix length in bytes required for private/reserved range classification.
+        /// </summary>
         private const int MinBytesRequired = 2;
 
         /// <summary>

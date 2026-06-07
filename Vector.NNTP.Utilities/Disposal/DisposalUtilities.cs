@@ -133,6 +133,7 @@ namespace Vector.NNTP.Utilities.Disposal
         /// (skipped).</param>
         /// <returns>A task that completes with the first disposal exception, or <see langword="null"/> if all disposals
         /// succeeded.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="disposables"/> is <see langword="null"/>.</exception>
         public static async ValueTask<Exception?> TryDisposeAllAsync(params IAsyncDisposable?[] disposables)
         {
             ArgumentNullException.ThrowIfNull(disposables);

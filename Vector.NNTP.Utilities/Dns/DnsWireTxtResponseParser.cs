@@ -29,6 +29,11 @@ namespace Vector.NNTP.Utilities.Dns
         /// <param name="expectedId">Query identifier echoed in the response.</param>
         /// <param name="results">Receives TXT payloads on success; cleared first.</param>
         /// <returns><see langword="true"/> when the header and question section were well-formed.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="results"/> is <see langword="null"/>.</exception>
+        /// <remarks>
+        /// Individual TXT RDATA segments that fail <c>TryReadTxtRdata</c> are skipped without failing the overall parse;
+        /// the method still returns <see langword="true"/> when the packet header and question section are valid.
+        /// </remarks>
         public static bool TryParseTxtRecords(ReadOnlySpan<byte> buffer, ushort expectedId, List<byte[]> results)
         {
             ArgumentNullException.ThrowIfNull(results);
@@ -116,6 +121,9 @@ namespace Vector.NNTP.Utilities.Dns
         /// <param name="expectedId">Query identifier echoed in the response.</param>
         /// <param name="expectedTxt">Expected TXT bytes (ASCII challenge digest).</param>
         /// <returns><see langword="true"/> when a matching TXT record is present.</returns>
+        /// <remarks>
+        /// Malformed TXT RDATA in non-matching answer records is skipped; the scan continues for other answers.
+        /// </remarks>
         public static bool ResponseContainsTxt(ReadOnlySpan<byte> buffer, ushort expectedId, ReadOnlySpan<byte> expectedTxt)
         {
             if (buffer.Length < DnsWireFormatUtilities.DnsHeaderSize)

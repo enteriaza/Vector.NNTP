@@ -22,7 +22,7 @@ namespace Vector.NNTP.Utilities.Dns
         public const ushort Ns = 2;
 
         /// <summary>
-        /// TXT record.
+        /// TXT record (arbitrary character-string payloads, commonly used for DNS-01 challenges).
         /// </summary>
         public const ushort Txt = 16;
 

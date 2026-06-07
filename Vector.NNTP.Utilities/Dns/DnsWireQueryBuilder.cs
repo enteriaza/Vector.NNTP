@@ -31,6 +31,9 @@ namespace Vector.NNTP.Utilities.Dns
         /// </summary>
         public const ushort DnsClassIn = 1;
 
+        /// <summary>
+        /// Maximum query packet size built with <c>stackalloc</c> before falling back to a heap buffer.
+        /// </summary>
         private const int MaxStackAllocQuerySize = DnsWireFormatUtilities.DnsHeaderSize
             + DnsWireFormatUtilities.MaxWireNameLength
             + DnsWireFormatUtilities.QuestionSuffixSize;

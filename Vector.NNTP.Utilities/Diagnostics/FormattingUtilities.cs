@@ -158,7 +158,7 @@ namespace Vector.NNTP.Utilities.Diagnostics
         /// Formats key-value pairs into <c>"k=v, k2=v2"</c> text for diagnostic logging.
         /// </summary>
         /// <param name="pairs">Pairs to format.</param>
-        /// <returns>Formatted string.</returns>
+        /// <returns>Comma-separated <c>key=value</c> diagnostic text with empty formatted values omitted.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="pairs"/> is <see langword="null"/>.</exception>
         public static string FormatKeyValuePairs(IReadOnlyDictionary<string, object> pairs)
         {
@@ -170,7 +170,7 @@ namespace Vector.NNTP.Utilities.Diagnostics
         /// Formats key-value pairs into <c>"k=v, k2=v2"</c> text for diagnostic logging.
         /// </summary>
         /// <param name="pairs">Pairs to format.</param>
-        /// <returns>Formatted string.</returns>
+        /// <returns>Comma-separated <c>key=value</c> diagnostic text with empty formatted values omitted.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="pairs"/> is <see langword="null"/>.</exception>
         public static string FormatKeyValuePairs(IDictionary<string, object> pairs)
         {
@@ -183,7 +183,10 @@ namespace Vector.NNTP.Utilities.Diagnostics
         /// </summary>
         /// <param name="value">Value to format.</param>
         /// <param name="maxByteLength">Maximum byte length when decoding <see cref="byte"/> arrays as UTF-8.</param>
-        /// <returns>A safe string representation.</returns>
+        /// <returns>
+        /// <c>&lt;null&gt;</c> for null values; truncated UTF-8 text for byte arrays; otherwise
+        /// <see cref="object.ToString"/> with a null fallback.
+        /// </returns>
         public static string FormatObjectValue(object? value, int maxByteLength = DefaultMaxByteLength)
         {
             return value is null ? "<null>" : value is byte[] bytes ? FormatByteArray(bytes, maxByteLength) : value.ToString() ?? "<null>";

@@ -11,7 +11,14 @@ namespace Vector.NNTP.Utilities.Dns
     /// </summary>
     public static class DnsWireNameReader
     {
+        /// <summary>
+        /// Maximum compression-pointer hops followed before treating a name as malformed.
+        /// </summary>
         private const int MaxPointerHops = 128;
+
+        /// <summary>
+        /// Maximum expanded wire name length in bytes per RFC 1035.
+        /// </summary>
         private const int MaxExpandedNameLengthBytes = 255;
 
         /// <summary>

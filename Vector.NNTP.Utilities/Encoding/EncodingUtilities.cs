@@ -105,6 +105,10 @@ namespace Vector.NNTP.Utilities.Encoding
         /// <param name="destination">Destination characters (must be at least <c>source.Length</c>).</param>
         /// <returns>Characters written.</returns>
         /// <exception cref="ArgumentException">Thrown when destination is too short.</exception>
+        /// <remarks>
+        /// Uses <see cref="Ascii.ToUtf16"/> on the fast path; when that returns a status other than
+        /// <see cref="OperationStatus.Done"/>, falls back to <see cref="System.Text.Encoding.ASCII"/> replacement decoding.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int AsciiToCharsLossy(ReadOnlySpan<byte> source, Span<char> destination)
         {

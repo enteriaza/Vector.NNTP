@@ -33,6 +33,10 @@ namespace Vector.NNTP.Utilities.IO
         /// <param name="content">The binary content to write.</param>
         /// <param name="ct">Cancellation token.</param>
         /// <returns>A task that completes when the write, flush, rename, and directory fsync (Linux best-effort) complete.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="path"/> is null or empty.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="content"/> is <see langword="null"/>.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="ct"/> is canceled during I/O.</exception>
+        /// <exception cref="IOException">Propagated when temp write, flush, rename, or cleanup fails.</exception>
         public static async Task AtomicWriteAsync(string path, byte[] content, CancellationToken ct)
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
@@ -93,7 +97,15 @@ namespace Vector.NNTP.Utilities.IO
         /// <param name="path">File path.</param>
         /// <param name="onError">Optional callback invoked on unexpected errors.</param>
         /// <param name="ct">Cancellation token.</param>
-        /// <returns>The file content or <see langword="null"/>.</returns>
+        /// <returns>The file content or <see langword="null"/> when the file is missing or an unexpected error occurs.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="readFunc"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="path"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="ct"/> is canceled; not swallowed.</exception>
+        /// <remarks>
+        /// <see cref="FileNotFoundException"/> and <see cref="DirectoryNotFoundException"/> are converted to
+        /// <see langword="null"/>. Other exceptions invoke <paramref name="onError"/> when supplied and also return
+        /// <see langword="null"/>.
+        /// </remarks>
         public static async Task<T?> TryReadFileAsync<T>(
             Func<string, CancellationToken, Task<T>> readFunc,
             string path,

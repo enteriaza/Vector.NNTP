@@ -58,6 +58,7 @@ namespace Vector.NNTP.Utilities.Async
         /// <typeparam name="T">The task result type.</typeparam>
         /// <param name="tasks">The task list. Must not be <see langword="null"/>.</param>
         /// <param name="excludeTask">A task to skip (reference equality), or <see langword="null"/> to observe all.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="tasks"/> is <see langword="null"/>.</exception>
         public static void ObserveExceptions<T>(List<Task<T>> tasks, Task? excludeTask)
         {
             ArgumentNullException.ThrowIfNull(tasks);
@@ -80,6 +81,7 @@ namespace Vector.NNTP.Utilities.Async
         /// </summary>
         /// <param name="tasks">The task list. Must not be <see langword="null"/>.</param>
         /// <param name="excludeTask">A task to skip (reference equality), or <see langword="null"/> to observe all.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="tasks"/> is <see langword="null"/>.</exception>
         public static void ObserveExceptions(IReadOnlyList<Task> tasks, Task? excludeTask = null)
         {
             ArgumentNullException.ThrowIfNull(tasks);

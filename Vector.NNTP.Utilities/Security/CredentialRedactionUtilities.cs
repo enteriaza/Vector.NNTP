@@ -14,22 +14,22 @@ namespace Vector.NNTP.Utilities.Security
     public static partial class CredentialRedactionUtilities
     {
         /// <summary>
-        /// The minimum length of a token to be partially revealed.
+        /// Minimum token length required before <see cref="RedactApiToken"/> reveals prefix and suffix characters.
         /// </summary>
         private const int MinPartialRevealLength = 12;
 
         /// <summary>
-        /// The prefix length of a token to be partially revealed.
+        /// Number of leading characters preserved when partially revealing a long API token.
         /// </summary>
         private const int RevealPrefix = 4;
 
         /// <summary>
-        /// The suffix length of a token to be partially revealed.
+        /// Number of trailing characters preserved when partially revealing a long API token.
         /// </summary>
         private const int RevealSuffix = 4;
 
         /// <summary>
-        /// The placeholder string used to mask partially revealed tokens.
+        /// Mask placeholder substituted for short, null, or fully redacted token values.
         /// </summary>
         private const string MaskPlaceholder = "****";
 
@@ -37,7 +37,7 @@ namespace Vector.NNTP.Utilities.Security
         /// Redacts <c>password=...</c> segments in comma-delimited connection strings (e.g. StackExchange.Redis).
         /// </summary>
         /// <param name="value">Connection string value.</param>
-        /// <returns>Redacted value.</returns>
+        /// <returns>Connection string with comma-delimited <c>password=</c> values replaced by <c>password=***</c>.</returns>
         public static string RedactPassword(string value)
         {
             return PasswordCommaDelimitedRegex().Replace(value, "password=***");
@@ -47,7 +47,7 @@ namespace Vector.NNTP.Utilities.Security
         /// Redacts <c>Password=...</c> and <c>Pwd=...</c> segments in semicolon-delimited connection strings (ADO.NET style).
         /// </summary>
         /// <param name="value">Connection string value.</param>
-        /// <returns>Redacted value.</returns>
+        /// <returns>Connection string with semicolon-delimited <c>Password=</c> and <c>Pwd=</c> values masked.</returns>
         public static string RedactConnectionString(string value)
         {
             string redacted = PasswordSemicolonDelimitedRegex().Replace(value, "$1Password=***");
@@ -58,7 +58,9 @@ namespace Vector.NNTP.Utilities.Security
         /// Masks an API token by revealing only the first and last four characters when long enough.
         /// </summary>
         /// <param name="token">Token value.</param>
-        /// <returns>Redacted token.</returns>
+        /// <returns>
+        /// <see cref="MaskPlaceholder"/> for null/short tokens; otherwise first and last four characters with a middle mask.
+        /// </returns>
         public static string RedactApiToken(string? token)
         {
             return string.IsNullOrEmpty(token)
@@ -75,26 +77,26 @@ namespace Vector.NNTP.Utilities.Security
         /// Applies all supported connection-string redaction patterns.
         /// </summary>
         /// <param name="value">Connection string.</param>
-        /// <returns>Redacted value.</returns>
+        /// <returns>Connection string after comma- and semicolon-delimited password redaction passes.</returns>
         public static string RedactAll(string value)
         {
             return RedactConnectionString(RedactPassword(value));
         }
 
         /// <summary>
-        /// The regex pattern for redacting password segments in comma-delimited connection strings.
+        /// Source-generated regex matching comma-delimited <c>password=</c> segments (case-insensitive).
         /// </summary>
         [GeneratedRegex(@"(?i)\bpassword\s*=\s*[^,]+", RegexOptions.CultureInvariant)]
         private static partial Regex PasswordCommaDelimitedRegex();
 
         /// <summary>
-        /// The regex pattern for redacting password segments in semicolon-delimited connection strings.
+        /// Source-generated regex matching semicolon-delimited <c>Password=</c> segments (ADO.NET style).
         /// </summary>
         [GeneratedRegex(@"(?i)(^|;)\s*Password\s*=\s*[^;]+", RegexOptions.CultureInvariant)]
         private static partial Regex PasswordSemicolonDelimitedRegex();
 
         /// <summary>
-        /// The regex pattern for redacting password segments in semicolon-delimited connection strings.
+        /// Source-generated regex matching semicolon-delimited <c>Pwd=</c> segments (ADO.NET shorthand).
         /// </summary>
         [GeneratedRegex(@"(?i)(^|;)\s*Pwd\s*=\s*[^;]+", RegexOptions.CultureInvariant)]
         private static partial Regex PwdSemicolonDelimitedRegex();

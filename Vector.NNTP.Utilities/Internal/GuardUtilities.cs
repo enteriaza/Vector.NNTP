@@ -29,6 +29,7 @@ namespace Vector.NNTP.Utilities.Internal
         /// </summary>
         /// <param name="instance">The object instance passed to <see cref="ObjectDisposedException"/>.</param>
         /// <param name="disposedFlag">Disposed flag field (0 = active, non-zero = disposed).</param>
+        /// <exception cref="ObjectDisposedException">Thrown when <paramref name="disposedFlag"/> is non-zero.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ThrowIfDisposed(object instance, ref int disposedFlag)
         {
