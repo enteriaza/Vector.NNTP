@@ -49,7 +49,8 @@ namespace Vector.NNTP.Auth.MySql.Telemetry
         /// <summary>
         /// Records a user lookup outcome.
         /// </summary>
-        /// <param name="outcome">Bounded outcome label: found, not_found, transient_failure, or cache_hit.</param>
+        /// <param name="outcome">Bounded outcome label: <c>found</c>, <c>not_found</c>, <c>transient_failure</c>, or <c>cache_hit</c>.</param>
+        /// <remarks>Labels are fixed strings to keep metric cardinality bounded.</remarks>
         internal void RecordLookup(string outcome)
         {
             _lookup.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
@@ -67,8 +68,9 @@ namespace Vector.NNTP.Auth.MySql.Telemetry
         /// <summary>
         /// Records a credential validation outcome.
         /// </summary>
-        /// <param name="outcome">Bounded outcome label: success, invalid_credentials, or transient_failure.</param>
-        /// <param name="mechanism">Bounded mechanism label: authinfo, sasl_scram, or sasl_cram.</param>
+        /// <param name="outcome">Bounded outcome label: <c>success</c>, <c>invalid_credentials</c>, or <c>transient_failure</c>.</param>
+        /// <param name="mechanism">Bounded mechanism label: <c>authinfo</c>, <c>sasl_scram</c>, or <c>sasl_cram</c>.</param>
+        /// <remarks>Labels are fixed strings to keep metric cardinality bounded.</remarks>
         internal void RecordValidate(string outcome, string mechanism)
         {
             _validate.Add(

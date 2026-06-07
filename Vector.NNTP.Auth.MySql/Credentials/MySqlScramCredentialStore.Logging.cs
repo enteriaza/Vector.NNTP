@@ -7,15 +7,18 @@ using Vector.NNTP.Auth.MySql.Configuration;
 
 namespace Vector.NNTP.Auth.MySql.Credentials
 {
-    /// <remarks>
+    /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> helpers for <see cref="MySqlScramCredentialStore"/>.
+    /// </summary>
+    /// <remarks>
+    /// Cold-path logging for SCRAM-SHA-256 credential-store lookup outcomes and backend failures.
     /// </remarks>
     internal sealed partial class MySqlScramCredentialStore
     {
         /// <summary>
         /// Logs the start of a SCRAM credential lookup.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for SCRAM credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 320,
@@ -26,7 +29,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that no record was found for a SCRAM credential lookup.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for SCRAM credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 321,
@@ -37,7 +40,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that the account is disabled during a SCRAM credential lookup.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for SCRAM credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 322,
@@ -48,7 +51,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that SCRAM is not permitted for the account.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for SCRAM credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 323,
@@ -59,7 +62,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that SCRAM stored-key material is missing.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for SCRAM credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 324,
@@ -70,7 +73,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that a SCRAM credential lookup succeeded.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for SCRAM credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         /// <param name="iterations">Configured SCRAM iteration count.</param>
         [LoggerMessage(
@@ -82,7 +85,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that a SCRAM credential lookup failed due to an exception.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for SCRAM credential lookup diagnostics.</param>
         /// <param name="ex">Underlying exception.</param>
         /// <param name="username">Username being looked up.</param>
         /// <param name="failureReason">Classified failure reason.</param>

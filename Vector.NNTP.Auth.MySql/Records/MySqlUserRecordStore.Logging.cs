@@ -7,15 +7,19 @@ using Vector.NNTP.Auth.MySql.Configuration;
 
 namespace Vector.NNTP.Auth.MySql.Records
 {
-    /// <remarks>
+    /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> helpers for <see cref="MySqlUserRecordStore"/>.
+    /// </summary>
+    /// <remarks>
+    /// Cold-path logging for MySQL user-record lookup lifecycle events. Methods are <see langword="static"/> with an
+    /// explicit <see cref="ILogger"/> parameter so source generation stays valid.
     /// </remarks>
     internal sealed partial class MySqlUserRecordStore
     {
         /// <summary>
         /// Logs the start of a user record lookup.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for user-record lookup diagnostics.</param>
         /// <param name="accountName">Account name being looked up.</param>
         /// <param name="isAsync">Whether the async lookup path is in use.</param>
         [LoggerMessage(
@@ -27,7 +31,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <summary>
         /// Logs that no user record was found.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for user-record lookup diagnostics.</param>
         /// <param name="accountName">Account name being looked up.</param>
         [LoggerMessage(
             EventId = 401,
@@ -38,7 +42,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <summary>
         /// Logs that a user record was materialised successfully.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for user-record lookup diagnostics.</param>
         /// <param name="accountName">Account name being looked up.</param>
         [LoggerMessage(
             EventId = 402,
@@ -49,7 +53,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <summary>
         /// Logs that a user record lookup failed due to a backend error.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for user-record lookup diagnostics.</param>
         /// <param name="ex">Underlying exception.</param>
         /// <param name="accountName">Account name being looked up.</param>
         /// <param name="failureReason">Classified failure reason.</param>

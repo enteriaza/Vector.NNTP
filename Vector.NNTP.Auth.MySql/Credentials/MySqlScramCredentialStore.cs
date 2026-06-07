@@ -42,7 +42,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         private readonly INntpUserRecordStore _recordStore;
 
         /// <summary>
-        /// Logger instance.
+        /// Logger for SCRAM credential lookup diagnostics.
         /// </summary>
         private readonly ILogger<MySqlScramCredentialStore> _logger;
 
@@ -50,7 +50,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// Initializes a new instance of the <see cref="MySqlScramCredentialStore"/> class.
         /// </summary>
         /// <param name="recordStore">Backing user record store.</param>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for SCRAM credential lookup diagnostics.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="recordStore"/> or <paramref name="logger"/> is null.</exception>
         internal MySqlScramCredentialStore(
             INntpUserRecordStore recordStore,
@@ -61,15 +61,23 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Tries to get a SCRAM credential for a username.
+        /// Resolves SCRAM-SHA-256 stored-key material for <paramref name="username"/> from the MySQL user store.
         /// </summary>
-        /// <param name="username">Username to lookup.</param>
-        /// <param name="credential">The resulting SCRAM credential, or <see langword="null"/> if the lookup failed.</param>
-        /// <returns><see langword="true"/> if a credential was found and returned; <see langword="false"/> otherwise.</returns>
+        /// <param name="username">Plaintext NNTP username supplied by the client.</param>
+        /// <param name="credential">
+        /// Populated <see cref="ScramStoredCredential"/> when the account is enabled, SCRAM is permitted, and all SCRAM
+        /// columns are present; otherwise <see langword="null"/>.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> when SCRAM material was returned; <see langword="false"/> for not-found, disabled,
+        /// policy-denied, or incomplete SCRAM provisioning without throwing.
+        /// </returns>
         /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> is null or empty.</exception>
         /// <exception cref="NntpCredentialStoreTransientException">Thrown when the backing store fails due to a backend error.</exception>
         /// <remarks>
-        /// <see cref="OperationCanceledException"/> propagates when the backing lookup is cancelled.
+        /// On success, stashes the materialised record in <see cref="MySqlUserRecordSaslCache"/> for
+        /// <see cref="INntpSaslAccountAuthenticator.CompleteSaslAccountAsync"/>. The synchronous
+        /// <see cref="INntpUserRecordStore.TryGetUser"/> contract does not accept cancellation.
         /// </remarks>
         bool IScramCredentialStore.TryGetScramCredential(string username, [NotNullWhen(true)] out ScramStoredCredential? credential)
         {

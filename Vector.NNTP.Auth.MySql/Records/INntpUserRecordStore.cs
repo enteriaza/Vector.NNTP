@@ -27,9 +27,11 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <returns>
         /// A <see cref="MySqlUserRecord"/> when the account exists; otherwise, <see langword="null"/>.
         /// </returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="accountName"/> is null or empty.</exception>
         /// <remarks>
         /// Used by synchronous SASL credential stores (<see cref="Sockets.Authentication.ICramMd5CredentialStore"/>,
-        /// <see cref="Sockets.Authentication.IScramCredentialStore"/>). Exceptions propagate to the caller.
+        /// <see cref="Sockets.Authentication.IScramCredentialStore"/>). MySQL and transport exceptions propagate to the
+        /// caller after logging at the implementation boundary.
         /// </remarks>
         MySqlUserRecord? TryGetUser(string accountName);
 
@@ -41,8 +43,10 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <returns>
         /// A task producing a <see cref="MySqlUserRecord"/> when the account exists; otherwise, <see langword="null"/>.
         /// </returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="accountName"/> is null or empty.</exception>
         /// <remarks>
         /// Backend I/O and provider exceptions propagate to the caller after logging at the implementation boundary.
+        /// <see cref="OperationCanceledException"/> propagates when <paramref name="cancellationToken"/> is signalled.
         /// </remarks>
         Task<MySqlUserRecord?> TryGetUserAsync(string accountName, CancellationToken cancellationToken);
     }

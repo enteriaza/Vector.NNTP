@@ -130,22 +130,22 @@ namespace Vector.NNTP.Auth.MySql.Records
         internal char AccountType { get; }
 
         /// <summary>
-        /// Gets the configured rate limit value for the account.
+        /// Gets the per-connection rate limit copied from <c>account_rate_limit</c> for session policy materialisation.
         /// </summary>
         internal int RateLimit { get; }
 
         /// <summary>
-        /// Gets the configured byte limit value for the account.
+        /// Gets the per-connection byte limit copied from <c>account_byte_limit</c> for session policy materialisation.
         /// </summary>
         internal long ByteLimit { get; }
 
         /// <summary>
-        /// Gets the maximum concurrent sessions permitted for the account.
+        /// Gets the maximum concurrent sessions copied from <c>account_session_limit</c>.
         /// </summary>
         internal int SessionLimit { get; }
 
         /// <summary>
-        /// Gets the maximum concurrent sessions from a single source IP address.
+        /// Gets the maximum concurrent sessions from one source IP copied from <c>account_srcip_limit</c>.
         /// </summary>
         internal int SrcIpLimit { get; }
 

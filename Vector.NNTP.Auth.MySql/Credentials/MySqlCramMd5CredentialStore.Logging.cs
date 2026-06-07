@@ -7,15 +7,18 @@ using Vector.NNTP.Auth.MySql.Configuration;
 
 namespace Vector.NNTP.Auth.MySql.Credentials
 {
-    /// <remarks>
+    /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> helpers for <see cref="MySqlCramMd5CredentialStore"/>.
+    /// </summary>
+    /// <remarks>
+    /// Cold-path logging for CRAM-MD5 credential-store lookup outcomes and backend failures.
     /// </remarks>
     internal sealed partial class MySqlCramMd5CredentialStore
     {
         /// <summary>
         /// Logs the start of a CRAM-MD5 secret lookup.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for CRAM-MD5 credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 300,
@@ -26,7 +29,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that no record was found for a CRAM-MD5 secret lookup.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for CRAM-MD5 credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 301,
@@ -37,7 +40,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that the account is disabled during a CRAM-MD5 secret lookup.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for CRAM-MD5 credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 302,
@@ -48,7 +51,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that CRAM-MD5 is not permitted for the account.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for CRAM-MD5 credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 305,
@@ -59,7 +62,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that the stored password is not US-ASCII and cannot be used as a CRAM-MD5 secret.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for CRAM-MD5 credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 306,
@@ -70,7 +73,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that a CRAM-MD5 secret lookup succeeded.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for CRAM-MD5 credential lookup diagnostics.</param>
         /// <param name="username">Username being looked up.</param>
         [LoggerMessage(
             EventId = 303,
@@ -81,7 +84,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that a CRAM-MD5 secret lookup failed due to an exception.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for CRAM-MD5 credential lookup diagnostics.</param>
         /// <param name="ex">Underlying exception.</param>
         /// <param name="username">Username being looked up.</param>
         /// <param name="failureReason">Classified failure reason.</param>

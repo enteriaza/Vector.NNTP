@@ -27,8 +27,10 @@ namespace Vector.NNTP.Auth.MySql.Records
         internal static readonly byte[] UsernameOnlyFingerprint = "username-only"u8.ToArray();
 
         /// <summary>
-        /// Cached entry with expiry.
+        /// AES-256-GCM protected user-record payload with an absolute UTC expiry instant.
         /// </summary>
+        /// <param name="ProtectedPayload">Encrypted cache bytes produced by <see cref="MySqlUserRecordCacheProtection"/>.</param>
+        /// <param name="ExpiresUtc">UTC instant after which the entry must not be returned.</param>
         private readonly record struct CacheEntry(byte[] ProtectedPayload, DateTimeOffset ExpiresUtc);
 
         /// <summary>
@@ -69,6 +71,9 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <param name="credentialFingerprint">Fingerprint of supplied credentials, or <see cref="UsernameOnlyFingerprint"/>.</param>
         /// <param name="record">Cached record when found and not expired.</param>
         /// <returns><see langword="true"/> when a valid cache entry was found.</returns>
+        /// <remarks>
+        /// Expired, undecryptable, or tampered entries are removed eagerly and reported as misses.
+        /// </remarks>
         internal bool TryGet(string accountName, ReadOnlySpan<byte> credentialFingerprint, out MySqlUserRecord? record)
         {
             string key = BuildCacheKey(accountName, credentialFingerprint);
@@ -104,6 +109,9 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <param name="credentialFingerprint">Fingerprint of supplied credentials, or <see cref="UsernameOnlyFingerprint"/>.</param>
         /// <param name="record">Validated user record snapshot.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="record"/> is null.</exception>
+        /// <remarks>
+        /// Overwrites any prior entry for the same account and fingerprint hash. Payloads are encrypted before insertion.
+        /// </remarks>
         internal void Put(string accountName, ReadOnlySpan<byte> credentialFingerprint, MySqlUserRecord record)
         {
             ArgumentNullException.ThrowIfNull(record);
@@ -117,7 +125,10 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// Computes a SHA-256 fingerprint for a supplied password string.
         /// </summary>
         /// <param name="password">Supplied password (US-ASCII).</param>
-        /// <returns>Fingerprint bytes.</returns>
+        /// <returns>SHA-256 digest of the ASCII password bytes.</returns>
+        /// <remarks>
+        /// Null passwords hash as empty strings. Non-ASCII code points follow <see cref="Encoding.ASCII"/> replacement rules.
+        /// </remarks>
         internal static byte[] ComputePasswordFingerprint(string password)
         {
             byte[] bytes = Encoding.ASCII.GetBytes(password ?? string.Empty);

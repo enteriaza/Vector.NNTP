@@ -8,15 +8,18 @@ using Vector.NNTP.Session.Policy;
 
 namespace Vector.NNTP.Auth.MySql.Credentials
 {
-    /// <remarks>
+    /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> helpers for <see cref="MySqlNntpCredentialValidator"/>.
+    /// </summary>
+    /// <remarks>
+    /// Cold-path logging for password and SASL finalization outcomes, backend failures, and per-exchange SASL cache events.
     /// </remarks>
     internal sealed partial class MySqlNntpCredentialValidator
     {
         /// <summary>
         /// Logs that host-side authentication finalization is starting.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         /// <param name="clientIp">Client IP address.</param>
@@ -35,7 +38,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that a user was not found or did not have a usable record.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         /// <param name="clientIp">Client IP address.</param>
@@ -52,7 +55,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that a user is disabled.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         /// <param name="clientIp">Client IP address.</param>
@@ -69,7 +72,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that credentials did not match or the mechanism is not permitted.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         /// <param name="clientIp">Client IP address.</param>
@@ -86,7 +89,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that authentication succeeded and a policy was issued.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">Authenticated username.</param>
         /// <param name="clientIp">Client IP address.</param>
@@ -109,7 +112,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that MySQL authentication failed due to an exception from the backing store.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         /// <param name="ex">Underlying exception for diagnostics.</param>
         /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
@@ -128,7 +131,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that a transient backend failure will return 503 semantics to the caller.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         /// <param name="mechanism">Authentication mechanism label.</param>
         /// <param name="username">User being authenticated.</param>
         /// <param name="failureReason">Classified failure reason.</param>
@@ -145,7 +148,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs that a SASL exchange was abandoned and the AsyncLocal cache cleared.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         [LoggerMessage(
             EventId = 208,
             Level = LogLevel.Debug,
@@ -155,7 +158,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs a per-exchange SASL cache hit during finalize.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         /// <param name="username">Authenticated username.</param>
         [LoggerMessage(
             EventId = 209,
@@ -166,7 +169,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <summary>
         /// Logs a per-exchange SASL cache miss during finalize.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for credential validation diagnostics.</param>
         /// <param name="username">Authenticated username.</param>
         [LoggerMessage(
             EventId = 210,

@@ -81,17 +81,29 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Completes a SASL account authentication.
+        /// Finalizes SCRAM-SHA-256 or CRAM-MD5 authentication after wire-level cryptographic verification succeeds.
         /// </summary>
-        /// <param name="mechanism">The SASL mechanism used for authentication.</param>
-        /// <param name="username">The username of the authenticated account.</param>
-        /// <param name="clientIp">The IP address of the client.</param>
-        /// <param name="isTls">Whether the connection is TLS-protected.</param>
-        /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
-        /// <returns>The authentication result.</returns>
-        /// <exception cref="ArgumentException">Thrown when the SASL mechanism is unsupported.</exception>
+        /// <param name="mechanism">SASL mechanism label (<see cref="NntpAuthMechanisms.SaslScramSha256"/> or <see cref="NntpAuthMechanisms.SaslCramMd5"/>).</param>
+        /// <param name="username">Authenticated username supplied by the client.</param>
+        /// <param name="clientIp">Client IP address used for structured logs and session policy materialisation.</param>
+        /// <param name="isTls">Whether the NNTP session transport is TLS-protected at completion time.</param>
+        /// <param name="cancellationToken">Cancellation token for the backing user-record lookup on cache miss.</param>
+        /// <returns>
+        /// <see cref="NntpAuthResult.Success"/> with <see cref="NntpSessionPolicy"/> when the account is enabled and the
+        /// mechanism is permitted; <see cref="NntpAuthResult.InvalidCredentials"/> for policy or lookup failures;
+        /// <see cref="NntpAuthResult.TransientFailure"/> when MySQL I/O fails.
+        /// </returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="mechanism"/> is not SCRAM-SHA-256 or CRAM-MD5.</exception>
         /// <remarks>
-        /// <see cref="OperationCanceledException"/> propagates when the backing user lookup is cancelled.
+        /// <para>
+        /// Consumes a record stashed by <see cref="MySqlScramCredentialStore"/> or <see cref="MySqlCramMd5CredentialStore"/>
+        /// via <see cref="MySqlUserRecordSaslCache"/> when available; otherwise queries
+        /// <see cref="INntpUserRecordStore.TryGetUserAsync"/>.
+        /// </para>
+        /// <para>
+        /// <see cref="MySqlUserRecordSaslCache.Clear"/> runs in a <c>finally</c> block so the per-exchange slot does not
+        /// leak across authentications. <see cref="OperationCanceledException"/> propagates when the lookup is cancelled.
+        /// </para>
         /// </remarks>
         async ValueTask<NntpAuthResult> INntpSaslAccountAuthenticator.CompleteSaslAccountAsync(
             string mechanism,
@@ -119,11 +131,15 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Abandons a SASL exchange.
+        /// Clears staged SASL user-record material when the client resets authentication mid-exchange.
         /// </summary>
         /// <remarks>
-        /// <para>Clears the per-exchange <see cref="MySqlUserRecordSaslCache"/> slot and logs the abandoned exchange.</para>
-        /// <para>Idempotent: safe to call when no SASL exchange is in progress.</para>
+        /// <para>
+        /// Invoked by the sockets authentication layer from
+        /// <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/> when the client issues a new AUTHINFO or
+        /// abandons an in-progress SASL dialog.
+        /// </para>
+        /// <para>Clears <see cref="MySqlUserRecordSaslCache"/> and logs the abandonment. Idempotent when no exchange is active.</para>
         /// </remarks>
         void INntpSaslAccountAuthenticator.AbandonSaslExchange()
         {
@@ -233,6 +249,10 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// <param name="suppliedPassword">Password supplied by the client.</param>
         /// <returns><see langword="true"/> when the passwords match; <see langword="false"/> when either argument is null,
         /// non-ASCII, or the values differ.</returns>
+        /// <remarks>
+        /// Pads both sides to the longer length before <see cref="CryptographicOperations.FixedTimeEquals"/> so length
+        /// differences do not leak via early exit. Large passwords rent pooled buffers cleared on return.
+        /// </remarks>
         internal bool PasswordEquals(string storedPassword, string suppliedPassword)
         {
             if (storedPassword is null || suppliedPassword is null)

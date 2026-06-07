@@ -60,6 +60,19 @@ namespace Vector.NNTP.Auth.MySql.DependencyInjection
         /// <returns>The service collection for chaining.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is null.</exception>
         /// <exception cref="ArgumentException">Thrown when <paramref name="connectionString"/> is invalid.</exception>
+        /// <remarks>
+        /// <para>
+        /// Replaces development authentication stubs from the sockets assembly and registers, as singletons:
+        /// <see cref="MySqlAuthOptions"/>, <see cref="AuthMySqlMetrics"/>, <see cref="MySqlUserRecordCache"/>,
+        /// <see cref="MySqlUserRecordStore"/>, <see cref="CachingMySqlUserRecordStore"/> as
+        /// <see cref="INntpUserRecordStore"/>, <see cref="MySqlNntpCredentialValidator"/> as both
+        /// <see cref="INntpCredentialValidator"/> and <see cref="INntpSaslAccountAuthenticator"/>,
+        /// <see cref="MySqlCramMd5CredentialStore"/>, and <see cref="MySqlScramCredentialStore"/>.
+        /// </para>
+        /// <para>
+        /// <see cref="MySqlAuthConnectivityValidator"/> is registered as a hosted service for fail-fast startup connectivity.
+        /// </para>
+        /// </remarks>
         public static IServiceCollection AddNntpMySqlAuth(this IServiceCollection services, string connectionString)
         {
             ArgumentNullException.ThrowIfNull(services);

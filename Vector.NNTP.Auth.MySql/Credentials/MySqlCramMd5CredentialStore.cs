@@ -32,7 +32,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         private readonly INntpUserRecordStore _recordStore;
 
         /// <summary>
-        /// Logger instance.
+        /// Logger for CRAM-MD5 credential lookup diagnostics.
         /// </summary>
         private readonly ILogger<MySqlCramMd5CredentialStore> _logger;
 
@@ -40,7 +40,7 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         /// Initializes a new instance of the <see cref="MySqlCramMd5CredentialStore"/> class.
         /// </summary>
         /// <param name="recordStore">Backing user record store.</param>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for CRAM-MD5 credential lookup diagnostics.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="recordStore"/> or <paramref name="logger"/> is null.</exception>
         internal MySqlCramMd5CredentialStore(
             INntpUserRecordStore recordStore,
@@ -51,15 +51,20 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Tries to get a CRAM-MD5 secret for a username.
+        /// Resolves the CRAM-MD5 shared secret for <paramref name="username"/> from the MySQL user store.
         /// </summary>
-        /// <param name="username">Username supplied by the client.</param>
-        /// <param name="secret">Shared secret derived from the stored password, when available.</param>
-        /// <returns><see langword="true"/> when a secret was retrieved; otherwise <see langword="false"/>.</returns>
+        /// <param name="username">Plaintext NNTP username supplied by the client.</param>
+        /// <param name="secret">US-ASCII password bytes used as the HMAC key when lookup succeeds; empty on denial.</param>
+        /// <returns>
+        /// <see langword="true"/> when the account exists, is enabled, permits password-based mechanisms, and has a
+        /// US-ASCII password; otherwise <see langword="false"/> without throwing.
+        /// </returns>
         /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> is null or empty.</exception>
         /// <exception cref="NntpCredentialStoreTransientException">Thrown when the backing store fails due to a backend error.</exception>
         /// <remarks>
-        /// <see cref="OperationCanceledException"/> propagates when the backing lookup is cancelled.
+        /// On success, stashes the materialised record in <see cref="MySqlUserRecordSaslCache"/> for
+        /// <see cref="INntpSaslAccountAuthenticator.CompleteSaslAccountAsync"/>. The synchronous
+        /// <see cref="INntpUserRecordStore.TryGetUser"/> contract does not accept cancellation.
         /// </remarks>
         bool ICramMd5CredentialStore.TryGetCramSecret(string username, out ReadOnlyMemory<byte> secret)
         {

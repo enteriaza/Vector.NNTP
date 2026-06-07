@@ -41,7 +41,7 @@ namespace Vector.NNTP.Auth.MySql.Records
         /// <param name="inner">Inner MySQL record store.</param>
         /// <param name="cache">Successful-authentication cache.</param>
         /// <param name="metrics">Metrics instance.</param>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for authentication cache diagnostics.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="inner"/>, <paramref name="cache"/>,
         /// <paramref name="metrics"/>, or <paramref name="logger"/> is null.</exception>
         internal CachingMySqlUserRecordStore(
@@ -62,23 +62,30 @@ namespace Vector.NNTP.Auth.MySql.Records
         internal MySqlUserRecordCache Cache { get; }
 
         /// <summary>
-        /// Tries to get a user record by account name.
+        /// Tries to get a user record by account name, consulting the username-only authentication cache first.
         /// </summary>
         /// <param name="accountName">Account name to lookup.</param>
-        /// <returns>User record or <see langword="null"/> when not found.</returns>
+        /// <returns>User record or <see langword="null"/> when not found in cache or MySQL.</returns>
         /// <exception cref="ArgumentException">Thrown when <paramref name="accountName"/> is null or empty.</exception>
+        /// <remarks>
+        /// Only <see cref="MySqlUserRecordCache.UsernameOnlyFingerprint"/> entries are read here; password-fingerprint cache
+        /// hits are handled inside <see cref="Credentials.MySqlNntpCredentialValidator"/>.
+        /// </remarks>
         MySqlUserRecord? INntpUserRecordStore.TryGetUser(string accountName)
         {
             return TryGetCached(accountName, out MySqlUserRecord? cached) ? cached : _inner.TryGetUser(accountName);
         }
 
         /// <summary>
-        /// Tries to get a user record by account name asynchronously.
+        /// Tries to get a user record by account name asynchronously, consulting the username-only cache first.
         /// </summary>
         /// <param name="accountName">Account name to lookup.</param>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>User record or <see langword="null"/> when not found.</returns>
+        /// <param name="cancellationToken">Cancellation token for the inner store on cache miss.</param>
+        /// <returns>User record or <see langword="null"/> when not found in cache or MySQL.</returns>
         /// <exception cref="ArgumentException">Thrown when <paramref name="accountName"/> is null or empty.</exception>
+        /// <remarks>
+        /// Backend I/O exceptions from the inner store propagate after logging at the implementation boundary.
+        /// </remarks>
         async Task<MySqlUserRecord?> INntpUserRecordStore.TryGetUserAsync(string accountName, CancellationToken cancellationToken)
         {
             return TryGetCached(accountName, out MySqlUserRecord? cached)

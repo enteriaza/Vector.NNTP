@@ -20,8 +20,11 @@ namespace Vector.NNTP.Auth.MySql.Configuration
     internal sealed class MySqlAuthOptions
     {
         /// <summary>
-        /// Default successful-authentication cache TTL for concurrent burst authentication.
+        /// Default successful-authentication cache TTL applied when constructing options from a connection string.
         /// </summary>
+        /// <remarks>
+        /// Ten seconds balances burst deduplication against minimising cleartext credential retention in memory.
+        /// </remarks>
         private static readonly TimeSpan DefaultAuthCacheTtl = TimeSpan.FromSeconds(10);
 
         /// <summary>

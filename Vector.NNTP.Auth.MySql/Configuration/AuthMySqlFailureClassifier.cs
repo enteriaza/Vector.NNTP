@@ -19,6 +19,10 @@ namespace Vector.NNTP.Auth.MySql.Configuration
         /// <param name="exception">Exception raised during user lookup or validation I/O.</param>
         /// <returns>Stable failure reason for operators and metrics.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="exception"/> is null.</exception>
+        /// <remarks>
+        /// Walks <see cref="Exception.InnerException"/> when the outer exception is not recognised. MySQL message heuristics
+        /// distinguish connect timeouts, query timeouts, and pool pressure.
+        /// </remarks>
         internal static AuthMySqlFailureReason Classify(Exception exception)
         {
             ArgumentNullException.ThrowIfNull(exception);
@@ -41,6 +45,10 @@ namespace Vector.NNTP.Auth.MySql.Configuration
         /// </summary>
         /// <param name="exception">MySQL provider exception.</param>
         /// <returns>Classified failure reason.</returns>
+        /// <remarks>
+        /// Uses <see cref="MySqlException.ErrorCode"/> first, then case-insensitive substring checks on
+        /// <see cref="Exception.Message"/> for timeout and pool keywords.
+        /// </remarks>
         private static AuthMySqlFailureReason ClassifyMySqlException(MySqlException exception)
         {
             if (exception.ErrorCode == MySqlErrorCode.UnableToConnectToHost)

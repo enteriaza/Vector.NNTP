@@ -38,7 +38,7 @@ namespace Vector.NNTP.Auth.MySql.HostedServices
         /// Initializes a new instance of the <see cref="MySqlAuthConnectivityValidator"/> class.
         /// </summary>
         /// <param name="options">Validated MySQL authentication options.</param>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Logger for startup connectivity validation.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> or <paramref name="logger"/> is null.</exception>
         internal MySqlAuthConnectivityValidator(MySqlAuthOptions options, ILogger<MySqlAuthConnectivityValidator> logger)
         {
@@ -47,11 +47,11 @@ namespace Vector.NNTP.Auth.MySql.HostedServices
         }
 
         /// <summary>
-        /// Starts the connectivity validation.
+        /// Opens a MySQL connection and executes <c>SELECT 1</c> before the host accepts authentication traffic.
         /// </summary>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when the connectivity validation fails.</exception>
+        /// <param name="cancellationToken">Host shutdown token (not observed by the synchronous probe).</param>
+        /// <returns>A completed task when validation succeeds.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the connectivity probe fails.</exception>
         /// <remarks>
         /// The probe uses synchronous <see cref="MySqlConnection.Open"/> and <c>ExecuteScalar</c>; <paramref name="cancellationToken"/>
         /// is not observed. Wait time is bounded by connection-string <c>ConnectionTimeout</c> and
@@ -81,10 +81,10 @@ namespace Vector.NNTP.Auth.MySql.HostedServices
         }
 
         /// <summary>
-        /// Stops the connectivity validation.
+        /// No-op shutdown hook; connectivity validation runs only during <see cref="IHostedService.StartAsync"/>.
         /// </summary>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
+        /// <param name="cancellationToken">Host shutdown token.</param>
+        /// <returns>A completed task.</returns>
         Task IHostedService.StopAsync(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
