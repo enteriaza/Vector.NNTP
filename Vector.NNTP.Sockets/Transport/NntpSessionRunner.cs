@@ -108,7 +108,7 @@ namespace Vector.NNTP.Sockets.Transport
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    readIdleCts.CancelAfter(_options.Value.IdleTimeout);
+                    readIdleCts.CancelAfter(TimeSpan.FromSeconds(_options.Value.IdleTimeoutSeconds));
                     NntpByteLineReadResult read = await session.LineReader.ReadLineBytesAsync(readIdleCts.Token).ConfigureAwait(false);
                     if (read.IsCompleted)
                     {

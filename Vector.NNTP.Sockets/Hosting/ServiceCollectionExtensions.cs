@@ -68,7 +68,6 @@ namespace Vector.NNTP.Sockets.Hosting
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NntpServerOptions>, NntpServerOptionsValidator>());
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<NntpServerOptions>, NntpServerIdleTimeoutPostConfigure>());
             _ = services.AddNntpSessionCore();
             _ = services.AddSingleton<NntpAuthenticationService>();
             _ = services.AddSingleton<NntpInFlightSessionTracker>();

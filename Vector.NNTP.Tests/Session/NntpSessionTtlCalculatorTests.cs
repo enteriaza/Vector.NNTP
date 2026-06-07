@@ -17,7 +17,7 @@ namespace Vector.NNTP.Tests.Session
         [Test]
         public void ComputeTtlSeconds_ShortIdleTimeout_UsesMinimum()
         {
-            Assert.That(NntpSessionTtlCalculator.ComputeTtlSeconds(TimeSpan.FromSeconds(30)), Is.EqualTo(300));
+            Assert.That(NntpSessionTtlCalculator.ComputeTtlSeconds(30), Is.EqualTo(300));
         }
 
         /// <summary>
@@ -26,7 +26,7 @@ namespace Vector.NNTP.Tests.Session
         [Test]
         public void ComputeTtlSeconds_LongIdleTimeout_ScalesDouble()
         {
-            Assert.That(NntpSessionTtlCalculator.ComputeTtlSeconds(TimeSpan.FromMinutes(10)), Is.EqualTo(1200));
+            Assert.That(NntpSessionTtlCalculator.ComputeTtlSeconds(600), Is.EqualTo(1200));
         }
 
         /// <summary>

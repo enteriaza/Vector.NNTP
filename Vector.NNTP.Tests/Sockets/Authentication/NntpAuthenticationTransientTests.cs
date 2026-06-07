@@ -168,7 +168,7 @@ namespace Vector.NNTP.Tests.Sockets.Authentication
             {
                 NodeName = "test-node",
                 ServerIdentification = "VectorNNTPD-Test",
-                IdleTimeout = TimeSpan.FromSeconds(5),
+                IdleTimeoutSeconds = 5,
                 RequireTlsForAuthInfo = false,
             });
             IPEndPoint remote = new IPEndPoint(IPAddress.Loopback, 12345);

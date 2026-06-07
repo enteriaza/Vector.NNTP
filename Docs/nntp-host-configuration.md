@@ -8,8 +8,7 @@ NNRPD and NNTPD bind a single JSON section named `NntpServer` to **socket**, **s
 | `Port` | `Vector.NNTP.Sockets` | Cleartext NNTP listener (default `119`). |
 | `TlsPort` | `Vector.NNTP.Sockets` | Implicit TLS (NNTPS) listener; `0` disables (default `0`). |
 | `BindAddress` | Sockets | Bind address (`0.0.0.0` or `*` for all interfaces). |
-| `IdleTimeout` | Sockets + Session | Per-read idle timeout (ISO 8601 duration). |
-| `IdleTimeoutSeconds` | Sockets + Session | Optional idle timeout in seconds; **wins over `IdleTimeout`** when set. |
+| `IdleTimeoutSeconds` | Sockets + Session | Per-read idle timeout in seconds (default `600`). |
 | `MaxConnections` | Sockets | Concurrent connection cap (`0` = unlimited). |
 | `ServerIdentification` | Sockets | Banner and CAPABILITIES `IMPLEMENTATION` (defaults to host assembly name). |
 | `EnableStartTls` | Sockets | Advertise and accept `STARTTLS` when a certificate is available. |

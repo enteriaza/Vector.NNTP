@@ -2,6 +2,8 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+using System.ComponentModel.DataAnnotations;
+
 namespace Vector.NNTP.Session.Configuration
 {
     /// <summary>
@@ -15,13 +17,9 @@ namespace Vector.NNTP.Session.Configuration
         public const string SectionName = "NntpServer";
 
         /// <summary>
-        /// Gets or sets the idle timeout as ISO duration.
+        /// Gets or sets the per-read idle timeout in seconds (same value as socket enforcement).
         /// </summary>
-        public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(10);
-
-        /// <summary>
-        /// Gets or sets optional idle timeout in seconds (wins over <see cref="IdleTimeout"/> when set).
-        /// </summary>
-        public int? IdleTimeoutSeconds { get; set; }
+        [Range(1, int.MaxValue)]
+        public int IdleTimeoutSeconds { get; set; } = 600;
     }
 }

@@ -82,7 +82,7 @@ namespace Vector.NNTP.Tests.Sockets
             {
                 NodeName = "test-node",
                 ServerIdentification = "VectorNNTPD-TcpTest",
-                IdleTimeout = TimeSpan.FromSeconds(5),
+                IdleTimeoutSeconds = 5,
             });
             NntpSessionTestServices.NntpSessionTestBundle session = NntpSessionTestServices.CreateDefault();
             var auth = new NntpAuthenticationService(

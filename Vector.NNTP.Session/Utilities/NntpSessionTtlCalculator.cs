@@ -17,12 +17,12 @@ namespace Vector.NNTP.Session.Utilities
         /// <summary>
         /// Computes <c>max(300, ceil(idleTimeoutSeconds * 2))</c>.
         /// </summary>
-        /// <param name="idleTimeout">Resolved NNTP idle timeout (same as socket enforcement).</param>
+        /// <param name="idleTimeoutSeconds">Configured NNTP idle timeout in seconds (same as socket enforcement).</param>
         /// <returns>TTL seconds for acquire and heartbeat.</returns>
-        public static int ComputeTtlSeconds(TimeSpan idleTimeout)
+        public static int ComputeTtlSeconds(int idleTimeoutSeconds)
         {
-            double seconds = idleTimeout.TotalSeconds;
-            int scaled = (int)Math.Ceiling(seconds * 2.0);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(idleTimeoutSeconds);
+            int scaled = (int)Math.Ceiling(idleTimeoutSeconds * 2.0);
             return Math.Max(MinimumTtlSeconds, scaled);
         }
 

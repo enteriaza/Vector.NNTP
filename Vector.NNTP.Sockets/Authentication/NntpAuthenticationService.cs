@@ -562,7 +562,7 @@ namespace Vector.NNTP.Sockets.Authentication
                 _ = ctx.TryBindPendingAuthentication(policy.Username, policy.AccountKey, policy, AuthenticatingPhase.PendingAdmission);
             }
 
-            int ttlSeconds = NntpSessionTtlCalculator.ComputeTtlSeconds(_idleOptions.CurrentValue.IdleTimeout);
+            int ttlSeconds = NntpSessionTtlCalculator.ComputeTtlSeconds(_idleOptions.CurrentValue.IdleTimeoutSeconds);
             string nodeName = session.Connection.NodeName;
             NntpSessionAdmissionResult admit = await _sessionCoordinator.TryAdmitAsync(
                 policy,

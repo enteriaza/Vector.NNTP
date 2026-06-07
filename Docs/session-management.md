@@ -70,7 +70,7 @@ ttlSeconds = max(300, ceil(idleTimeoutSeconds * 2))
 metadataTtlSeconds = ttlSeconds * 2
 ```
 
-`idleTimeoutSeconds` under `NntpServer` wins over ISO `IdleTimeout` when both are set. Heartbeat interval defaults from `Redis:HeartbeatIntervalSeconds`.
+`IdleTimeoutSeconds` under `NntpServer` drives socket idle enforcement and Redis lease TTL sizing. Heartbeat interval defaults from `Redis:HeartbeatIntervalSeconds`.
 
 **Liveness:** Redis `EXPIRE` on `session:{sessionId}` and `node:{NodeName}:sessions` is authoritative for orphan cleanup. The HASH field `leaseUpdated` (Unix milliseconds) is informational only for support and logs — do not implement application-side staleness decisions from it.
 

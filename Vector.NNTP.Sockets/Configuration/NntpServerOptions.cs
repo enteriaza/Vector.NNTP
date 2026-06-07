@@ -48,14 +48,10 @@ namespace Vector.NNTP.Sockets.Configuration
         public int MaxConnectionsPerClientIp { get; set; }
 
         /// <summary>
-        /// Gets or sets optional idle timeout in seconds from <c>idleTimeoutSeconds</c> JSON key.
+        /// Gets or sets the per-read idle timeout in seconds before the server closes the connection.
         /// </summary>
-        public int? IdleTimeoutSeconds { get; set; }
-
-        /// <summary>
-        /// Gets or sets the idle timeout before the server closes the connection.
-        /// </summary>
-        public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(10);
+        [Range(1, int.MaxValue)]
+        public int IdleTimeoutSeconds { get; set; } = 600;
 
         /// <summary>
         /// Gets or sets a value indicating whether STARTTLS is advertised and permitted.
@@ -145,10 +141,8 @@ namespace Vector.NNTP.Sockets.Configuration
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.NodeName)} is required.")
                 : string.IsNullOrWhiteSpace(options.ServerIdentification)
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.ServerIdentification)} is required.")
-                : options.IdleTimeoutSeconds is <= 0
-                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeoutSeconds)} must be positive when set.")
-                : options.IdleTimeout <= TimeSpan.Zero
-                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeout)} must be positive.")
+                : options.IdleTimeoutSeconds <= 0
+                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeoutSeconds)} must be positive.")
                 : options.PipeReadBufferBytes < 4096
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.PipeReadBufferBytes)} must be at least 4096.")
                 : NntpTransitPeersOptionsValidator.Validate(options.TransitPeers);

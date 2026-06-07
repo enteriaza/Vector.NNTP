@@ -32,7 +32,7 @@ namespace Vector.NNTP.Tests.Session
                 rateAllocation,
                 NullLogger<NntpQuotaEnforcer>.Instance);
             TestOptionsMonitor<NntpSessionIdleOptions> idleOptions = new TestOptionsMonitor<NntpSessionIdleOptions>(
-                new NntpSessionIdleOptions { IdleTimeout = TimeSpan.FromSeconds(5) });
+                new NntpSessionIdleOptions { IdleTimeoutSeconds = 5 });
 
             InMemoryTransitPeerCoordinator transitPeerCoordinator = new InMemoryTransitPeerCoordinator();
             return new NntpSessionTestBundle(
@@ -65,7 +65,7 @@ namespace Vector.NNTP.Tests.Session
                 rateAllocation,
                 NullLogger<NntpQuotaEnforcer>.Instance);
             TestOptionsMonitor<NntpSessionIdleOptions> idleOptions = new TestOptionsMonitor<NntpSessionIdleOptions>(
-                new NntpSessionIdleOptions { IdleTimeout = TimeSpan.FromSeconds(5) });
+                new NntpSessionIdleOptions { IdleTimeoutSeconds = 5 });
 
             InMemoryTransitPeerCoordinator transitPeerCoordinator = new InMemoryTransitPeerCoordinator();
             return new NntpSessionTestBundle(

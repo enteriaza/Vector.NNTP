@@ -325,7 +325,7 @@ namespace Vector.NNTP.Tests.Sockets
             {
                 NodeName = "test-node",
                 ServerIdentification = "VectorNNTPD-Test",
-                IdleTimeout = TimeSpan.FromSeconds(5),
+                IdleTimeoutSeconds = 5,
             });
             NntpSessionTestServices.NntpSessionTestBundle sessionBundle = session ?? NntpSessionTestServices.CreateDefault();
             FakeNntpCredentialValidator credentialValidator = validator

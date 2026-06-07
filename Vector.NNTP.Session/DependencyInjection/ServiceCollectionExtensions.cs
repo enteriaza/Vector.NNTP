@@ -29,8 +29,9 @@ namespace Vector.NNTP.Session.DependencyInjection
             ArgumentNullException.ThrowIfNull(services);
             _ = services.AddOptions<NntpRateAllocationOptions>();
             _ = services.AddOptions<NntpSessionIdleOptions>()
-                .BindConfiguration(NntpSessionIdleOptions.SectionName);
-            services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<NntpSessionIdleOptions>, NntpSessionIdleOptionsPostConfigure>());
+                .BindConfiguration(NntpSessionIdleOptions.SectionName)
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
             services.TryAddSingleton<ISessionDatabase, InMemorySessionDatabase>();
             services.TryAddSingleton<INntpSessionCoordinator, InMemorySessionCoordinator>();
             services.TryAddSingleton<INntpSessionCountCoordinator, InMemorySessionCountCoordinator>();

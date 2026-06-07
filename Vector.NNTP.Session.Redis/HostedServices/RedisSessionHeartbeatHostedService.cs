@@ -75,7 +75,7 @@ namespace Vector.NNTP.Session.Redis.HostedServices
                 }
 
                 NntpSessionCoordinationOptions coordinationSnapshot = _coordinationOptions.CurrentValue;
-                int ttlSeconds = NntpSessionTtlCalculator.ComputeTtlSeconds(_idleOptions.CurrentValue.IdleTimeout);
+                int ttlSeconds = NntpSessionTtlCalculator.ComputeTtlSeconds(_idleOptions.CurrentValue.IdleTimeoutSeconds);
                 int transitLeaseSeconds = NntpSessionTtlCalculator.ComputeTransitPeerLeaseSeconds(
                     coordinationSnapshot.HeartbeatIntervalSeconds,
                     coordinationSnapshot.TtlMinimumSeconds);
