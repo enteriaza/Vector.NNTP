@@ -3,6 +3,7 @@
 // </copyright>
 
 using Microsoft.Extensions.Options;
+using Vector.NNTP.Articles.Logging;
 using Vector.NNTP.Articles.Metrics;
 using Vector.NNTP.Articles.Storage;
 using Vector.NNTP.HistoryDB.Encoding;
@@ -78,6 +79,30 @@ public sealed class NntpSpoolTransitStorageTests
     }
 
     /// <summary>
+    /// Verifies size-limit rejection emits an INN news log reject line.
+    /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+    [Test]
+    public async Task TakeThisAsync_ExceedsMaxArtSize_LogsNewsRejectLine()
+    {
+        var newsLog = new RecordingNntpNewsLog();
+        NntpSpoolTransitStorage storage = CreateStorage(newsLog, maxArtSize: 16);
+        byte[] payload = new byte[32];
+
+        NntpTransitStorageResult result = await storage
+            .TakeThisAsync(
+                "<oversize@test.local>",
+                payload,
+                SpoolTestOrigins.TransitOrigin(),
+                CancellationToken.None)
+            .ConfigureAwait(false);
+
+        Assert.That(result, Is.EqualTo(NntpTransitStorageResult.ArticleRejected));
+        Assert.That(newsLog.LastStatus, Is.EqualTo('-'));
+        Assert.That(newsLog.LastReason, Does.Contain("Article exceeds local limit of 16 bytes"));
+    }
+
+    /// <summary>
     /// Verifies payloads exactly at <see cref="NntpServerOptions.MaxArtSize"/> are accepted.
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
@@ -142,18 +167,33 @@ public sealed class NntpSpoolTransitStorageTests
     }
 
     /// <summary>
+    /// Builds transit storage with a recording news log for assertion-heavy tests.
+    /// </summary>
+    /// <param name="newsLog">News log test double.</param>
+    /// <param name="maxArtSize">Maximum decoded article size.</param>
+    /// <returns>Configured storage instance.</returns>
+    private static NntpSpoolTransitStorage CreateStorage(RecordingNntpNewsLog newsLog, long maxArtSize)
+    {
+        return CreateStorage(CreateQueue(capacity: 4, maxQueuedBytes: 4096), maxArtSize, newsLog);
+    }
+
+    /// <summary>
     /// Builds transit storage for an existing queue and article size limit.
     /// </summary>
     /// <param name="queue">Configured spool write queue.</param>
     /// <param name="maxArtSize">Maximum decoded article size; zero disables the limit.</param>
+    /// <param name="newsLog">Optional news log override.</param>
     /// <returns>Configured storage instance.</returns>
-    private static NntpSpoolTransitStorage CreateStorage(NntpSpoolWriteQueue queue, long maxArtSize = 1_048_576)
+    private static NntpSpoolTransitStorage CreateStorage(
+        NntpSpoolWriteQueue queue,
+        long maxArtSize = 1_048_576,
+        INntpNewsLog? newsLog = null)
     {
         var options = Options.Create(new NntpServerOptions
         {
             MaxArtSize = maxArtSize,
         });
-        return new NntpSpoolTransitStorage(queue, options);
+        return new NntpSpoolTransitStorage(queue, options, newsLog ?? NullNntpNewsLog.Instance);
     }
 
     /// <summary>

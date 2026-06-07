@@ -47,6 +47,27 @@ Serilog rolling file sinks read the top-level **`Logging`** section from `NNTPD.
 
 Console output and log levels continue to follow the `Serilog` configuration section when present.
 
+### INN `news` log (NNTPD transit spool)
+
+When `AddNntpArticlesTransitSpool(configuration)` is registered, Vector.NNTP.Articles writes an additional Serilog file at **`{Logging.LogDir}/news`** (daily rolling, same retention/flush parameters as `NNTPD-.log`, **file sink only** — no console). Each line is an INN-style accept/reject entry emitted at **event time** (`DateTimeOffset.Now` when logged):
+
+| Code | Meaning |
+|------|---------|
+| `+` | Article committed to spool after successful `AtomicWriteAsync` (not on wire `239`/`235`). |
+| `-` | Rejected in the Articles pipeline (preprocess, postprocess, enqueue size/queue, write failure) with reason. |
+| `c` | Cancel control message committed; second line after `+` for the same Message-ID. |
+| `j` | Reserved for future accepted-to-junk-newsgroup filing (formatter/API present; not emitted in v1). |
+
+Examples:
+
+```
+Jun 07 21:55:01.102 + Giganews <text@example.com> 842 ?
+Jun 07 21:55:02.001 c Giganews <cancel.4066@foo.com> Cancelling <m070725@foo.com>
+Jun 07 21:55:10.500 - Giganews <binary@example.com> yEnc section CRC validation failed.
+```
+
+Feed resolution order: `local` (reader POST) → transit peer name → first `Path:` hop before `!` (skipping `not-for-mail`) → peer hostname → `?`. Downstream sites on `+`/`j` lines are `?` until newsfeeds routing exists. Write failures log **exception type name only** in `news`; full detail remains in `NNTPD-.log`.
+
 ### Article body ingestion (POST, TAKETHIS, IHAVE)
 
 `MaxArtSize` enforces the maximum **decoded** dot-stuffed article body size while reading from the session pipe. The default is **1 MiB** (`1048576`), matching typical `NNTPD.json` deployments. When a peer exceeds the limit, transit commands return **`439`** (TAKETHIS/IHAVE) or **`441`** (POST) and the session stays up; set **`0`** to disable the check. `PipeReadBufferBytes` sizes the socket `StreamPipeReader` buffer (default **65536**, minimum **4096**). Larger buffers reduce `ReadAsync` churn during RFC 4644 streaming at the cost of slightly more memory per connection.

@@ -27,7 +27,8 @@ internal static class SpoolTestOrigins
         return new NntpTransitArticleOrigin(
             IPAddress.Parse("203.0.113.10"),
             "border-3.ord.giganews.com",
-            SampleReceivedUtc);
+            SampleReceivedUtc,
+            TransitPeerName: "Giganews");
     }
 
     /// <summary>
@@ -39,6 +40,7 @@ internal static class SpoolTestOrigins
         return new NntpSpoolArticleOrigin(
             IPAddress.Parse("203.0.113.10"),
             "border-3.ord.giganews.com",
-            SampleReceivedUtc);
+            SampleReceivedUtc,
+            TransitPeerName: "Giganews");
     }
 }

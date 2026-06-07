@@ -33,6 +33,7 @@ namespace Vector.NNTP.Articles.Storage
         /// <summary>
         /// Logs header validation or path-mutation failure for a dequeued article.
         /// </summary>
+        /// <param name="logger">Writer pump category logger.</param>
         /// <param name="messageId">NNTP Message-ID of the article that failed preprocessing.</param>
         /// <param name="failureReason">
         /// Human-readable reason from <see cref="Processing.ArticleSpoolPreprocessor"/> (for example invalid header
@@ -46,11 +47,12 @@ namespace Vector.NNTP.Articles.Storage
             EventId = 1,
             Level = LogLevel.Warning,
             Message = "Spool preprocess failed for message-id {MessageId}: {FailureReason}")]
-        private partial void LogPreprocessFailed(string messageId, string? failureReason);
+        private static partial void LogPreprocessFailed(ILogger logger, string messageId, string? failureReason);
 
         /// <summary>
         /// Logs deep header validation or filter rejection for a dequeued article.
         /// </summary>
+        /// <param name="logger">Writer pump category logger.</param>
         /// <param name="messageId">NNTP Message-ID of the article that failed postprocessing.</param>
         /// <param name="failureReason">
         /// Human-readable reason from <see cref="Processing.ArticleSpoolPostprocessor"/> (for example invalid
@@ -65,11 +67,12 @@ namespace Vector.NNTP.Articles.Storage
             EventId = 5,
             Level = LogLevel.Warning,
             Message = "Spool postprocess failed for message-id {MessageId}: {FailureReason}")]
-        private partial void LogPostprocessFailed(string messageId, string? failureReason);
+        private static partial void LogPostprocessFailed(ILogger logger, string messageId, string? failureReason);
 
         /// <summary>
         /// Logs an unexpected exception during atomic spool payload write.
         /// </summary>
+        /// <param name="logger">Writer pump category logger.</param>
         /// <param name="ex">Exception thrown by <see cref="Utilities.IO.FileIOUtilities.AtomicWriteAsync"/> or directory preparation.</param>
         /// <param name="messageId">NNTP Message-ID of the article whose write failed.</param>
         /// <param name="messageIdDigestHex">
@@ -84,11 +87,16 @@ namespace Vector.NNTP.Articles.Storage
             EventId = 2,
             Level = LogLevel.Error,
             Message = "Spool write failed for message-id {MessageId} (digest {MessageIdDigestHex}).")]
-        private partial void LogWriteFailed(Exception ex, string messageId, string messageIdDigestHex);
+        private static partial void LogWriteFailed(
+            ILogger logger,
+            Exception ex,
+            string messageId,
+            string messageIdDigestHex);
 
         /// <summary>
         /// Logs a non-success <see cref="HistoryDB.Abstractions.HistoryReleaseResult"/> after spool failure cleanup.
         /// </summary>
+        /// <param name="logger">Writer pump category logger.</param>
         /// <param name="releaseResult">
         /// Outcome from <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryReleaseAsync"/>. This method is called only
         /// for <see cref="HistoryDB.Abstractions.HistoryReleaseResult.TryAgainLater"/> and
@@ -104,11 +112,15 @@ namespace Vector.NNTP.Articles.Storage
             EventId = 3,
             Level = LogLevel.Warning,
             Message = "History reservation release returned {ReleaseResult} for message-id {MessageId} after spool failure.")]
-        private partial void LogHistoryReleaseOutcome(HistoryDB.Abstractions.HistoryReleaseResult releaseResult, string messageId);
+        private static partial void LogHistoryReleaseOutcome(
+            ILogger logger,
+            HistoryDB.Abstractions.HistoryReleaseResult releaseResult,
+            string messageId);
 
         /// <summary>
         /// Logs an exception thrown while releasing history after spool preprocess, postprocess, or write failure.
         /// </summary>
+        /// <param name="logger">Writer pump category logger.</param>
         /// <param name="ex">Exception from <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryReleaseAsync"/>.</param>
         /// <param name="messageId">NNTP Message-ID whose history reservation release faulted.</param>
         /// <param name="exceptionType">
@@ -123,6 +135,10 @@ namespace Vector.NNTP.Articles.Storage
             EventId = 4,
             Level = LogLevel.Error,
             Message = "History reservation release failed for message-id {MessageId} after spool failure ({ExceptionType}).")]
-        private partial void LogHistoryReleaseFailed(Exception ex, string messageId, string exceptionType);
+        private static partial void LogHistoryReleaseFailed(
+            ILogger logger,
+            Exception ex,
+            string messageId,
+            string exceptionType);
     }
 }

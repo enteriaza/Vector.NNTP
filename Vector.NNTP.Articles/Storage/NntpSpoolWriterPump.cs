@@ -6,7 +6,9 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Microsoft.Extensions.Options;
+using Vector.NNTP.Articles.Classification;
 using Vector.NNTP.Articles.Diagnostics;
+using Vector.NNTP.Articles.Logging;
 using Vector.NNTP.Articles.Metrics;
 using Vector.NNTP.Articles.Processing;
 using Vector.NNTP.HistoryDB.Abstractions;
@@ -106,6 +108,11 @@ namespace Vector.NNTP.Articles.Storage
         private readonly ILogger<NntpSpoolWriterPump> _logger;
 
         /// <summary>
+        /// INN-style news log for spool commit and writer-path rejections.
+        /// </summary>
+        private readonly INntpNewsLog _newsLog;
+
+        /// <summary>
         /// Absolute spool root resolved once from <see cref="NntpServerOptions.SpoolDir"/> at construction.
         /// </summary>
         private readonly string _spoolDirectory;
@@ -121,7 +128,7 @@ namespace Vector.NNTP.Articles.Storage
         /// </para>
         /// <para>
         /// Keys use <see cref="StringComparer.Ordinal"/> because
-        /// <see cref="Diagnostics.SpoolDirectoryUtilities.GetArticleFilePath"/> validates lowercase hexadecimal digests
+        /// <see cref="SpoolDirectoryUtilities.GetArticleFilePath"/> validates lowercase hexadecimal digests
         /// only; fan-out directory names are therefore case-stable on Linux as well as Windows.
         /// </para>
         /// </remarks>
@@ -136,6 +143,7 @@ namespace Vector.NNTP.Articles.Storage
         /// <param name="historyDatabase">History database for releasing failed spool reservations.</param>
         /// <param name="metrics">Spool observability recorder shared with the queue and writer pool.</param>
         /// <param name="options">Bound <see cref="NntpServerOptions"/> supplying spool root and <c>PathAppend</c>.</param>
+        /// <param name="newsLog">INN news log writer for commit and rejection events.</param>
         /// <param name="logger">Category logger for writer pump diagnostics.</param>
         /// <exception cref="ArgumentNullException">
         /// Thrown when any dependency parameter is <see langword="null"/>.
@@ -147,6 +155,7 @@ namespace Vector.NNTP.Articles.Storage
             IHistoryDatabase historyDatabase,
             NntpSpoolMetrics metrics,
             IOptions<NntpServerOptions> options,
+            INntpNewsLog newsLog,
             ILogger<NntpSpoolWriterPump> logger)
         {
             ArgumentNullException.ThrowIfNull(queue);
@@ -155,6 +164,7 @@ namespace Vector.NNTP.Articles.Storage
             ArgumentNullException.ThrowIfNull(historyDatabase);
             ArgumentNullException.ThrowIfNull(metrics);
             ArgumentNullException.ThrowIfNull(options);
+            ArgumentNullException.ThrowIfNull(newsLog);
             ArgumentNullException.ThrowIfNull(logger);
 
             _queue = queue;
@@ -162,6 +172,7 @@ namespace Vector.NNTP.Articles.Storage
             _postprocessor = postprocessor;
             _historyDatabase = historyDatabase;
             _metrics = metrics;
+            _newsLog = newsLog;
             _logger = logger;
             _spoolDirectory = SpoolDirectoryUtilities.ResolveSpoolDirectory(options.Value);
         }
@@ -228,7 +239,12 @@ namespace Vector.NNTP.Articles.Storage
                     if (!preprocessResult.Success)
                     {
                         _metrics.RecordPreprocessFailure();
-                        this.LogPreprocessFailed(item.MessageId, preprocessResult.FailureReason);
+                        LogPreprocessFailed(_logger, item.MessageId, preprocessResult.FailureReason);
+                        _newsLog.LogRejected(
+                            item.MessageId,
+                            item.Origin,
+                            item.ArticleBytes,
+                            preprocessResult.FailureReason ?? "Rejected");
                         await TryReleaseHistoryReservationAsync(item.MessageId).ConfigureAwait(false);
                         continue;
                     }
@@ -239,7 +255,12 @@ namespace Vector.NNTP.Articles.Storage
                     if (!postprocessResult.Success)
                     {
                         _metrics.RecordPostprocessFailure();
-                        this.LogPostprocessFailed(item.MessageId, postprocessResult.FailureReason);
+                        LogPostprocessFailed(_logger, item.MessageId, postprocessResult.FailureReason);
+                        _newsLog.LogRejected(
+                            item.MessageId,
+                            item.Origin,
+                            preprocessResult.ArticleBytes,
+                            postprocessResult.FailureReason ?? "Rejected");
                         await TryReleaseHistoryReservationAsync(item.MessageId).ConfigureAwait(false);
                         continue;
                     }
@@ -252,11 +273,22 @@ namespace Vector.NNTP.Articles.Storage
                         string? articleDirectory = Path.GetDirectoryName(articlePath);
                         if (!string.IsNullOrEmpty(articleDirectory))
                         {
-                            this.EnsureArticleDirectoryExists(articleDirectory);
+                            EnsureArticleDirectoryExists(articleDirectory);
                         }
 
                         await FileIOUtilities.AtomicWriteAsync(articlePath, postprocessResult.ArticleBytes, cancellationToken).ConfigureAwait(false);
                         _metrics.RecordWriteSuccess(postprocessResult.ArticleBytes.Length);
+                        _newsLog.LogAccepted(
+                            item.MessageId,
+                            item.Origin,
+                            postprocessResult.ArticleBytes);
+                        if ((postprocessResult.ArticleType & ArticleTypeFlags.Cancel) != 0)
+                        {
+                            _newsLog.LogCancelProcessed(
+                                item.MessageId,
+                                item.Origin,
+                                postprocessResult.ArticleBytes);
+                        }
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
@@ -266,7 +298,12 @@ namespace Vector.NNTP.Articles.Storage
                     catch (Exception ex)
                     {
                         _metrics.RecordWriteFailure();
-                        this.LogWriteFailed(ex, item.MessageId, item.MessageIdDigestHex);
+                        LogWriteFailed(_logger, ex, item.MessageId, item.MessageIdDigestHex);
+                        _newsLog.LogRejected(
+                            item.MessageId,
+                            item.Origin,
+                            postprocessResult.ArticleBytes,
+                            ex.GetType().Name);
                         await TryReleaseHistoryReservationAsync(item.MessageId).ConfigureAwait(false);
                     }
                 }
@@ -307,7 +344,7 @@ namespace Vector.NNTP.Articles.Storage
             {
                 try
                 {
-                    Directory.CreateDirectory(articleDirectory);
+                    _ = Directory.CreateDirectory(articleDirectory);
                 }
                 catch
                 {
@@ -344,13 +381,13 @@ namespace Vector.NNTP.Articles.Storage
                 if (releaseResult is not (HistoryReleaseResult.Released or HistoryReleaseResult.NotFound))
                 {
                     _metrics.RecordHistoryReleaseFailure();
-                    this.LogHistoryReleaseOutcome(releaseResult, messageId);
+                    LogHistoryReleaseOutcome(_logger, releaseResult, messageId);
                 }
             }
             catch (Exception ex)
             {
                 _metrics.RecordHistoryReleaseFailure();
-                this.LogHistoryReleaseFailed(ex, messageId, ex.GetType().Name);
+                LogHistoryReleaseFailed(_logger, ex, messageId, ex.GetType().Name);
             }
         }
     }

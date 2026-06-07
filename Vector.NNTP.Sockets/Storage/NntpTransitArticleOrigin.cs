@@ -13,6 +13,12 @@ namespace Vector.NNTP.Sockets.Storage
     /// Public FQDN peer hostname when resolved from AcceptFrom or reverse DNS; <see langword="null"/> when only IP is known.
     /// </param>
     /// <param name="ReceivedUtc">UTC timestamp when the article body was accepted for enqueue.</param>
+    /// <param name="TransitPeerName">
+    /// Configured transit peer name when the connection was admitted as a trusted peer; otherwise <see langword="null"/>.
+    /// </param>
+    /// <param name="IsLocalPost">
+    /// When <see langword="true"/>, the article originated from a local reader POST rather than a transit peer feed.
+    /// </param>
     /// <remarks>
     /// <para>
     /// Passed from TAKETHIS/IHAVE handlers into <see cref="INntpTransitStorage.TakeThisAsync"/> so the spool writer can
@@ -23,7 +29,9 @@ namespace Vector.NNTP.Sockets.Storage
     public readonly record struct NntpTransitArticleOrigin(
         IPAddress PeerAddress,
         string? PeerHostName,
-        DateTimeOffset ReceivedUtc)
+        DateTimeOffset ReceivedUtc,
+        string? TransitPeerName = null,
+        bool IsLocalPost = false)
     {
         /// <summary>
         /// Captures peer identity from an active session at article enqueue time.
@@ -43,7 +51,9 @@ namespace Vector.NNTP.Sockets.Storage
             return new NntpTransitArticleOrigin(
                 connection.ClientRemoteEndPoint.Address,
                 peerHostName,
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                connection.TransitPeerName,
+                IsLocalPost: false);
         }
     }
 }

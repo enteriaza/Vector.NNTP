@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.Articles.Diagnostics;
+using Vector.NNTP.Articles.Logging;
 using Vector.NNTP.Filters.DependencyInjection;
 using Vector.NNTP.Filters.PostFilter;
 using Vector.NNTP.Filters.SpamAssassin;
@@ -68,6 +69,7 @@ namespace Vector.NNTP.Articles.DependencyInjection
         /// <list type="bullet">
         /// <item><description><see cref="NntpSpoolMetrics"/> — OpenTelemetry counters and gauges for queue and writers.</description></item>
         /// <item><description><see cref="NntpSpoolWriteQueue"/> — bounded in-memory transit queue.</description></item>
+        /// <item><description><see cref="INntpNewsLog"/> — INN-style <c>pathlog/news</c> accept/reject logging.</description></item>
         /// <item><description><see cref="ArticleSpoolPreprocessor"/> — fast header syntax validation and <c>Path</c> mutation.</description></item>
         /// <item><description><see cref="ArticleSpoolPostprocessor"/> — deep header semantics, Message-ID, date, and style checks.</description></item>
         /// <item><description><see cref="NntpSpoolWriterPump"/> — dequeue, preprocess, and atomic disk write loop.</description></item>
@@ -131,6 +133,7 @@ namespace Vector.NNTP.Articles.DependencyInjection
                     .ValidateDataAnnotations()
                     .ValidateOnStart();
                 _ = services.AddSpamAssassin(configuration);
+                _ = services.AddSingleton<INntpNewsLog>(sp => new NntpNewsLog(configuration));
             }
             else
             {
@@ -139,8 +142,9 @@ namespace Vector.NNTP.Articles.DependencyInjection
                     .AddOptions<SpamAssassinOptions>()
                     .Configure(options => options.Host = "127.0.0.1");
                 _ = services.AddSingleton<IValidateOptions<SpamAssassinOptions>, SpamAssassinOptionsValidator>();
-                _ = services.AddSingleton<ISpamAssassin, Vector.NNTP.Filters.SpamAssassin.SpamAssassin>();
-                _ = services.AddSingleton<Vector.NNTP.Filters.SpamAssassin.SpamAssassin>();
+                _ = services.AddSingleton<ISpamAssassin, SpamAssassin>();
+                _ = services.AddSingleton<SpamAssassin>();
+                _ = services.AddSingleton<INntpNewsLog>(NullNntpNewsLog.Instance);
             }
 
             _ = services.AddSingleton<NntpSpoolMetrics>();
