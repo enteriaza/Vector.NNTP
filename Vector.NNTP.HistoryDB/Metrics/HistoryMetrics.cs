@@ -173,6 +173,11 @@ namespace Vector.NNTP.HistoryDB.Metrics
         private long _memoryBytes;
 
         /// <summary>
+        /// Eviction heap entry gauge backing field (includes lazy tombstones).
+        /// </summary>
+        private long _memoryHeapEntries;
+
+        /// <summary>
         /// Rebuild keys processed gauge backing field.
         /// </summary>
         private long _rebuildKeysProcessed;
@@ -227,7 +232,11 @@ namespace Vector.NNTP.HistoryDB.Metrics
             _ = Meter.CreateObservableGauge(
                 "history.memory.bytes",
                 () => new Measurement<long>(_memoryBytes),
-                description: "Tracked in-memory history bytes.");
+                description: "Tracked in-memory history logical bytes.");
+            _ = Meter.CreateObservableGauge(
+                "history.memory.heap_entries",
+                () => new Measurement<long>(_memoryHeapEntries),
+                description: "In-memory eviction heap entries including lazy tombstones.");
             _ = Meter.CreateObservableGauge(
                 "history.rebuild.keys_processed",
                 () => new Measurement<long>(_rebuildKeysProcessed),
@@ -381,6 +390,18 @@ namespace Vector.NNTP.HistoryDB.Metrics
         }
 
         /// <summary>
+        /// Records multiple memory evictions from a single write-path pass.
+        /// </summary>
+        /// <param name="count">Entries removed.</param>
+        internal void RecordMemoryEvictions(int count)
+        {
+            if (count > 0)
+            {
+                _memoryEvictions.Add(count);
+            }
+        }
+
+        /// <summary>
         /// Records a successful RocksDB persist from the background queue.
         /// </summary>
         internal void RecordRocksPersist()
@@ -490,10 +511,19 @@ namespace Vector.NNTP.HistoryDB.Metrics
         /// <summary>
         /// Sets memory bytes gauge.
         /// </summary>
-        /// <param name="bytes">Tracked bytes.</param>
+        /// <param name="bytes">Tracked logical bytes.</param>
         internal void SetMemoryBytes(long bytes)
         {
             _memoryBytes = bytes;
+        }
+
+        /// <summary>
+        /// Sets eviction heap entry gauge.
+        /// </summary>
+        /// <param name="count">Heap entries including tombstones.</param>
+        internal void SetMemoryHeapEntries(int count)
+        {
+            _memoryHeapEntries = count;
         }
 
         /// <summary>

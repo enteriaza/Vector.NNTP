@@ -11,15 +11,42 @@ namespace Vector.NNTP.HistoryDB.Memory
     /// Bounded in-memory duplicate filter keyed by digest (newest / highest expiration retained).
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// Registered as a process singleton and invoked concurrently from every transit session (CHECK and TAKETHIS).
+    /// A single <see cref="object"/> monitor protects the dictionary and eviction heap, so every CHECK and TAKETHIS
+    /// serializes through one critical section. The section is a single <see cref="Dictionary{TKey, TValue}.TryGetValue"/>
+    /// on the hot path and is expected to be cheap, but aggregate throughput is fundamentally single-lane until
+    /// measured. Do not change synchronization strategy without BenchmarkDotNet evidence on production-like hardware.
+    /// </para>
+    /// <para>
+    /// If contention appears on large core-count hosts (for example 48-core transit nodes), prefer digest-key sharding
+    /// (for example 64 shards, each with its own dictionary, min-heap, and lock) over returning to
+    /// <see cref="ReaderWriterLockSlim"/>: unrelated digests then avoid sharing a monitor.
+    /// </para>
+    /// <para>
+    /// OpenTelemetry gauge updates and hit/miss counters run <b>after</b> the monitor is released so lock hold time
+    /// stays minimal on the hot CHECK path.
+    /// </para>
     /// <para>Eviction uses a min-heap with lazy tombstones: heap entries are not updated on expiration bump;
-    /// stale tops are discarded during eviction by comparing against the authoritative dictionary.</para>
+    /// stale tops are discarded during eviction by comparing against the authoritative dictionary. Repeated expiration
+    /// bumps can inflate <c>history.memory.heap_entries</c> relative to <c>history.memory.entries</c>; observe the
+    /// ratio to decide whether heap rebuild is warranted.</para>
+    /// <para>
+    /// Expired entries are treated as misses on read and are not removed until memory-pressure eviction runs. This
+    /// defers mutation cost on the hot path but allows expired keys to remain resident while under the logical byte
+    /// budget.
+    /// </para>
+    /// <para>
+    /// <see cref="LogicalBytesPerEntry"/> budgets digest payload size (32-byte digest + 8-byte expiration), not actual
+    /// managed heap consumption (dictionary nodes, heap storage, alignment).
+    /// </para>
     /// </remarks>
     internal sealed class HistoryMemoryCache
     {
         /// <summary>
-        /// The number of bytes per entry.
+        /// Logical payload bytes per entry used for budget enforcement (digest + expiration epoch).
         /// </summary>
-        private const int BytesPerEntry = HistoryKeyEncoder.DigestLength + 8;
+        private const int LogicalBytesPerEntry = HistoryKeyEncoder.DigestLength + 8;
 
         /// <summary>
         /// The limit bytes.
@@ -29,7 +56,7 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <summary>
         /// Authoritative digest to expiration map.
         /// </summary>
-        private readonly Dictionary<DigestKey, ulong> _entries = new();
+        private readonly Dictionary<DigestKey, ulong> _entries = [];
 
         /// <summary>
         /// Expiration-ordered eviction candidates (may contain lazy tombstones).
@@ -42,6 +69,16 @@ namespace Vector.NNTP.HistoryDB.Memory
         private readonly HistoryMetrics _metrics;
 
         /// <summary>
+        /// Exclusive gate for dictionary, heap, and budget fields.
+        /// </summary>
+        private readonly object _syncRoot = new();
+
+        /// <summary>
+        /// Authoritative entry count mirrored under <see cref="_syncRoot"/> for lock-free reads.
+        /// </summary>
+        private int _entryCount;
+
+        /// <summary>
         /// The tracked bytes.
         /// </summary>
         private long _trackedBytes;
@@ -49,7 +86,7 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <summary>
         /// Initializes a new instance of the <see cref="HistoryMemoryCache"/> class.
         /// </summary>
-        /// <param name="limitBytes">Maximum tracked bytes.</param>
+        /// <param name="limitBytes">Maximum tracked logical bytes.</param>
         /// <param name="metrics">Metrics recorder.</param>
         internal HistoryMemoryCache(long limitBytes, HistoryMetrics metrics)
         {
@@ -58,9 +95,9 @@ namespace Vector.NNTP.HistoryDB.Memory
         }
 
         /// <summary>
-        /// Gets tracked entry count.
+        /// Gets tracked entry count without acquiring the monitor.
         /// </summary>
-        internal int Count => _entries.Count;
+        internal int Count => Volatile.Read(ref _entryCount);
 
         /// <summary>
         /// Tries a duplicate lookup without allocating (hot path).
@@ -70,20 +107,22 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <returns><see langword="true"/> when an unexpired entry exists.</returns>
         internal bool TryGetDuplicate(in DigestKey digestKey, ulong nowEpochSeconds)
         {
-            if (!_entries.TryGetValue(digestKey, out ulong expiration))
+            bool hit;
+            lock (_syncRoot)
             {
-                _metrics.RecordMemoryMiss();
-                return false;
+                hit = _entries.TryGetValue(digestKey, out ulong expiration) && expiration > nowEpochSeconds;
             }
 
-            if (expiration <= nowEpochSeconds)
+            if (hit)
+            {
+                _metrics.RecordMemoryHit();
+            }
+            else
             {
                 _metrics.RecordMemoryMiss();
-                return false;
             }
 
-            _metrics.RecordMemoryHit();
-            return true;
+            return hit;
         }
 
         /// <summary>
@@ -93,41 +132,73 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <param name="expirationEpochSeconds">Expiration epoch.</param>
         internal void InsertOrUpdate(in DigestKey digestKey, ulong expirationEpochSeconds)
         {
-            if (_entries.TryGetValue(digestKey, out ulong existing) && existing >= expirationEpochSeconds)
+            int entryCount;
+            long trackedBytes;
+            int heapCount;
+            int evictions;
+            lock (_syncRoot)
             {
-                return;
+                bool exists = _entries.TryGetValue(digestKey, out ulong existing);
+                if (exists && existing >= expirationEpochSeconds)
+                {
+                    return;
+                }
+
+                if (!exists)
+                {
+                    _trackedBytes += LogicalBytesPerEntry;
+                }
+
+                _entries[digestKey] = expirationEpochSeconds;
+                _evictionHeap.Push(expirationEpochSeconds, in digestKey);
+                evictions = EvictIfNeeded();
+                entryCount = _entries.Count;
+                _entryCount = entryCount;
+                trackedBytes = _trackedBytes;
+                heapCount = _evictionHeap.Count;
             }
 
-            bool added = !_entries.ContainsKey(digestKey);
-            _entries[digestKey] = expirationEpochSeconds;
-            _evictionHeap.Push(expirationEpochSeconds, in digestKey);
-            if (added)
+            if (evictions > 0)
             {
-                _trackedBytes += BytesPerEntry;
+                _metrics.RecordMemoryEvictions(evictions);
             }
 
-            _metrics.SetMemoryEntries(_entries.Count);
-            _metrics.SetMemoryBytes(_trackedBytes);
-            EvictIfNeeded();
+            _metrics.SetMemoryEntries(entryCount);
+            _metrics.SetMemoryBytes(trackedBytes);
+            _metrics.SetMemoryHeapEntries(heapCount);
         }
 
         /// <summary>
         /// Clears all entries (used by tests).
         /// </summary>
+        /// <remarks>
+        /// Resets every mutable cache field under <see cref="_syncRoot"/> (<see cref="_entries"/>,
+        /// <see cref="_evictionHeap"/>, <see cref="_trackedBytes"/>, <see cref="_entryCount"/>). Any future per-cache
+        /// counters (for example tombstone totals) must be zeroed here as well.
+        /// </remarks>
         internal void Clear()
         {
-            _entries.Clear();
-            _evictionHeap.Clear();
-            _trackedBytes = 0;
+            lock (_syncRoot)
+            {
+                _entries.Clear();
+                _evictionHeap.Clear();
+                _trackedBytes = 0;
+                _entryCount = 0;
+            }
+
             _metrics.SetMemoryEntries(0);
             _metrics.SetMemoryBytes(0);
+            _metrics.SetMemoryHeapEntries(0);
         }
 
         /// <summary>
         /// Evicts lowest-expiration entries until within the byte budget.
         /// </summary>
-        private void EvictIfNeeded()
+        /// <remarks>Caller must hold <see cref="_syncRoot"/>.</remarks>
+        /// <returns>Number of entries removed.</returns>
+        private int EvictIfNeeded()
         {
+            int evictions = 0;
             while (_trackedBytes > _limitBytes && _evictionHeap.TryPeek(out ulong heapExp, out DigestKey heapKey))
             {
                 if (!_entries.TryGetValue(heapKey, out ulong currentExp) || currentExp != heapExp)
@@ -138,15 +209,14 @@ namespace Vector.NNTP.HistoryDB.Memory
 
                 if (_entries.Remove(heapKey))
                 {
-                    _trackedBytes -= BytesPerEntry;
-                    _metrics.RecordMemoryEviction();
+                    _trackedBytes -= LogicalBytesPerEntry;
+                    evictions++;
                 }
 
                 _evictionHeap.Pop();
             }
 
-            _metrics.SetMemoryEntries(_entries.Count);
-            _metrics.SetMemoryBytes(_trackedBytes);
+            return evictions;
         }
     }
 }
