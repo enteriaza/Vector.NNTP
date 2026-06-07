@@ -56,7 +56,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <summary>
         /// Logs successful trusted transit peer admission.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="connectionPrefix">Connection log prefix.</param>
         /// <param name="peerName">Configured peer name.</param>
         /// <param name="matchedEntry">Matched AcceptFrom entry.</param>
@@ -73,7 +73,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <summary>
         /// Logs rejection when the peer is at cluster capacity.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="connectionPrefix">Connection log prefix.</param>
         /// <param name="peerName">Configured peer name.</param>
         /// <param name="occupied">Current occupied slots.</param>
@@ -92,7 +92,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <summary>
         /// Logs Redis admission backend failure for a matched transit peer.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="connectionPrefix">Connection log prefix.</param>
         /// <param name="peerName">Configured peer name.</param>
         [LoggerMessage(

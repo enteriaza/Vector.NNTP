@@ -16,9 +16,24 @@ namespace Vector.NNTP.Sockets.Policy
     /// </summary>
     public sealed partial class NntpTransitPeerMatcher : INntpTransitPeerMatcher
     {
+        /// <summary>
+        /// Lock protecting copy-on-write updates to <see cref="_sources"/>.
+        /// </summary>
         private readonly object _snapshotLock = new();
+
+        /// <summary>
+        /// Immutable DNS-resolved peer source snapshot used for matching.
+        /// </summary>
         private ImmutableArray<NntpTransitPeerSourceEntry> _sources = ImmutableArray<NntpTransitPeerSourceEntry>.Empty;
+
+        /// <summary>
+        /// Monitored server options supplying transit peer configuration.
+        /// </summary>
         private readonly IOptionsMonitor<NntpServerOptions> _options;
+
+        /// <summary>
+        /// Logger for snapshot rebuild success and failure events.
+        /// </summary>
         private readonly ILogger<NntpTransitPeerMatcher> _logger;
 
         /// <summary>
@@ -33,7 +48,13 @@ namespace Vector.NNTP.Sockets.Policy
             _ = TryRebuildSnapshot(logSuccess: false, out _);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Attempts to match <paramref name="clientAddress"/> against configured transit peers.
+        /// </summary>
+        /// <param name="clientAddress">Effective client IP (post-PROXY).</param>
+        /// <param name="result">Match details when this method returns <see langword="true"/>.</param>
+        /// <returns><see langword="true"/> when the address matches exactly one peer.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="clientAddress"/> is null.</exception>
         public bool TryMatch(IPAddress clientAddress, out NntpTransitPeerMatchResult result)
         {
             ArgumentNullException.ThrowIfNull(clientAddress);

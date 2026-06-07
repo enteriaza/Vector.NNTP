@@ -20,9 +20,6 @@ namespace Vector.NNTP.Sockets.Transport
     /// <remarks>
     /// Owns connection session registration, distributed admission release, and teardown for every exit path.
     /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="NntpSessionRunner"/> class.
-    /// </remarks>
     /// <param name="dispatcher">Command dispatcher.</param>
     /// <param name="profile">Host profile.</param>
     /// <param name="options">Server options.</param>
@@ -304,11 +301,10 @@ namespace Vector.NNTP.Sockets.Transport
         /// <param name="clientIpText">Client IP text.</param>
         /// <param name="nodeName">Stable cluster node identity.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task that completes when the admission is teared down.</returns>
+        /// <returns>A task that completes when release is attempted; Redis failures are logged and swallowed.</returns>
         /// <exception cref="ArgumentNullException">Thrown when the policy is null.</exception>
         /// <exception cref="ArgumentException">Thrown when the session identifier or client IP text is null or empty.</exception>
-        /// <exception cref="Exception">Thrown when an error occurs while releasing the admission.</exception>
-        /// <exception cref="OperationCanceledException">Thrown when the cancellation token is cancelled.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         private async Task TeardownAdmissionAsync(
             NntpSessionPolicy policy,
             string sessionId,

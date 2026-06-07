@@ -11,6 +11,12 @@ namespace Vector.NNTP.Sockets.Policy
     /// </summary>
     public sealed partial class NntpTransitPeerMatcher
     {
+        /// <summary>
+        /// Logs information when a DNS snapshot rebuild succeeds.
+        /// </summary>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="sourceCount">Number of resolved source CIDR entries in the snapshot.</param>
+        /// <param name="peerCount">Number of distinct transit peers represented.</param>
         [LoggerMessage(
             EventId = 1,
             Level = LogLevel.Information,

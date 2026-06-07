@@ -15,7 +15,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <summary>
         /// Logs once that the development credential validator is active.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         [LoggerMessage(
             EventId = 1,
             Level = LogLevel.Warning,
@@ -25,7 +25,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <summary>
         /// Logs once that reader storage is stubbed.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         [LoggerMessage(
             EventId = 2,
             Level = LogLevel.Warning,
@@ -35,7 +35,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <summary>
         /// Logs once that transit storage is stubbed.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         [LoggerMessage(
             EventId = 3,
             Level = LogLevel.Warning,

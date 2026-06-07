@@ -171,7 +171,13 @@ namespace Vector.NNTP.Sockets.Configuration
     /// </summary>
     public sealed class NntpServerOptionsValidator : IValidateOptions<NntpServerOptions>
     {
-        /// <inheritdoc />
+        /// <summary>
+        /// Validates required identity fields, idle timeout, pipe buffer size, CPU hysteresis, and transit peer options.
+        /// </summary>
+        /// <param name="name">Options name (unused).</param>
+        /// <param name="options">Bound server options.</param>
+        /// <returns><see cref="ValidateOptionsResult.Success"/> or a failure describing the first violated constraint.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
         public ValidateOptionsResult Validate(string? name, NntpServerOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);

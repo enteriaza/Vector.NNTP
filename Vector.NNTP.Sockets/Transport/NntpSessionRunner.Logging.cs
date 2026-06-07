@@ -14,7 +14,7 @@ namespace Vector.NNTP.Sockets.Transport
         /// <summary>
         /// Logs that a session has been teared down.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="sessionId">Session identifier.</param>
         /// <param name="reason">Reason for teardown.</param>
         [LoggerMessage(EventName = "SessionRemoved", Level = LogLevel.Debug, Message = "Session teardown SessionId={SessionId} Reason={Reason}")]
@@ -23,15 +23,28 @@ namespace Vector.NNTP.Sockets.Transport
         /// <summary>
         /// Logs that a session admission release failed.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="exception">Exception that occurred.</param>
         /// <param name="sessionId">Session identifier.</param>
         [LoggerMessage(Level = LogLevel.Warning, Message = "Admission release failed SessionId={SessionId}")]
         public static partial void AdmissionReleaseFailed(ILogger logger, Exception exception, string sessionId);
 
+        /// <summary>
+        /// Logs warning when transit peer metrics decrement fails during teardown.
+        /// </summary>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="exception">Exception raised while updating metrics.</param>
+        /// <param name="sessionId">Session identifier.</param>
         [LoggerMessage(Level = LogLevel.Warning, Message = "Transit peer metrics decrement failed SessionId={SessionId}")]
         public static partial void TransitPeerMetricsFailed(ILogger logger, Exception exception, string sessionId);
 
+        /// <summary>
+        /// Logs warning when transit peer Redis release fails during teardown.
+        /// </summary>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="exception">Exception raised by the release coordinator.</param>
+        /// <param name="sessionId">Session identifier.</param>
+        /// <param name="peerId">Transit peer identifier.</param>
         [LoggerMessage(Level = LogLevel.Warning, Message = "Transit peer Redis release failed SessionId={SessionId} PeerId={PeerId}")]
         public static partial void TransitPeerReleaseFailed(
             ILogger logger,
@@ -42,7 +55,7 @@ namespace Vector.NNTP.Sockets.Transport
         /// <summary>
         /// Logs an expected client disconnect during the command loop (for example reset after rejecting offers).
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="exception">Disconnect exception.</param>
         /// <param name="sessionId">Session identifier.</param>
         [LoggerMessage(Level = LogLevel.Debug, Message = "Client disconnect SessionId={SessionId}")]
@@ -51,7 +64,7 @@ namespace Vector.NNTP.Sockets.Transport
         /// <summary>
         /// Logs an unhandled session-loop failure before emitting <c>503 Program fault</c>.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="exception">Unhandled exception.</param>
         /// <param name="sessionId">Session identifier.</param>
         /// <param name="TransitPeerName">Transit peer identifier when the connection is a trusted peer; otherwise empty.</param>

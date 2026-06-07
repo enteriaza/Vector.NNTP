@@ -15,7 +15,8 @@ namespace Vector.NNTP.Sockets.Authentication
     /// Handles AUTHINFO USER/PASS and SASL PLAIN, LOGIN, SCRAM, and CRAM-MD5 on the NNTP wire.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="NntpAuthenticationService"/> class.
+    /// Coordinates credential validation, distributed session admission, block quota initialization, and fair-share
+    /// send-rate assignment after successful authentication.
     /// </remarks>
     /// <param name="validator">Password validator for USER/PASS, PLAIN, and LOGIN.</param>
     /// <param name="sessionCoordinator">Distributed session admission coordinator.</param>
@@ -26,6 +27,11 @@ namespace Vector.NNTP.Sockets.Authentication
     /// <param name="scramStore">Optional SCRAM credential store.</param>
     /// <param name="cramStore">Optional CRAM-MD5 secret store.</param>
     /// <param name="saslAccountAuthenticator">Optional SASL completion handler for policy lookup.</param>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when a required dependency (<paramref name="validator"/>, <paramref name="sessionCoordinator"/>,
+    /// <paramref name="sessionDatabase"/>, <paramref name="blockQuotaCoordinator"/>,
+    /// <paramref name="rateAllocationCoordinator"/>, or <paramref name="idleOptions"/>) is null.
+    /// </exception>
     public sealed class NntpAuthenticationService(
         INntpCredentialValidator validator,
         INntpSessionCoordinator sessionCoordinator,
@@ -544,12 +550,15 @@ namespace Vector.NNTP.Sockets.Authentication
         }
 
         /// <summary>
-        /// Completes admission and authentication.
+        /// Attempts distributed admission and marks the session authenticated when admission succeeds.
         /// </summary>
         /// <param name="session">Active session.</param>
-        /// <param name="policy">Session policy.</param>
+        /// <param name="policy">Resolved session policy for the authenticated user.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A <see cref="ValueTask"/> that completes when the admission is completed.</returns>
+        /// <returns>
+        /// <see langword="true"/> when admission succeeded and the session was marked authenticated;
+        /// <see langword="false"/> when admission was rejected and the rejection response was written.
+        /// </returns>
         private async ValueTask<bool> CompleteAdmissionAndAuthenticateAsync(
             NntpSession session,
             NntpSessionPolicy policy,

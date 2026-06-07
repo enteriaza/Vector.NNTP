@@ -12,7 +12,7 @@ namespace Vector.NNTP.Sockets.Hosting
     /// <see cref="IHostedService"/> that runs the NNTP TCP accept loop.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="NntpSocketHostedService"/> class.
+    /// Drains in-flight sessions during <see cref="StopAsync"/> after the accept loop stops.
     /// </remarks>
     /// <param name="acceptor">Socket acceptor.</param>
     /// <param name="inFlight">In-flight session tracker.</param>
@@ -22,18 +22,37 @@ namespace Vector.NNTP.Sockets.Hosting
         NntpInFlightSessionTracker inFlight,
         ILogger<NntpSocketHostedService> logger) : BackgroundService
     {
+        /// <summary>
+        /// TCP acceptor running cleartext and TLS listener loops.
+        /// </summary>
         private readonly NntpSocketAcceptor _acceptor = acceptor ?? throw new ArgumentNullException(nameof(acceptor));
+
+        /// <summary>
+        /// Tracker used to drain active sessions during host shutdown.
+        /// </summary>
         private readonly NntpInFlightSessionTracker _inFlight = inFlight ?? throw new ArgumentNullException(nameof(inFlight));
+
+        /// <summary>
+        /// Logger for hosted service lifecycle events.
+        /// </summary>
         private readonly ILogger<NntpSocketHostedService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Runs the TCP accept loop until host shutdown is requested.
+        /// </summary>
+        /// <param name="stoppingToken">Token signaled when the host is stopping.</param>
+        /// <returns>A task that runs until <paramref name="stoppingToken"/> is canceled.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             LogStarting();
             await _acceptor.RunAsync(stoppingToken).ConfigureAwait(false);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Stops the accept loop and waits for in-flight sessions to drain.
+        /// </summary>
+        /// <param name="cancellationToken">Host shutdown cancellation token.</param>
+        /// <returns>A task that completes when the accept loop stops and in-flight sessions drain.</returns>
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             await base.StopAsync(cancellationToken).ConfigureAwait(false);

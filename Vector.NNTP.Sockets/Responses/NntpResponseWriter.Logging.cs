@@ -15,7 +15,7 @@ namespace Vector.NNTP.Sockets.Responses
         /// <summary>
         /// Logs a response status line with command-processing duration.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="connectionPrefix">Bracketed client endpoint prefix for log correlation.</param>
         /// <param name="line">Response status line.</param>
         /// <param name="elapsedMs">Elapsed milliseconds since command dispatch began.</param>
@@ -28,7 +28,7 @@ namespace Vector.NNTP.Sockets.Responses
         /// <summary>
         /// Logs a response status line without duration (pre-command greeting).
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="connectionPrefix">Bracketed client endpoint prefix for log correlation.</param>
         /// <param name="line">Response status line.</param>
         [LoggerMessage(

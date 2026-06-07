@@ -16,8 +16,19 @@ namespace Vector.NNTP.Sockets.Hosting
     /// </summary>
     public sealed partial class NntpCpuLoadSamplerHostedService : BackgroundService
     {
+        /// <summary>
+        /// CPU load monitor receiving periodic utilization samples.
+        /// </summary>
         private readonly INntpCpuLoadMonitor _monitor;
+
+        /// <summary>
+        /// Monitored server options supplying the sampling interval.
+        /// </summary>
         private readonly IOptionsMonitor<NntpServerOptions> _options;
+
+        /// <summary>
+        /// Logger for sampler failures that do not crash the host.
+        /// </summary>
         private readonly ILogger<NntpCpuLoadSamplerHostedService> _logger;
 
         /// <summary>
@@ -36,7 +47,11 @@ namespace Vector.NNTP.Sockets.Hosting
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Delays on the configured sampling interval and records CPU utilization until shutdown.
+        /// </summary>
+        /// <param name="stoppingToken">Token signaled when the host is stopping.</param>
+        /// <returns>A task that runs until <paramref name="stoppingToken"/> is canceled.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)

@@ -40,7 +40,11 @@ namespace Vector.NNTP.Sockets.Policy
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Periodically rebuilds the DNS peer snapshot and reconciles Redis capacity until shutdown.
+        /// </summary>
+        /// <param name="stoppingToken">Token signaled when the host is stopping.</param>
+        /// <returns>A task that runs until <paramref name="stoppingToken"/> is canceled.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)

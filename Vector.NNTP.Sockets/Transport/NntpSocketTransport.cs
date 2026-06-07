@@ -73,8 +73,9 @@ namespace Vector.NNTP.Sockets.Transport
         /// </summary>
         /// <param name="serverCertificate">Server certificate with private key.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A <see cref="Task"/> that completes when the transport is re-bound to TLS.</returns>
-        /// <inheritdoc />
+        /// <returns>A task that completes when pipes are rebound to the negotiated TLS stream.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="serverCertificate"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when the transport is already TLS-protected.</exception>
         public async Task UpgradeToTlsAsync(X509Certificate2 serverCertificate, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(serverCertificate);

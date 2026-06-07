@@ -22,16 +22,59 @@ namespace Vector.NNTP.Sockets.Metrics
     /// </remarks>
     public sealed class NntpCpuLoadMonitor : INntpCpuLoadMonitor
     {
+        /// <summary>
+        /// Monitored server options supplying thresholds, signal flags, and sampling enablement.
+        /// </summary>
         private readonly IOptionsMonitor<NntpServerOptions> _options;
+
+        /// <summary>
+        /// Platform CPU signal samplers blended into the effective EWMA.
+        /// </summary>
         private readonly IReadOnlyList<ICpuUsageSignalSampler> _samplers;
+
+        /// <summary>
+        /// EWMA bits for the process CPU signal.
+        /// </summary>
         private long _processEwmaBits;
+
+        /// <summary>
+        /// EWMA bits for the host-wide CPU signal.
+        /// </summary>
         private long _hostEwmaBits;
+
+        /// <summary>
+        /// EWMA bits for the cgroup quota-relative CPU signal.
+        /// </summary>
         private long _cgroupEwmaBits;
+
+        /// <summary>
+        /// EWMA bits for the max-of-sources effective utilization.
+        /// </summary>
         private long _effectiveEwmaBits;
+
+        /// <summary>
+        /// Non-zero after the process EWMA has been seeded.
+        /// </summary>
         private int _processSeeded;
+
+        /// <summary>
+        /// Non-zero after the host EWMA has been seeded.
+        /// </summary>
         private int _hostSeeded;
+
+        /// <summary>
+        /// Non-zero after the cgroup EWMA has been seeded.
+        /// </summary>
         private int _cgroupSeeded;
+
+        /// <summary>
+        /// Non-zero after the effective EWMA has been seeded.
+        /// </summary>
         private int _effectiveSeeded;
+
+        /// <summary>
+        /// Hysteresis gate flag (non-zero = rejecting new work).
+        /// </summary>
         private int _overloaded;
 
         /// <summary>
@@ -54,7 +97,10 @@ namespace Vector.NNTP.Sockets.Metrics
             _samplers = samplers ?? throw new ArgumentNullException(nameof(samplers));
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets a value indicating whether the gate is in the rejecting state.
+        /// </summary>
+        /// <returns><see langword="true"/> when new connections and commands should receive <c>400</c> and close.</returns>
         public bool IsOverloaded()
         {
             NntpServerOptions opts = _options.CurrentValue;
@@ -66,7 +112,10 @@ namespace Vector.NNTP.Sockets.Metrics
             return Volatile.Read(ref _overloaded) != 0;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Captures the current EWMA snapshot for structured reject logging and metrics.
+        /// </summary>
+        /// <returns>Point-in-time utilization and gate state.</returns>
         public NntpCpuLoadSnapshot GetSnapshot()
         {
             NntpServerOptions opts = _options.CurrentValue;
@@ -87,7 +136,10 @@ namespace Vector.NNTP.Sockets.Metrics
                 opts.CpuResumeThresholdPercent);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Samples enabled CPU signals, blends EWMAs, and updates the hysteresis gate.
+        /// </summary>
+        /// <remarks>Called periodically from <see cref="Hosting.NntpCpuLoadSamplerHostedService"/>.</remarks>
         public void RecordSample()
         {
             NntpServerOptions opts = _options.CurrentValue;
