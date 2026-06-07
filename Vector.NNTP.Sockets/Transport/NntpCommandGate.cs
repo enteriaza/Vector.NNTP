@@ -82,7 +82,7 @@ namespace Vector.NNTP.Sockets.Transport
         {
             if (session.IsTrustedTransitPeer && IsStreamingVerb(verb))
             {
-                string peerId = session.Connection.TransitPeerId!;
+                string peerId = session.Connection.TransitPeerName!;
                 if (verb == NntpKnownVerb.Check)
                 {
                     NntpTransitPeerMetrics.RecordCheckWithoutAuth(peerId);

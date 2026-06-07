@@ -108,7 +108,7 @@ namespace Vector.NNTP.Session.Database
             List<SessionContext> list = new(_sessions.Count);
             foreach (SessionContext s in _sessions.Values)
             {
-                if (!string.IsNullOrEmpty(s.TransitPeerId))
+                if (!string.IsNullOrEmpty(s.TransitPeerName))
                 {
                     list.Add(s);
                 }

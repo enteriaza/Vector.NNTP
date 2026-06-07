@@ -137,18 +137,16 @@ namespace Vector.NNTP.Tests.Sockets
         /// <summary>
         /// Creates a transit harness simulating an admitted trusted transit peer (streaming without AUTH).
         /// </summary>
-        /// <param name="transitPeerId">Stable peer identifier.</param>
-        /// <param name="transitPeerDisplayName">Display name.</param>
+        /// <param name="transitPeerName">Configured transit peer name.</param>
         /// <returns>Connected harness instance.</returns>
-        internal static NntpProtocolHarness CreateTransitTrustedPeer(string transitPeerId, string transitPeerDisplayName) =>
+        internal static NntpProtocolHarness CreateTransitTrustedPeer(string transitPeerName) =>
             Create(
                 new NntpTransitHostProfile(),
                 null,
                 new FakeNntpTransitStorage(),
                 new FakeHistoryDatabase(),
                 scramCredentialStore: null,
-                transitPeerId: transitPeerId,
-                transitPeerDisplayName: transitPeerDisplayName);
+                transitPeerName: transitPeerName);
 
         /// <summary>
         /// Authenticates on a transit harness (same fake credentials as reader).
@@ -307,8 +305,7 @@ namespace Vector.NNTP.Tests.Sockets
         /// <param name="session">Optional shared session bundle; defaults to a fresh in-memory stack.</param>
         /// <param name="validator">Optional credential validator; defaults to alice/secret.</param>
         /// <param name="clientIp">Optional simulated client IP for admission tests.</param>
-        /// <param name="transitPeerId">Optional trusted transit peer id (skips AUTH for streaming).</param>
-        /// <param name="transitPeerDisplayName">Optional display name for logs.</param>
+        /// <param name="transitPeerName">Optional trusted transit peer name (skips AUTH for streaming).</param>
         /// <returns>Connected harness.</returns>
         private static NntpProtocolHarness Create(
             INntpHostProfile profile,
@@ -319,8 +316,7 @@ namespace Vector.NNTP.Tests.Sockets
             NntpSessionTestServices.NntpSessionTestBundle? session = null,
             FakeNntpCredentialValidator? validator = null,
             IPAddress? clientIp = null,
-            string? transitPeerId = null,
-            string? transitPeerDisplayName = null)
+            string? transitPeerName = null)
         {
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
@@ -367,8 +363,7 @@ namespace Vector.NNTP.Tests.Sockets
                 remote,
                 profile.Role,
                 options.Value.NodeName,
-                transitPeerId,
-                transitPeerDisplayName ?? transitPeerId);
+                transitPeerName);
             var transport = new NntpPipeTransport(clientToServer.Reader, serverToClient.Writer);
             Task serverTask = runner.RunAsync(transport, context, tlsAlreadyActive: false, cts.Token);
             return new NntpProtocolHarness(clientToServer, serverToClient, serverTask, cts);

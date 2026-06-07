@@ -54,12 +54,12 @@ namespace Vector.NNTP.Sockets.Transport
         /// <param name="logger">Logger instance.</param>
         /// <param name="exception">Unhandled exception.</param>
         /// <param name="sessionId">Session identifier.</param>
-        /// <param name="transitPeerId">Transit peer identifier when the connection is a trusted peer; otherwise empty.</param>
-        [LoggerMessage(Level = LogLevel.Error, Message = "Session program fault SessionId={SessionId} TransitPeerId={TransitPeerId}")]
+        /// <param name="TransitPeerName">Transit peer identifier when the connection is a trusted peer; otherwise empty.</param>
+        [LoggerMessage(Level = LogLevel.Error, Message = "Session program fault SessionId={SessionId} TransitPeerName={TransitPeerName}")]
         public static partial void SessionProgramFault(
             ILogger logger,
             Exception exception,
             string sessionId,
-            string transitPeerId);
+            string TransitPeerName);
     }
 }

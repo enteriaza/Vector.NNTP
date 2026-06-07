@@ -57,8 +57,7 @@ namespace Vector.NNTP.Sockets.Policy
                 }
 
                 found = new NntpTransitPeerMatchResult(
-                    entry.PeerId,
-                    entry.DisplayName,
+                    entry.Name,
                     entry.ConfigEntry,
                     entry.MaxConnections);
             }

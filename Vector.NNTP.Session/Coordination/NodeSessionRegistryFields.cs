@@ -21,7 +21,9 @@ namespace Vector.NNTP.Session.Coordination
         /// <summary>Client IP text (auth only).</summary>
         public const string ClientIp = "clientIp";
 
-        /// <summary>Transit peer id (transit only).</summary>
+        /// <summary>
+        /// Configured transit peer name (transit only). Stored under the legacy hash key <c>peerId</c> for compatibility.
+        /// </summary>
         public const string PeerId = "peerId";
 
         /// <summary>Unix milliseconds when the lease was first acquired.</summary>

@@ -86,9 +86,9 @@ namespace Vector.NNTP.Sockets.Policy
                 try
                 {
                     long count = await _coordinator
-                        .ReconcileCapacityAsync(peer.PeerId, stoppingToken)
+                        .ReconcileCapacityAsync(peer.Name, stoppingToken)
                         .ConfigureAwait(false);
-                    NntpTransitPeerMetrics.UpdateCurrentCapacity(peer.PeerId, count);
+                    NntpTransitPeerMetrics.UpdateCurrentCapacity(peer.Name, count);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -96,7 +96,7 @@ namespace Vector.NNTP.Sockets.Policy
                 }
                 catch (Exception ex)
                 {
-                    LogCapacityReconcileFailed(_logger, ex, peer.PeerId);
+                    LogCapacityReconcileFailed(_logger, ex, peer.Name);
                 }
             }
         }

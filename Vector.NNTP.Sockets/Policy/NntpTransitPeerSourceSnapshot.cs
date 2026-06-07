@@ -16,30 +16,24 @@ namespace Vector.NNTP.Sockets.Policy
         /// <summary>
         /// Initializes a new instance of the <see cref="NntpTransitPeerSourceEntry"/> struct.
         /// </summary>
-        /// <param name="peerId">Stable peer identifier.</param>
-        /// <param name="displayName">Display name.</param>
+        /// <param name="name">Configured peer name.</param>
         /// <param name="configEntry">Original configuration entry text.</param>
         /// <param name="maxConnections">Configured connection cap.</param>
         /// <param name="source">Parsed network source.</param>
         public NntpTransitPeerSourceEntry(
-            string peerId,
-            string displayName,
+            string name,
             string configEntry,
             int maxConnections,
             NntpNetworkSource source)
         {
-            PeerId = peerId;
-            DisplayName = displayName;
+            Name = name;
             ConfigEntry = configEntry;
             MaxConnections = maxConnections;
             Source = source;
         }
 
-        /// <summary>Gets the stable peer identifier.</summary>
-        internal string PeerId { get; }
-
-        /// <summary>Gets the display name.</summary>
-        internal string DisplayName { get; }
+        /// <summary>Gets the configured peer name.</summary>
+        internal string Name { get; }
 
         /// <summary>Gets the configuration entry text.</summary>
         internal string ConfigEntry { get; }
@@ -82,7 +76,7 @@ namespace Vector.NNTP.Sockets.Policy
                 {
                     if (string.IsNullOrWhiteSpace(rawEntry))
                     {
-                        error = $"Peer '{peer.PeerId}' has an empty AcceptFrom entry.";
+                        error = $"Peer '{peer.Name}' has an empty AcceptFrom entry.";
                         snapshot = default;
                         return false;
                     }
@@ -91,17 +85,16 @@ namespace Vector.NNTP.Sockets.Policy
                     if (NntpNetworkSource.TryParse(entry, out NntpNetworkSource source))
                     {
                         entries.Add(new NntpTransitPeerSourceEntry(
-                            peer.PeerId,
                             peer.Name,
                             entry,
-                            peer.AcceptMaxConnections,
+                            peer.MaxConnections,
                             source));
                         continue;
                     }
 
                     if (!resolveHostnames)
                     {
-                        error = $"Peer '{peer.PeerId}' entry '{entry}' is not a valid IP/CIDR and hostname resolution was not requested.";
+                        error = $"Peer '{peer.Name}' entry '{entry}' is not a valid IP/CIDR and hostname resolution was not requested.";
                         snapshot = default;
                         return false;
                     }
@@ -111,7 +104,7 @@ namespace Vector.NNTP.Sockets.Policy
                         IPHostEntry hostEntry = Dns.GetHostEntry(entry);
                         if (hostEntry.AddressList.Length == 0)
                         {
-                            error = $"Peer '{peer.PeerId}' hostname '{entry}' did not resolve.";
+                            error = $"Peer '{peer.Name}' hostname '{entry}' did not resolve.";
                             snapshot = default;
                             return false;
                         }
@@ -124,16 +117,15 @@ namespace Vector.NNTP.Sockets.Policy
                             }
 
                             entries.Add(new NntpTransitPeerSourceEntry(
-                                peer.PeerId,
                                 peer.Name,
                                 entry,
-                                peer.AcceptMaxConnections,
+                                peer.MaxConnections,
                                 resolved));
                         }
                     }
                     catch (Exception ex)
                     {
-                        error = $"Peer '{peer.PeerId}' DNS resolution for '{entry}' failed: {ex.Message}";
+                        error = $"Peer '{peer.Name}' DNS resolution for '{entry}' failed: {ex.Message}";
                         snapshot = default;
                         return false;
                     }
@@ -157,7 +149,7 @@ namespace Vector.NNTP.Sockets.Policy
             {
                 for (int j = i + 1; j < entries.Count; j++)
                 {
-                    if (string.Equals(entries[i].PeerId, entries[j].PeerId, StringComparison.Ordinal))
+                    if (string.Equals(entries[i].Name, entries[j].Name, StringComparison.Ordinal))
                     {
                         continue;
                     }
@@ -165,8 +157,8 @@ namespace Vector.NNTP.Sockets.Policy
                     if (entries[i].Source.Overlaps(entries[j].Source))
                     {
                         error =
-                            $"Transit peer address overlap: peer '{entries[i].PeerId}' entry '{entries[i].ConfigEntry}' " +
-                            $"overlaps peer '{entries[j].PeerId}' entry '{entries[j].ConfigEntry}'.";
+                            $"Transit peer address overlap: peer '{entries[i].Name}' entry '{entries[i].ConfigEntry}' " +
+                            $"overlaps peer '{entries[j].Name}' entry '{entries[j].ConfigEntry}'.";
                         return false;
                     }
                 }

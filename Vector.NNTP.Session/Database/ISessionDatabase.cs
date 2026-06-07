@@ -47,7 +47,7 @@ namespace Vector.NNTP.Session.Database
         /// <summary>
         /// Returns a snapshot of trusted transit peer connections on this node (for ZSET lease refresh).
         /// </summary>
-        /// <returns>Sessions with a non-empty <see cref="SessionContext.TransitPeerId"/>.</returns>
+        /// <returns>Sessions with a non-empty <see cref="SessionContext.TransitPeerName"/>.</returns>
         public IReadOnlyCollection<SessionContext> SnapshotTransitPeers();
 
         /// <summary>

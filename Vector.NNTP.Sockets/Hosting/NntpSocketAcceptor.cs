@@ -479,7 +479,7 @@ namespace Vector.NNTP.Sockets.Hosting
             int leaseSeconds = NntpSessionTtlCalculator.ComputeTransitPeerLeaseSeconds();
             string nodeName = _options.Value.NodeName;
             NntpTransitPeerAdmissionResult admit = await _transitPeerCoordinator.TryAcquireAsync(
-                match.PeerId,
+                match.Name,
                 sessionId,
                 match.MaxConnections,
                 leaseSeconds,
@@ -491,37 +491,35 @@ namespace Vector.NNTP.Sockets.Hosting
                     LogAcceptedTransitPeer(
                         _logger,
                         FormattingUtilities.FormatConnectionLogPrefix(clientEndPoint),
-                        match.PeerId,
-                        match.DisplayName,
+                        match.Name,
                         match.MatchedEntry);
-                    NntpTransitPeerMetrics.RecordMatch(match.PeerId);
-                    NntpTransitPeerMetrics.RecordActiveConnection(match.PeerId, 1);
+                    NntpTransitPeerMetrics.RecordMatch(match.Name);
+                    NntpTransitPeerMetrics.RecordActiveConnection(match.Name, 1);
                     return new NntpConnectionContext(
                         sessionId,
                         clientEndPoint,
                         tcpPeer,
                         _profile.Role,
                         nodeName,
-                        match.PeerId,
-                        match.DisplayName);
+                        match.Name);
                 case NntpTransitPeerAdmissionResult.AtCapacity:
-                    NntpTransitPeerMetrics.RecordAcquireFailure(match.PeerId);
-                    long occupied = TransitPeerCapacityRegistry.TryGetCurrentCapacity(match.PeerId, out long current)
+                    NntpTransitPeerMetrics.RecordAcquireFailure(match.Name);
+                    long occupied = TransitPeerCapacityRegistry.TryGetCurrentCapacity(match.Name, out long current)
                         ? current
                         : -1;
                     LogTransitPeerAtCapacity(
                         _logger,
                         FormattingUtilities.FormatConnectionLogPrefix(clientEndPoint),
-                        match.PeerId,
+                        match.Name,
                         occupied,
                         match.MaxConnections);
                     return null;
                 default:
-                    NntpTransitPeerMetrics.RecordRedisError(match.PeerId);
+                    NntpTransitPeerMetrics.RecordRedisError(match.Name);
                     LogTransitPeerAdmissionBackendFailure(
                         _logger,
                         FormattingUtilities.FormatConnectionLogPrefix(clientEndPoint),
-                        match.PeerId);
+                        match.Name);
                     return null;
             }
         }
@@ -530,14 +528,14 @@ namespace Vector.NNTP.Sockets.Hosting
             NntpConnectionContext context,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(context.TransitPeerId))
+            if (string.IsNullOrEmpty(context.TransitPeerName))
             {
                 return;
             }
 
             try
             {
-                NntpTransitPeerMetrics.RecordActiveConnection(context.TransitPeerId, -1);
+                NntpTransitPeerMetrics.RecordActiveConnection(context.TransitPeerName, -1);
             }
             catch (Exception)
             {
@@ -547,12 +545,12 @@ namespace Vector.NNTP.Sockets.Hosting
             try
             {
                 await _transitPeerCoordinator
-                    .ReleaseAsync(context.TransitPeerId, context.SessionId, context.NodeName, cancellationToken)
+                    .ReleaseAsync(context.TransitPeerName, context.SessionId, context.NodeName, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                NntpTransitPeerMetrics.RecordRedisError(context.TransitPeerId);
+                NntpTransitPeerMetrics.RecordRedisError(context.TransitPeerName);
             }
         }
 

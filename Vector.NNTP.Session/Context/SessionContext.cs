@@ -44,7 +44,7 @@ namespace Vector.NNTP.Session.Context
         /// <param name="connectedAtUtc">Connection timestamp.</param>
         /// <param name="configVersion">Configuration version stamped at accept time.</param>
         /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
-        /// <param name="transitPeerId">Optional stable transit peer identifier when admitted as a trusted peer.</param>
+        /// <param name="transitPeerName">Optional configured transit peer name when admitted as a trusted peer.</param>
         public SessionContext(
             string sessionId,
             IPAddress remoteIp,
@@ -52,7 +52,7 @@ namespace Vector.NNTP.Session.Context
             DateTimeOffset connectedAtUtc,
             string configVersion,
             string nodeName,
-            string? transitPeerId = null)
+            string? transitPeerName = null)
         {
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentNullException.ThrowIfNull(remoteIp);
@@ -65,7 +65,7 @@ namespace Vector.NNTP.Session.Context
             ConnectedAtUtc = connectedAtUtc;
             ConfigVersion = configVersion;
             NodeName = nodeName;
-            TransitPeerId = transitPeerId;
+            TransitPeerName = transitPeerName;
             _authenticationState = (int)AuthenticationState.Unauthenticated;
             _lastActivityUnixSeconds = connectedAtUtc.ToUnixTimeSeconds();
         }
@@ -101,9 +101,9 @@ namespace Vector.NNTP.Session.Context
         public string NodeName { get; }
 
         /// <summary>
-        /// Gets the stable transit peer identifier when this connection was admitted as a trusted transit peer.
+        /// Gets the configured transit peer name when this connection was admitted as a trusted transit peer.
         /// </summary>
-        public string? TransitPeerId { get; }
+        public string? TransitPeerName { get; }
 
         /// <summary>
         /// Gets the current authentication state.

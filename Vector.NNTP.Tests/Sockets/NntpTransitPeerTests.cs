@@ -29,14 +29,12 @@ namespace Vector.NNTP.Tests.Sockets
                     [
                         new NntpTransitPeerOptions
                         {
-                            PeerId = "peer-a",
-                            Name = "A",
+                            Name = "peer-a",
                             AcceptFrom = ["10.0.0.0/8"],
                         },
                         new NntpTransitPeerOptions
                         {
-                            PeerId = "peer-b",
-                            Name = "B",
+                            Name = "peer-b",
                             AcceptFrom = ["10.1.0.0/16"],
                         },
                     ],
@@ -49,7 +47,7 @@ namespace Vector.NNTP.Tests.Sockets
         }
 
         /// <summary>
-        /// Verifies in-memory ZSET admission enforces AcceptMaxConnections.
+        /// Verifies in-memory ZSET admission enforces MaxConnections.
         /// </summary>
         /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
         [Test]
@@ -79,7 +77,7 @@ namespace Vector.NNTP.Tests.Sockets
         }
 
         /// <summary>
-        /// Verifies CHECK works without AUTH when TransitPeerId is set on the harness context.
+        /// Verifies CHECK works without AUTH when TransitPeerName is set on the harness context.
         /// </summary>
         /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
         [Test]
@@ -100,7 +98,7 @@ namespace Vector.NNTP.Tests.Sockets
         }
 
         /// <summary>
-        /// Verifies TAKETHIS after CHECK returns 239 without AUTH when TransitPeerId is set.
+        /// Verifies TAKETHIS after CHECK returns 239 without AUTH when TransitPeerName is set.
         /// </summary>
         /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
         [Test]
@@ -151,7 +149,7 @@ namespace Vector.NNTP.Tests.Sockets
         /// <returns>Connected harness.</returns>
         private static NntpProtocolHarness CreateTrustedTransitHarness()
         {
-            return NntpProtocolHarness.CreateTransitTrustedPeer("giganews", "Giganews Test");
+            return NntpProtocolHarness.CreateTransitTrustedPeer("Giganews");
         }
     }
 }

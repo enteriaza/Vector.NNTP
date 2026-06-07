@@ -31,9 +31,8 @@ Distributed session admission, byte quota, and heartbeats use a separate **`Redi
 | Key | Purpose |
 |-----|---------|
 | `RefreshIntervalMinutes` | DNS snapshot rebuild interval for hostname `AcceptFrom` entries (default `10`). |
-| `Peers[].PeerId` | Stable id for metrics and Redis keys (e.g. `giganews`). |
-| `Peers[].Name` | Display name for logs (rename-safe). |
-| `Peers[].AcceptMaxConnections` | Cluster cap via Redis ZSET (`0` = unlimited, default `10`). |
+| `Peers[].Name` | Peer name for logs, metrics labels, and Redis coordination keys (e.g. `Giganews`). |
+| `Peers[].MaxConnections` | Cluster cap via Redis ZSET (`0` = unlimited, default `10`). |
 | `Peers[].AcceptFrom` | Literal IP, CIDR, or DNS hostname entries. |
 
 Startup **fails** if any two peers have overlapping address ranges. Hostname entries are resolved at startup and on each refresh; failed refresh keeps the previous snapshot.
@@ -45,9 +44,8 @@ Stale Redis ZSET members are purged using roughly **three heartbeat intervals** 
   "RefreshIntervalMinutes": 10,
   "Peers": [
     {
-      "PeerId": "giganews",
       "Name": "Giganews",
-      "AcceptMaxConnections": 10,
+      "MaxConnections": 10,
       "AcceptFrom": ["news-out.nntp.giganews.com"]
     }
   ]

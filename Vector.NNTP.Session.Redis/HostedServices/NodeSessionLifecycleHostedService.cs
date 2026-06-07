@@ -90,17 +90,17 @@ namespace Vector.NNTP.Session.Redis.HostedServices
             foreach (SessionContext session in survivors)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!string.IsNullOrEmpty(session.TransitPeerId))
+                if (!string.IsNullOrEmpty(session.TransitPeerName))
                 {
                     try
                     {
                         await _transitPeerCoordinator
-                            .ReleaseAsync(session.TransitPeerId, session.SessionId, nodeName, cancellationToken)
+                            .ReleaseAsync(session.TransitPeerName, session.SessionId, nodeName, cancellationToken)
                             .ConfigureAwait(false);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        LogWarningSurvivorTransitReleaseFailed(_logger, ex, session.SessionId, session.TransitPeerId);
+                        LogWarningSurvivorTransitReleaseFailed(_logger, ex, session.SessionId, session.TransitPeerName);
                     }
 
                     continue;

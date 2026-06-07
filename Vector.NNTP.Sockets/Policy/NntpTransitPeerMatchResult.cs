@@ -13,30 +13,22 @@ namespace Vector.NNTP.Sockets.Policy
         /// <summary>
         /// Initializes a new instance of the <see cref="NntpTransitPeerMatchResult"/> struct.
         /// </summary>
-        /// <param name="peerId">Stable peer identifier.</param>
-        /// <param name="displayName">Operator display name.</param>
+        /// <param name="name">Configured peer name.</param>
         /// <param name="matchedEntry">Configuration entry that matched.</param>
-        /// <param name="maxConnections">Configured <c>AcceptMaxConnections</c> (0 = unlimited).</param>
-        public NntpTransitPeerMatchResult(string peerId, string displayName, string matchedEntry, int maxConnections)
+        /// <param name="maxConnections">Configured <c>MaxConnections</c> (0 = unlimited).</param>
+        public NntpTransitPeerMatchResult(string name, string matchedEntry, int maxConnections)
         {
-            ArgumentException.ThrowIfNullOrEmpty(peerId);
-            ArgumentException.ThrowIfNullOrEmpty(displayName);
+            ArgumentException.ThrowIfNullOrEmpty(name);
             ArgumentException.ThrowIfNullOrEmpty(matchedEntry);
-            PeerId = peerId;
-            DisplayName = displayName;
+            Name = name;
             MatchedEntry = matchedEntry;
             MaxConnections = maxConnections;
         }
 
         /// <summary>
-        /// Gets the stable peer identifier for Redis and metrics.
+        /// Gets the configured peer name for Redis and metrics.
         /// </summary>
-        public string PeerId { get; }
-
-        /// <summary>
-        /// Gets the display name for logs.
-        /// </summary>
-        public string DisplayName { get; }
+        public string Name { get; }
 
         /// <summary>
         /// Gets the configuration entry that matched (literal, CIDR, or hostname text).

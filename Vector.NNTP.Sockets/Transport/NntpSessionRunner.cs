@@ -79,7 +79,7 @@ namespace Vector.NNTP.Sockets.Transport
                 DateTimeOffset.UtcNow,
                 configVersion,
                 context.NodeName,
-                context.TransitPeerId);
+                context.TransitPeerName);
             if (!_sessionDatabase.TryAdd(connectionSession))
             {
                 await transport.DisposeAsync().ConfigureAwait(false);
@@ -184,7 +184,7 @@ namespace Vector.NNTP.Sockets.Transport
                     _logger,
                     ex,
                     context.SessionId,
-                    context.TransitPeerId ?? string.Empty);
+                    context.TransitPeerName ?? string.Empty);
                 try
                 {
                     await session.Writer.WritePreencodedAsync(NntpPreencodedResponses.ProgramFault503, CancellationToken.None).ConfigureAwait(false);
@@ -259,14 +259,14 @@ namespace Vector.NNTP.Sockets.Transport
             NntpConnectionContext context,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(context.TransitPeerId))
+            if (string.IsNullOrEmpty(context.TransitPeerName))
             {
                 return;
             }
 
             try
             {
-                NntpTransitPeerMetrics.RecordActiveConnection(context.TransitPeerId, -1);
+                NntpTransitPeerMetrics.RecordActiveConnection(context.TransitPeerName, -1);
             }
             catch (Exception ex)
             {
@@ -276,7 +276,7 @@ namespace Vector.NNTP.Sockets.Transport
             try
             {
                 await _transitPeerCoordinator
-                    .ReleaseAsync(context.TransitPeerId, context.SessionId, context.NodeName, cancellationToken)
+                    .ReleaseAsync(context.TransitPeerName, context.SessionId, context.NodeName, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -285,8 +285,8 @@ namespace Vector.NNTP.Sockets.Transport
             }
             catch (Exception ex)
             {
-                NntpTransitPeerMetrics.RecordRedisError(context.TransitPeerId);
-                NntpSessionRunnerLog.TransitPeerReleaseFailed(_logger, ex, context.SessionId, context.TransitPeerId);
+                NntpTransitPeerMetrics.RecordRedisError(context.TransitPeerName);
+                NntpSessionRunnerLog.TransitPeerReleaseFailed(_logger, ex, context.SessionId, context.TransitPeerName);
             }
         }
 

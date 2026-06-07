@@ -110,7 +110,7 @@ namespace Vector.NNTP.Session.Redis.HostedServices
                 IReadOnlyCollection<SessionContext> transitPeers = _sessionDatabase.SnapshotTransitPeers();
                 foreach (SessionContext transit in transitPeers)
                 {
-                    if (string.IsNullOrEmpty(transit.TransitPeerId))
+                    if (string.IsNullOrEmpty(transit.TransitPeerName))
                     {
                         continue;
                     }
@@ -118,7 +118,7 @@ namespace Vector.NNTP.Session.Redis.HostedServices
                     try
                     {
                         await _transitPeerCoordinator.RefreshLeaseAsync(
-                            transit.TransitPeerId,
+                            transit.TransitPeerName,
                             transit.SessionId,
                             transit.NodeName,
                             transitLeaseSeconds,
@@ -130,7 +130,7 @@ namespace Vector.NNTP.Session.Redis.HostedServices
                     }
                     catch (Exception ex)
                     {
-                        LogWarningTransitPeerHeartbeatFailed(this._logger, ex, transit.SessionId, transit.TransitPeerId);
+                        LogWarningTransitPeerHeartbeatFailed(this._logger, ex, transit.SessionId, transit.TransitPeerName);
                     }
                 }
             }

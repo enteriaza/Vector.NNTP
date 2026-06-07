@@ -9,7 +9,7 @@ using Vector.NNTP.Sockets.Configuration;
 namespace Vector.NNTP.Sockets.Metrics
 {
     /// <summary>
-    /// OpenTelemetry metrics for NNTP trusted transit peers (bounded <c>peer</c> label = <see cref="NntpTransitPeerOptions.PeerId"/>).
+    /// OpenTelemetry metrics for NNTP trusted transit peers (bounded <c>peer</c> label = <see cref="NntpTransitPeerOptions.Name"/>).
     /// </summary>
     public static class NntpTransitPeerMetrics
     {
@@ -52,7 +52,7 @@ namespace Vector.NNTP.Sockets.Metrics
             _ = Meter.CreateObservableGauge(
                 "nntp.transitpeer.max_connections",
                 ObserveMaxConnections,
-                description: "Configured AcceptMaxConnections per peer (0 = unlimited).");
+                description: "Configured MaxConnections per peer (0 = unlimited).");
         }
 
         /// <summary>Records a successful transit peer match and Redis admission.</summary>
@@ -133,7 +133,7 @@ namespace Vector.NNTP.Sockets.Metrics
             var map = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (NntpTransitPeerOptions peer in peers)
             {
-                map[peer.PeerId] = peer.AcceptMaxConnections;
+                map[peer.Name] = peer.MaxConnections;
             }
 
             TransitPeerCapacityRegistry.ReplaceConfiguredMax(map);

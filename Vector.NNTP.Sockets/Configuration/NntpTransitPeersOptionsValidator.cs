@@ -3,7 +3,6 @@
 // </copyright>
 // COLD PATH: startup validation for trusted transit peer configuration.
 
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.Sockets.Policy;
 using Vector.NNTP.Utilities.Validation;
@@ -13,10 +12,8 @@ namespace Vector.NNTP.Sockets.Configuration
     /// <summary>
     /// Validates <see cref="NntpTransitPeersOptions"/> nested under <see cref="NntpServerOptions"/>.
     /// </summary>
-    public static partial class NntpTransitPeersOptionsValidator
+    public static class NntpTransitPeersOptionsValidator
     {
-        private static readonly Regex PeerIdPattern = PeerIdRegex();
-
         /// <summary>
         /// Validates transit peer configuration.
         /// </summary>
@@ -36,39 +33,29 @@ namespace Vector.NNTP.Sockets.Configuration
                     $"{nameof(NntpTransitPeersOptions.RefreshIntervalMinutes)} must be between 1 and 1440.");
             }
 
-            var peerIds = new HashSet<string>(StringComparer.Ordinal);
+            var peerNames = new HashSet<string>(StringComparer.Ordinal);
             var errors = new List<string>();
             foreach (NntpTransitPeerOptions peer in transitPeers.Peers)
             {
-                if (string.IsNullOrWhiteSpace(peer.PeerId))
+                if (string.IsNullOrWhiteSpace(peer.Name))
                 {
-                    errors.Add("Each transit peer requires a non-empty PeerId.");
+                    errors.Add("Each transit peer requires a non-empty Name.");
                     continue;
                 }
 
-                if (!PeerIdPattern.IsMatch(peer.PeerId))
+                if (!peerNames.Add(peer.Name))
                 {
-                    errors.Add($"PeerId '{peer.PeerId}' must match [a-z0-9][a-z0-9_-]*.");
+                    errors.Add($"Duplicate peer Name '{peer.Name}'.");
                 }
 
-                if (!peerIds.Add(peer.PeerId))
+                if (peer.MaxConnections < 0)
                 {
-                    errors.Add($"Duplicate PeerId '{peer.PeerId}'.");
-                }
-
-                if (string.IsNullOrWhiteSpace(peer.Name))
-                {
-                    errors.Add($"Peer '{peer.PeerId}' requires a non-empty Name.");
-                }
-
-                if (peer.AcceptMaxConnections < 0)
-                {
-                    errors.Add($"Peer '{peer.PeerId}' AcceptMaxConnections must be non-negative.");
+                    errors.Add($"Peer '{peer.Name}' MaxConnections must be non-negative.");
                 }
 
                 if (peer.AcceptFrom is null || peer.AcceptFrom.Length == 0)
                 {
-                    errors.Add($"Peer '{peer.PeerId}' requires at least one AcceptFrom entry.");
+                    errors.Add($"Peer '{peer.Name}' requires at least one AcceptFrom entry.");
                     continue;
                 }
 
@@ -76,14 +63,14 @@ namespace Vector.NNTP.Sockets.Configuration
                 {
                     if (string.IsNullOrWhiteSpace(entry))
                     {
-                        errors.Add($"Peer '{peer.PeerId}' has an empty AcceptFrom entry.");
+                        errors.Add($"Peer '{peer.Name}' has an empty AcceptFrom entry.");
                         continue;
                     }
 
                     string trimmed = entry.Trim();
                     if (trimmed.Contains(':', StringComparison.Ordinal) && !trimmed.Contains('/', StringComparison.Ordinal))
                     {
-                        errors.Add($"Peer '{peer.PeerId}' entry '{trimmed}' must not include a port.");
+                        errors.Add($"Peer '{peer.Name}' entry '{trimmed}' must not include a port.");
                         continue;
                     }
 
@@ -94,7 +81,7 @@ namespace Vector.NNTP.Sockets.Configuration
 
                     if (!DnsValidationUtilities.TryValidateHost(trimmed, out string? dnsError))
                     {
-                        errors.Add($"Peer '{peer.PeerId}' entry '{trimmed}': {dnsError}");
+                        errors.Add($"Peer '{peer.Name}' entry '{trimmed}': {dnsError}");
                     }
                 }
             }
@@ -115,8 +102,5 @@ namespace Vector.NNTP.Sockets.Configuration
 
             return ValidateOptionsResult.Success;
         }
-
-        [GeneratedRegex("^[a-z0-9][a-z0-9_-]*$", RegexOptions.CultureInvariant)]
-        private static partial Regex PeerIdRegex();
     }
 }
