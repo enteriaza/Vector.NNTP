@@ -90,4 +90,35 @@ public sealed class HeaderFieldValidationTests
         ];
         Assert.That(HeaderFieldValidation.IsValidHeaderField(line), Is.False);
     }
+
+    /// <summary>
+    /// Verifies <see cref="HeaderFieldValidation.TryValidateHeaderField"/> names the header and failure kind.
+    /// </summary>
+    [Test]
+    public void TryValidateHeaderField_InvalidBody_IncludesHeaderName()
+    {
+        byte[] line =
+        [
+            (byte)'D', (byte)'a', (byte)'t', (byte)'e', (byte)':', (byte)' ',
+            0xC0, 0x80,
+        ];
+        Assert.That(
+            HeaderFieldValidation.TryValidateHeaderField(line, out string? failureReason),
+            Is.False);
+        Assert.That(failureReason, Does.Contain("Date"));
+        Assert.That(failureReason, Does.Contain("body"));
+    }
+
+    /// <summary>
+    /// Verifies missing space after colon reports the header name.
+    /// </summary>
+    [Test]
+    public void TryValidateHeaderField_MissingSpaceAfterColon_IncludesHeaderName()
+    {
+        Assert.That(
+            HeaderFieldValidation.TryValidateHeaderField("Subject:hello"u8, out string? failureReason),
+            Is.False);
+        Assert.That(failureReason, Does.Contain("Subject"));
+        Assert.That(failureReason, Does.Contain("space"));
+    }
 }

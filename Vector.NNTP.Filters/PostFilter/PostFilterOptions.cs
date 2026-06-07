@@ -186,6 +186,10 @@ namespace Vector.NNTP.Filters.PostFilter
         /// <summary>
         /// Maximum article size in bytes including headers (0 disables); oversized articles reject with code 12.
         /// </summary>
+        /// <remarks>
+        /// Reserved for reader/post-filter paths. The transit spool postprocessor enforces the host
+        /// <c>NntpServer:MaxArtSize</c> setting instead of this property.
+        /// </remarks>
         [Range(0, long.MaxValue)]
         public long MaxArticleBytes { get; set; } = 1_048_576;
     }

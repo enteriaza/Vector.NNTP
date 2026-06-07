@@ -146,6 +146,61 @@ public sealed class ArticleSpoolPostprocessorTests
     }
 
     /// <summary>
+    /// Verifies articles larger than the post-filter default (1 MiB) but within
+    /// <see cref="NntpServerOptions.MaxArtSize"/> are accepted.
+    /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+    [Test]
+    public async Task PostprocessAsync_ArticleWithinMaxArtSize_ReturnsSuccess()
+    {
+        const int maxArtSize = 4_194_304;
+        ArticleSpoolPostprocessor postprocessor = CreatePostprocessor(
+            serverOptions: new NntpServerOptions
+            {
+                NodeName = "transit1",
+                DomainName = "usenetninja.net",
+                MaxArtSize = maxArtSize,
+            });
+        byte[] article = BuildValidArticle("<large@example.com>", bodyByteCount: 2_000_000);
+        NntpSpoolWriteItem item = CreateItem("<large@example.com>", article);
+
+        ArticleSpoolPostprocessResult result = await postprocessor
+            .PostprocessAsync(item, article, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(article.Length, Is.LessThanOrEqualTo(maxArtSize));
+        Assert.That(article.Length, Is.GreaterThan(1_048_576));
+    }
+
+    /// <summary>
+    /// Verifies articles exceeding <see cref="NntpServerOptions.MaxArtSize"/> are rejected.
+    /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+    [Test]
+    public async Task PostprocessAsync_ExceedsMaxArtSize_ReturnsFailure()
+    {
+        const int maxArtSize = 1_048_576;
+        ArticleSpoolPostprocessor postprocessor = CreatePostprocessor(
+            serverOptions: new NntpServerOptions
+            {
+                NodeName = "transit1",
+                DomainName = "usenetninja.net",
+                MaxArtSize = maxArtSize,
+            });
+        byte[] article = BuildValidArticle("<oversize@example.com>", bodyByteCount: maxArtSize);
+        NntpSpoolWriteItem item = CreateItem("<oversize@example.com>", article);
+
+        ArticleSpoolPostprocessResult result = await postprocessor
+            .PostprocessAsync(item, article, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.FailureReason, Does.Contain("maximum size"));
+        Assert.That(result.FailureReason, Does.Contain(maxArtSize.ToString()));
+    }
+
+    /// <summary>
     /// Verifies spamd errors fail open and preserve original article bytes.
     /// </summary>
     /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
@@ -169,15 +224,22 @@ public sealed class ArticleSpoolPostprocessorTests
     /// Builds a postprocessor with default dependencies.
     /// </summary>
     /// <param name="postFilterOptions">Optional post-filter options override.</param>
+    /// <param name="serverOptions">Optional server options override.</param>
     /// <param name="spamAssassin">Optional spamd client override.</param>
     /// <returns>Configured postprocessor instance.</returns>
     private static ArticleSpoolPostprocessor CreatePostprocessor(
         PostFilterOptions? postFilterOptions = null,
+        NntpServerOptions? serverOptions = null,
         ISpamAssassin? spamAssassin = null)
     {
         return new ArticleSpoolPostprocessor(
             Options.Create(postFilterOptions ?? new PostFilterOptions()),
-            Options.Create(new NntpServerOptions { NodeName = "transit1", DomainName = "usenetninja.net" }),
+            Options.Create(serverOptions ?? new NntpServerOptions
+            {
+                NodeName = "transit1",
+                DomainName = "usenetninja.net",
+                MaxArtSize = 4_194_304,
+            }),
             spamAssassin ?? new FakeSpamAssassin(),
             new SpamdScanArticleBuilder(),
             NullLogger<ArticleSpoolPostprocessor>.Instance);
@@ -202,11 +264,21 @@ public sealed class ArticleSpoolPostprocessorTests
     /// Builds a minimal valid transit article for postprocessing tests.
     /// </summary>
     /// <param name="messageId">Message-ID header value.</param>
+    /// <param name="bodyByteCount">Optional body byte count after the header terminator.</param>
     /// <returns>Raw article bytes.</returns>
-    private static byte[] BuildValidArticle(string messageId)
+    private static byte[] BuildValidArticle(string messageId, int bodyByteCount = 0)
     {
-        string text = $"Path: misc.test\r\nMessage-ID: {messageId}\r\nDate: Fri, 05 Jun 2026 12:00:00 +0000\r\n\r\n";
-        return Encoding.ASCII.GetBytes(text);
+        var builder = new StringBuilder();
+        builder.Append("Path: misc.test\r\n");
+        builder.Append("Message-ID: ");
+        builder.Append(messageId);
+        builder.Append("\r\nDate: Fri, 05 Jun 2026 12:00:00 +0000\r\n\r\n");
+        if (bodyByteCount > 0)
+        {
+            builder.Append('x', bodyByteCount);
+        }
+
+        return Encoding.ASCII.GetBytes(builder.ToString());
     }
 
     /// <summary>

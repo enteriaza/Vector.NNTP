@@ -207,8 +207,34 @@ namespace Vector.NNTP.Utilities.Validation
         /// </remarks>
         public static bool IsValidHeaderField(ReadOnlySpan<byte> field)
         {
-            if (field.IsEmpty || field[0] == (byte)':')
+            return TryValidateHeaderField(field, out _);
+        }
+
+        /// <summary>
+        /// Validates a header field line and returns an operator-facing reason when validation fails.
+        /// </summary>
+        /// <param name="field">Full header field line without trailing CRLF, as raw UTF-8 bytes.</param>
+        /// <param name="failureReason">
+        /// When this method returns <see langword="false"/>, a short reason naming the header when possible;
+        /// otherwise <see langword="null"/>.
+        /// </param>
+        /// <returns><see langword="true"/> when name, colon, required space, and body are valid.</returns>
+        /// <remarks>
+        /// Intended for spool preprocess failure logs where rejected articles are not persisted. Messages identify the
+        /// header name and whether the name, colon separator, or body failed validation.
+        /// </remarks>
+        public static bool TryValidateHeaderField(ReadOnlySpan<byte> field, out string? failureReason)
+        {
+            failureReason = null;
+            if (field.IsEmpty)
             {
+                failureReason = "Header field line is empty.";
+                return false;
+            }
+
+            if (field[0] == (byte)':')
+            {
+                failureReason = "Header field name is missing (line starts with ':').";
                 return false;
             }
 
@@ -218,25 +244,48 @@ namespace Vector.NNTP.Utilities.Validation
                 byte b = field[index];
                 if (!IsGraph(b))
                 {
+                    failureReason =
+                        $"Invalid character in header field name '{FormatHeaderNameForLog(field[..index])}'.";
                     return false;
                 }
 
                 if (b == (byte)':')
                 {
-                    index++;
                     break;
                 }
 
                 index++;
             }
 
+            if (index >= field.Length)
+            {
+                failureReason = $"Header field line has no colon separator ('{FormatHeaderNameForLog(field)}').";
+                return false;
+            }
+
+            ReadOnlySpan<byte> nameBytes = field[..index];
+            if (!IsValidHeaderName(System.Text.Encoding.ASCII.GetString(nameBytes)))
+            {
+                failureReason = $"Invalid header field name '{FormatHeaderNameForLog(nameBytes)}'.";
+                return false;
+            }
+
+            string headerName = FormatHeaderNameForLog(nameBytes);
+            index++;
             if (index >= field.Length || field[index] != (byte)' ')
             {
+                failureReason = $"Header field '{headerName}' is missing required space after colon.";
                 return false;
             }
 
             index++;
-            return IsValidHeaderBody(field[index..]);
+            if (!IsValidHeaderBody(field[index..]))
+            {
+                failureReason = $"Invalid header field body for '{headerName}'.";
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -337,6 +386,31 @@ namespace Vector.NNTP.Utilities.Validation
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Formats a header name or line prefix for operator logs, replacing non-printable bytes and truncating long values.
+        /// </summary>
+        /// <param name="nameBytes">Raw header name bytes or line prefix.</param>
+        /// <returns>Sanitized printable text suitable for structured logs.</returns>
+        private static string FormatHeaderNameForLog(ReadOnlySpan<byte> nameBytes)
+        {
+            const int maxLength = 128;
+            if (nameBytes.IsEmpty)
+            {
+                return "(empty)";
+            }
+
+            int take = Math.Min(nameBytes.Length, maxLength);
+            var chars = new char[take];
+            for (int i = 0; i < take; i++)
+            {
+                byte b = nameBytes[i];
+                chars[i] = b is >= 32 and <= 126 ? (char)b : '?';
+            }
+
+            string formatted = new(chars);
+            return nameBytes.Length > maxLength ? formatted + "…" : formatted;
         }
     }
 }

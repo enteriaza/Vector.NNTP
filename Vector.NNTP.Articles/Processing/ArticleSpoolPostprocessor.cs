@@ -33,7 +33,7 @@ namespace Vector.NNTP.Articles.Processing
     /// <item><description>Validate each header name and unfolded body with <see cref="HeaderFieldValidation"/>.</description></item>
     /// <item><description>Require a parsable <c>Message-ID</c> header that matches the transit command Message-ID.</description></item>
     /// <item><description>Require a canonical date via <see cref="ArticleDateHeaderResolver"/> and <see cref="NewsDateParser"/>.</description></item>
-    /// <item><description>Apply <see cref="PostFilterStyleOptions"/> shape rules from <see cref="PostFilterOptions"/>.</description></item>
+    /// <item><description>Apply <see cref="PostFilterStyleOptions"/> shape rules and <see cref="NntpServerOptions.MaxArtSize"/> from bound server options.</description></item>
     /// <item><description>Classify content via <see cref="ArticleTypeClassifier"/>; validate yEnc CRC or run SpamAssassin on small non-yEnc articles.</description></item>
     /// </list>
     /// <para>
@@ -54,12 +54,12 @@ namespace Vector.NNTP.Articles.Processing
         private const int SpamCheckMaxArticleBytes = 131_072;
 
         /// <summary>
-        /// Post-filter style options governing forbidden headers, crosspost limits, and article size caps.
+        /// Post-filter style options governing forbidden headers and crosspost limits.
         /// </summary>
         private readonly PostFilterStyleOptions _styleOptions;
 
         /// <summary>
-        /// Server identity for programmatic spamd scan header synthesis.
+        /// Bound server options supplying <see cref="NntpServerOptions.MaxArtSize"/> and spamd scan header synthesis.
         /// </summary>
         private readonly NntpServerOptions _serverOptions;
 
@@ -549,19 +549,25 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Applies configured <see cref="PostFilterStyleOptions"/> shape checks to the parsed article.
+        /// Applies configured <see cref="PostFilterStyleOptions"/> shape checks and
+        /// <see cref="NntpServerOptions.MaxArtSize"/> to the parsed article.
         /// </summary>
         /// <param name="parsed">Parsed article.</param>
         /// <param name="articleByteLength">Total article byte length including headers and body.</param>
         /// <param name="failureReason">Failure reason when this method returns <see langword="false"/>.</param>
         /// <returns><see langword="true"/> when style rules pass.</returns>
+        /// <remarks>
+        /// Article size is enforced with <see cref="NntpServerOptions.MaxArtSize"/> from the host <c>NntpServer</c>
+        /// configuration section — the same limit applied by transit command handlers and
+        /// <see cref="Storage.NntpSpoolTransitStorage"/>.
+        /// </remarks>
         private bool TryValidateStyleRules(ParsedTransitArticle parsed, int articleByteLength, out string? failureReason)
         {
             failureReason = null;
 
-            if (_styleOptions.MaxArticleBytes > 0 && articleByteLength > _styleOptions.MaxArticleBytes)
+            if (_serverOptions.MaxArtSize > 0 && articleByteLength > _serverOptions.MaxArtSize)
             {
-                failureReason = $"Article exceeds configured maximum size ({_styleOptions.MaxArticleBytes} bytes).";
+                failureReason = $"Article exceeds configured maximum size ({_serverOptions.MaxArtSize} bytes).";
                 return false;
             }
 

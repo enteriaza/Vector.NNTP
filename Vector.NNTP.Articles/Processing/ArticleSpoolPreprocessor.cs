@@ -134,8 +134,8 @@ namespace Vector.NNTP.Articles.Processing
         /// </summary>
         /// <param name="articleBytes">Article bytes containing headers and optional body.</param>
         /// <param name="failureReason">
-        /// When this method returns <see langword="false"/>, a short operator-facing reason; otherwise
-        /// <see langword="null"/>.
+        /// When this method returns <see langword="false"/>, a short operator-facing reason including the header line
+        /// number and, when available, the failing header name; otherwise <see langword="null"/>.
         /// </param>
         /// <returns>
         /// <see langword="true"/> when a header terminator exists and every non-continuation header line passes
@@ -191,9 +191,9 @@ namespace Vector.NNTP.Articles.Processing
                         return false;
                     }
 
-                    if (!HeaderFieldValidation.IsValidHeaderField(lineBytes))
+                    if (!HeaderFieldValidation.TryValidateHeaderField(lineBytes, out string? fieldFailure))
                     {
-                        failureReason = $"Invalid header field at line {lineNumber}.";
+                        failureReason = $"Invalid header field at line {lineNumber}: {fieldFailure}";
                         return false;
                     }
                 }

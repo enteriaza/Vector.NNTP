@@ -51,6 +51,26 @@ public sealed class ArticleSpoolPreprocessorTests
     }
 
     /// <summary>
+    /// Verifies invalid header syntax failures include the line number and header name.
+    /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+    [Test]
+    public async Task PreprocessAsync_InvalidHeaderField_ReturnsDetailedFailureReason()
+    {
+        ArticleSpoolPreprocessor preprocessor = CreatePreprocessor();
+        byte[] article =
+            "Path: misc.test\r\nMessage-ID: <a@b>\r\nSubject:missing-space\r\n\r\n"u8.ToArray();
+
+        ArticleSpoolPreprocessResult result = await preprocessor
+            .PreprocessAsync("<a@b>", article)
+            .ConfigureAwait(false);
+
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.FailureReason, Does.Contain("line 3"));
+        Assert.That(result.FailureReason, Does.Contain("Subject"));
+    }
+
+    /// <summary>
     /// Builds a preprocessor with empty <c>PathAppend</c>.
     /// </summary>
     /// <returns>Configured preprocessor instance.</returns>
