@@ -103,5 +103,32 @@ namespace Vector.NNTP.Sockets.Hosting
             ILogger logger,
             string connectionPrefix,
             string peerName);
+
+        /// <summary>
+        /// Logs CPU overload rejection at accept time (RFC 3977 §5.1.1).
+        /// </summary>
+        /// <param name="connectionPrefix">Connection log prefix.</param>
+        /// <param name="effectiveCpuUtilizationPercent">Effective EWMA percent driving the gate.</param>
+        /// <param name="dominantSignal">Signal with the highest EWMA.</param>
+        /// <param name="processEwmaPercent">Process EWMA percent when enabled.</param>
+        /// <param name="hostEwmaPercent">Host EWMA percent when enabled.</param>
+        /// <param name="cgroupEwmaPercent">Cgroup EWMA percent when available.</param>
+        /// <param name="gateState">Gate state label.</param>
+        /// <param name="rejectThresholdPercent">Reject threshold.</param>
+        /// <param name="resumeThresholdPercent">Resume threshold.</param>
+        [LoggerMessage(
+            EventId = 8,
+            Level = LogLevel.Information,
+            Message = "{ConnectionPrefix} Rejecting connection due to CPU overload. EffectiveCpuUtilizationPercent={EffectiveCpuUtilizationPercent} DominantSignal={DominantSignal} ProcessEwmaPercent={ProcessEwmaPercent} HostEwmaPercent={HostEwmaPercent} CgroupEwmaPercent={CgroupEwmaPercent} GateState={GateState} RejectThresholdPercent={RejectThresholdPercent} ResumeThresholdPercent={ResumeThresholdPercent}")]
+        private partial void LogCpuOverloadRejectAccept(
+            string connectionPrefix,
+            double effectiveCpuUtilizationPercent,
+            string dominantSignal,
+            double? processEwmaPercent,
+            double? hostEwmaPercent,
+            double? cgroupEwmaPercent,
+            string gateState,
+            double rejectThresholdPercent,
+            double resumeThresholdPercent);
     }
 }

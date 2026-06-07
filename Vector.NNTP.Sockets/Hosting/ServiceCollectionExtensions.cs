@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Sockets.Metrics;
 using Vector.NNTP.Sockets.Policy;
 using Vector.NNTP.Sockets.Tls;
 using Vector.NNTP.Sockets.Transport;
@@ -75,6 +76,8 @@ namespace Vector.NNTP.Sockets.Hosting
             _ = services.AddSingleton<NntpSessionRunner>();
             _ = services.AddSingleton<NntpSocketAcceptor>();
             _ = services.AddHostedService<NntpSocketHostedService>();
+            services.TryAddSingleton<INntpCpuLoadMonitor, NntpCpuLoadMonitor>();
+            _ = services.AddHostedService<NntpCpuLoadSamplerHostedService>();
             services.TryAddSingleton<INntpTransitPeerMatcher, NntpTransitPeerMatcher>();
             services.TryAddSingleton<NntpTransitPeerMatcher>();
             _ = services.AddNntpSocketsEncryptionTls();

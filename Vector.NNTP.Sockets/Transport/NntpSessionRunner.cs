@@ -156,6 +156,12 @@ namespace Vector.NNTP.Sockets.Transport
                         }
                     }
 
+                    if (state.CpuOverloadCloseRequested)
+                    {
+                        teardownReason = "cpu_overload";
+                        break;
+                    }
+
                     if (!cont)
                     {
                         teardownReason = "quit";

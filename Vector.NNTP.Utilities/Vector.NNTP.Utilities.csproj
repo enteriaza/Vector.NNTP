@@ -9,6 +9,7 @@
     <AssemblyName>Vector.NNTP.Utilities</AssemblyName>
     <Description>Shared utility and helper library for Vector NNTP components.</Description>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

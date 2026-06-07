@@ -99,6 +99,8 @@ namespace Vector.NNTP.Tests.Sockets
                 historyDatabase: null,
                 tlsCertificateSource: null,
                 scramCredentialStore: null,
+                options,
+                new FakeNntpCpuLoadMonitor(),
                 NullLogger<NntpCommandDispatcher>.Instance);
             var runner = new NntpSessionRunner(
                 dispatcher,

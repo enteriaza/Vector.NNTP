@@ -35,6 +35,7 @@ namespace Vector.NNTP.Sockets.Hosting
         private readonly INntpTransitPeerMatcher _transitPeerMatcher;
         private readonly INntpTransitPeerCoordinator _transitPeerCoordinator;
         private readonly IOptionsMonitor<NntpSessionIdleOptions> _idleOptions;
+        private readonly INntpCpuLoadMonitor _cpuLoadMonitor;
         private readonly ILogger<NntpSocketAcceptor> _logger;
         private int _activeConnections;
         private readonly ConcurrentDictionary<string, int> _connectionsPerClientIp = new(StringComparer.Ordinal);
@@ -53,6 +54,7 @@ namespace Vector.NNTP.Sockets.Hosting
         /// <param name="transitPeerMatcher">Transit peer address matcher.</param>
         /// <param name="transitPeerCoordinator">Cluster transit peer admission.</param>
         /// <param name="idleOptions">Idle timeout for lease TTL sizing.</param>
+        /// <param name="cpuLoadMonitor">CPU overload gate monitor.</param>
         /// <param name="logger">Logger.</param>
         public NntpSocketAcceptor(
             NntpSessionRunner runner,
@@ -64,6 +66,7 @@ namespace Vector.NNTP.Sockets.Hosting
             INntpTransitPeerMatcher transitPeerMatcher,
             INntpTransitPeerCoordinator transitPeerCoordinator,
             IOptionsMonitor<NntpSessionIdleOptions> idleOptions,
+            INntpCpuLoadMonitor cpuLoadMonitor,
             ILogger<NntpSocketAcceptor> logger)
         {
             _runner = runner ?? throw new ArgumentNullException(nameof(runner));
@@ -75,6 +78,7 @@ namespace Vector.NNTP.Sockets.Hosting
             _transitPeerMatcher = transitPeerMatcher ?? throw new ArgumentNullException(nameof(transitPeerMatcher));
             _transitPeerCoordinator = transitPeerCoordinator ?? throw new ArgumentNullException(nameof(transitPeerCoordinator));
             _idleOptions = idleOptions ?? throw new ArgumentNullException(nameof(idleOptions));
+            _cpuLoadMonitor = cpuLoadMonitor ?? throw new ArgumentNullException(nameof(cpuLoadMonitor));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _trustedProxySources = ParseTrustedProxySources(_options.Value.ProxyProtocolTrustedSources);
             _handshakeCertificate = _renewalPublisher?.GetCurrentCertificate();
@@ -280,16 +284,10 @@ namespace Vector.NNTP.Sockets.Hosting
 
                 slotAcquired = true;
 
-                context = await TryBuildConnectionContextAsync(
-                    sessionId,
-                    clientEndPoint,
-                    tcpPeer,
-                    cancellationToken).ConfigureAwait(false);
-                if (context is null)
-                {
-                    socket.Dispose();
-                    return;
-                }
+                Stream sessionStream = replayPrefix.Length > 0
+                    ? new PrefixedReadStream(baseStream, replayPrefix, leaveInnerOpen: false)
+                    : baseStream;
+                Stream transportStream = sessionStream;
 
                 if (implicitTls)
                 {
@@ -302,24 +300,44 @@ namespace Vector.NNTP.Sockets.Hosting
                         return;
                     }
 
-                    Stream tlsStream = replayPrefix.Length > 0
-                        ? new PrefixedReadStream(baseStream, replayPrefix, leaveInnerOpen: false)
-                        : baseStream;
-                    SslStream ssl = new(tlsStream, leaveInnerStreamOpen: false);
+                    SslStream ssl = new(sessionStream, leaveInnerStreamOpen: false);
                     await NntpTlsHandshake.AuthenticateServerAsync(ssl, cert, cancellationToken).ConfigureAwait(false);
-                    NntpSocketTransport transport = new(socket, ssl, this._options.Value.PipeReadBufferBytes);
-                    sessionRunnerInvoked = true;
-                    await _runner.RunAsync(transport, context, tlsAlreadyActive: true, cancellationToken).ConfigureAwait(false);
+                    transportStream = ssl;
                 }
-                else
+
+                if (_options.Value.CpuRejectEnabled && _cpuLoadMonitor.IsOverloaded())
                 {
-                    Stream sessionStream = replayPrefix.Length > 0
-                        ? new PrefixedReadStream(baseStream, replayPrefix, leaveInnerOpen: false)
-                        : baseStream;
-                    NntpSocketTransport transport = new(socket, sessionStream, this._options.Value.PipeReadBufferBytes);
-                    sessionRunnerInvoked = true;
-                    await _runner.RunAsync(transport, context, tlsAlreadyActive: false, cancellationToken).ConfigureAwait(false);
+                    NntpCpuLoadSnapshot snapshot = _cpuLoadMonitor.GetSnapshot();
+                    LogCpuOverloadRejectAccept(
+                        FormattingUtilities.FormatConnectionLogPrefix(clientEndPoint),
+                        snapshot.EffectiveEwmaPercent,
+                        snapshot.DominantSignal,
+                        snapshot.ProcessEwmaPercent,
+                        snapshot.HostEwmaPercent,
+                        snapshot.CgroupEwmaPercent,
+                        snapshot.GateState,
+                        snapshot.RejectThresholdPercent,
+                        snapshot.ResumeThresholdPercent);
+                    NntpServerLoadMetrics.RecordAcceptReject();
+                    await NntpCpuOverloadReject.WriteAndFlushAsync(transportStream, cancellationToken).ConfigureAwait(false);
+                    socket.Dispose();
+                    return;
                 }
+
+                context = await TryBuildConnectionContextAsync(
+                    sessionId,
+                    clientEndPoint,
+                    tcpPeer,
+                    cancellationToken).ConfigureAwait(false);
+                if (context is null)
+                {
+                    socket.Dispose();
+                    return;
+                }
+
+                NntpSocketTransport transport = new(socket, transportStream, this._options.Value.PipeReadBufferBytes);
+                sessionRunnerInvoked = true;
+                await _runner.RunAsync(transport, context, tlsAlreadyActive: implicitTls, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

@@ -21,5 +21,6 @@ namespace Vector.NNTP.Sockets.Responses
         internal const string CompressionActive502 = "502 Compression active; command not permitted";
         internal const string StartTlsAfterCompress502 = "502 STARTTLS not permitted after COMPRESS";
         internal const string AuthAfterTlsRequired483 = "483 Encryption required for authentication";
+        internal const string ServiceUnavailable400 = "400 Service temporarily unavailable";
     }
 }

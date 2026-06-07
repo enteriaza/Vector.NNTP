@@ -101,5 +101,10 @@ namespace Vector.NNTP.Sockets.Session
         /// Gets or sets the dynamic outbound rate limiter when rate shaping is active.
         /// </summary>
         public IDynamicSendRateLimiter? DynamicSendLimiter { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the session must close after a CPU overload <c>400</c> response.
+        /// </summary>
+        public bool CpuOverloadCloseRequested { get; set; }
     }
 }

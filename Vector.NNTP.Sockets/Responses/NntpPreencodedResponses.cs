@@ -35,5 +35,9 @@ namespace Vector.NNTP.Sockets.Responses
         /// <summary>502 Already authenticated.</summary>
         internal static ReadOnlyMemory<byte> AlreadyAuthenticated502 { get; } =
             Ascii.GetBytes(NntpResponseLines.AlreadyAuthenticated502 + "\r\n");
+
+        /// <summary>400 Service temporarily unavailable (CPU overload).</summary>
+        internal static ReadOnlyMemory<byte> ServiceUnavailable400 { get; } =
+            Ascii.GetBytes(NntpResponseLines.ServiceUnavailable400 + "\r\n");
     }
 }

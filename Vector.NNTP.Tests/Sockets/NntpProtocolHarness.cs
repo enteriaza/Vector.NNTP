@@ -10,6 +10,7 @@ using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Authentication;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.HostProfile;
+using Vector.NNTP.Sockets.Metrics;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Storage;
 using Vector.NNTP.Sockets.Transport;
@@ -71,6 +72,20 @@ namespace Vector.NNTP.Tests.Sockets
         /// <returns>Connected harness instance.</returns>
         internal static NntpProtocolHarness CreateReader() =>
             Create(new NntpReaderHostProfile(), new FakeNntpArticleStorage(), null, null, scramCredentialStore: null);
+
+        /// <summary>
+        /// Creates a reader harness with a custom CPU overload monitor.
+        /// </summary>
+        /// <param name="cpuLoadMonitor">CPU gate monitor.</param>
+        /// <returns>Connected harness instance.</returns>
+        internal static NntpProtocolHarness CreateReader(INntpCpuLoadMonitor cpuLoadMonitor) =>
+            Create(
+                new NntpReaderHostProfile(),
+                new FakeNntpArticleStorage(),
+                null,
+                null,
+                scramCredentialStore: null,
+                cpuLoadMonitor: cpuLoadMonitor);
 
         /// <summary>
         /// Creates a reader harness with shared session services and a custom credential validator.
@@ -306,6 +321,7 @@ namespace Vector.NNTP.Tests.Sockets
         /// <param name="validator">Optional credential validator; defaults to alice/secret.</param>
         /// <param name="clientIp">Optional simulated client IP for admission tests.</param>
         /// <param name="transitPeerName">Optional trusted transit peer name (skips AUTH for streaming).</param>
+        /// <param name="cpuLoadMonitor">Optional CPU overload monitor; defaults to never overloaded.</param>
         /// <returns>Connected harness.</returns>
         private static NntpProtocolHarness Create(
             INntpHostProfile profile,
@@ -316,7 +332,8 @@ namespace Vector.NNTP.Tests.Sockets
             NntpSessionTestServices.NntpSessionTestBundle? session = null,
             FakeNntpCredentialValidator? validator = null,
             IPAddress? clientIp = null,
-            string? transitPeerName = null)
+            string? transitPeerName = null,
+            INntpCpuLoadMonitor? cpuLoadMonitor = null)
         {
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
@@ -337,6 +354,7 @@ namespace Vector.NNTP.Tests.Sockets
                 sessionBundle.BlockQuota,
                 sessionBundle.RateAllocation,
                 sessionBundle.IdleOptions);
+            INntpCpuLoadMonitor monitor = cpuLoadMonitor ?? new FakeNntpCpuLoadMonitor();
             var dispatcher = new NntpCommandDispatcher(
                 auth,
                 articles,
@@ -344,6 +362,8 @@ namespace Vector.NNTP.Tests.Sockets
                 historyDatabase,
                 tlsCertificateSource: null,
                 scramCredentialStore: scramCredentialStore,
+                options,
+                monitor,
                 NullLogger<NntpCommandDispatcher>.Instance);
             var runner = new NntpSessionRunner(
                 dispatcher,

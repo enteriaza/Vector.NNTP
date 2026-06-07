@@ -16,6 +16,17 @@ NNRPD and NNTPD bind a single JSON section named `NntpServer` to **socket**, **s
 | `RequireTlsForAuthInfo` | Sockets | Reject AUTHINFO/SASL until TLS is active. |
 | `MaxArtSize` | Sockets | Maximum decoded dot-stuffed article body in bytes for POST/TAKETHIS/IHAVE (`0` disables; default `1048576`). Excess returns `439`/`441` without tearing down the session. |
 | `PipeReadBufferBytes` | Sockets | `StreamPipeReader` buffer size for socket sessions (default `65536`, minimum `4096`). Larger values reduce per-article `ReadAsync` calls during streaming transfers. |
+| `CpuRejectEnabled` | Sockets | Master switch for CPU overload connection rejection (default `true`). |
+| `CpuRejectThresholdPercent` | Sockets | Effective CPU EWMA percent at or above which the gate enters rejecting (default `80`). |
+| `CpuResumeThresholdPercent` | Sockets | Effective CPU EWMA percent at or below which accepting resumes; must be less than reject threshold (default `75`). |
+| `CpuSamplingIntervalSeconds` | Sockets | Background CPU sample period in seconds (default `1`). |
+| `CpuRejectUseProcess` | Sockets | Include process CPU vs logical processors in the gate (default `true`). |
+| `CpuRejectUseHost` | Sockets | Include host-wide CPU on Linux (`/proc/stat`) or Windows (`GetSystemTimes`) (default `true`). |
+| `CpuRejectUseCgroup` | Sockets | Include Linux cgroup quota-relative CPU when a finite quota exists (default `true`). |
+
+When the hysteresis gate is **rejecting**, the server responds with `400 Service temporarily unavailable` and immediately closes the TCP connection ([RFC 3977](https://datatracker.ietf.org/doc/html/rfc3977) §5.1.1 at accept, §3.2.1 on the next command). Gating is **best-effort** (lock-free `Volatile` reads on the accept and dispatch hot paths).
+
+OpenTelemetry: `nntp.server.cpu_utilization_ewma_percent` (effective), `nntp.server.cpu_utilization_ewma_percent_{process,host,cgroup}`, `nntp.server.cpu_gate_state`, threshold gauges, and `nntp.server.connections_rejected_cpu_{accept,command}_total`.
 
 Distributed session admission, byte quota, and heartbeats use a separate **`Redis`** section (see [Session management](session-management.md)).
 

@@ -126,6 +126,44 @@ namespace Vector.NNTP.Sockets.Configuration
         /// </summary>
         [Range(4096, 16_777_216)]
         public int PipeReadBufferBytes { get; set; } = 65_536;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether CPU overload connection rejection is enabled.
+        /// </summary>
+        public bool CpuRejectEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets the effective CPU EWMA percent at or above which new connections and commands are rejected.
+        /// </summary>
+        [Range(1, 100)]
+        public double CpuRejectThresholdPercent { get; set; } = 80;
+
+        /// <summary>
+        /// Gets or sets the effective CPU EWMA percent at or below which accepting resumes (hysteresis).
+        /// </summary>
+        [Range(1, 100)]
+        public double CpuResumeThresholdPercent { get; set; } = 75;
+
+        /// <summary>
+        /// Gets or sets the CPU sampling interval in seconds for the overload gate.
+        /// </summary>
+        [Range(1, 3600)]
+        public int CpuSamplingIntervalSeconds { get; set; } = 1;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether process CPU utilization contributes to the gate.
+        /// </summary>
+        public bool CpuRejectUseProcess { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether host-wide CPU utilization contributes to the gate.
+        /// </summary>
+        public bool CpuRejectUseHost { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether cgroup quota-relative CPU utilization contributes when available.
+        /// </summary>
+        public bool CpuRejectUseCgroup { get; set; } = true;
     }
 
     /// <summary>
@@ -145,6 +183,12 @@ namespace Vector.NNTP.Sockets.Configuration
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.IdleTimeoutSeconds)} must be positive.")
                 : options.PipeReadBufferBytes < 4096
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.PipeReadBufferBytes)} must be at least 4096.")
+                : options.CpuResumeThresholdPercent >= options.CpuRejectThresholdPercent
+                ? ValidateOptionsResult.Fail(
+                    $"{nameof(NntpServerOptions.CpuResumeThresholdPercent)} must be less than {nameof(NntpServerOptions.CpuRejectThresholdPercent)}.")
+                : !options.CpuRejectUseProcess && !options.CpuRejectUseHost && !options.CpuRejectUseCgroup
+                ? ValidateOptionsResult.Fail(
+                    "At least one of CpuRejectUseProcess, CpuRejectUseHost, or CpuRejectUseCgroup must be true.")
                 : NntpTransitPeersOptionsValidator.Validate(options.TransitPeers);
         }
     }
