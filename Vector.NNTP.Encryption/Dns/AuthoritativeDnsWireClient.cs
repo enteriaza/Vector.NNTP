@@ -20,12 +20,12 @@ namespace Vector.NNTP.Encryption.Dns
     internal static partial class AuthoritativeDnsWireClient
     {
         /// <summary>
-        /// The receive timeout in milliseconds.
+        /// UDP and TCP socket receive timeout for authoritative TXT queries (milliseconds).
         /// </summary>
         private const int ReceiveTimeoutMs = 5_000;
 
         /// <summary>
-        /// The size of the DNS header.
+        /// RFC 1035 DNS message header size in bytes used for truncation flag inspection.
         /// </summary>
         private const int DnsHeaderSize = 12;
 
@@ -35,7 +35,7 @@ namespace Vector.NNTP.Encryption.Dns
         private const int UdpPoolMaxSize = 8;
 
         /// <summary>
-        /// The DNS flag for truncated responses.
+        /// DNS header TC (truncated) flag mask triggering TCP retry per RFC 7766.
         /// </summary>
         private const ushort DnsFlagTruncated = 0x0200;
 
@@ -91,7 +91,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// <param name="nameserver">The nameserver to query.</param>
         /// <param name="recordName">The name of the record to query.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The list of TXT records.</returns>
+        /// <returns>Decoded TXT strings from UDP and optional TCP answers; may be empty when the nameserver returns no TXT.</returns>
         internal static async Task<List<string>> QueryTxtAsync(IPAddress nameserver, string recordName, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(nameserver);
@@ -121,7 +121,7 @@ namespace Vector.NNTP.Encryption.Dns
         /// </summary>
         /// <param name="buffer">The response buffer.</param>
         /// <param name="expectedId">The expected ID of the response.</param>
-        /// <returns>The list of TXT records.</returns>
+        /// <returns>Decoded TXT strings from the answer section, or empty when ID mismatch or parse failure.</returns>
         internal static List<string> ParseTxtResponse(byte[] buffer, ushort expectedId)
         {
             return DnsWireTxtResponseParser.ParseTxtResponseStrings(buffer, expectedId);
@@ -155,14 +155,15 @@ namespace Vector.NNTP.Encryption.Dns
         }
 
         /// <summary>
-        /// Tries to send a UDP query to the nameserver.
+        /// Sends a UDP DNS query and returns the raw response bytes when received within the timeout.
         /// </summary>
-        /// <param name="nameserver">The nameserver to query.</param>
-        /// <param name="recordName">The name of the record to query.</param>
-        /// <param name="queryPacket">The query packet to send.</param>
-        /// <param name="logger">Optional logger for wire client diagnostics.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The response from the nameserver; <see langword="null"/> if the query failed.</returns>
+        /// <param name="nameserver">Authoritative nameserver address.</param>
+        /// <param name="recordName">Queried record name for timeout diagnostics.</param>
+        /// <param name="queryPacket">Pre-built wire-format query.</param>
+        /// <param name="logger">Optional logger for timeout diagnostics.</param>
+        /// <param name="cancellationToken">Cancellation token for send/receive.</param>
+        /// <returns>Response bytes, or <see langword="null"/> on timeout or socket failure.</returns>
+        /// <remarks>Uses a pooled <see cref="UdpClient"/> to reduce socket churn during propagation polling.</remarks>
         private static async Task<byte[]?> TryUdpQueryAsync(
             IPAddress nameserver,
             string recordName,

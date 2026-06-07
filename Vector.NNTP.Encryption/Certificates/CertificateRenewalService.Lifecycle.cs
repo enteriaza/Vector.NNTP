@@ -53,7 +53,12 @@ using Vector.NNTP.MessageBus.Publishing;
 
 namespace Vector.NNTP.Encryption.Certificates
 {
-
+    /// <summary>
+    /// Background-service lifecycle partial for <see cref="CertificateRenewalService"/> startup, retry, and renewal loops.
+    /// </summary>
+    /// <remarks>
+    /// See file header for exception-safety, certificate leak prevention, and caller contracts.
+    /// </remarks>
     internal sealed partial class CertificateRenewalService
     {
         #region BackgroundService Lifecycle
@@ -394,9 +399,17 @@ namespace Vector.NNTP.Encryption.Certificates
         }
 
         /// <summary>
-        /// Performs ACME renewal when the certificate is absent or within the renewal threshold.
+        /// Issues a new certificate via ACME when the current cert is absent or within the renewal threshold.
         /// </summary>
-        /// <param name="ct">Cancellation token for host shutdown.</param>
+        /// <param name="ct">Cancellation token for host shutdown and ACME I/O.</param>
+        /// <returns>A task that completes when issuance, activation, and optional cluster publish finish.</returns>
+        /// <exception cref="OperationCanceledException">Thrown when <paramref name="ct"/> is signalled.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when cluster mode is enabled but renewed PFX bytes cannot be read from disk for broadcast.
+        /// </exception>
+        /// <remarks>
+        /// ACME, Cloudflare, and propagation failures propagate to the startup retry loop or steady-state check handler.
+        /// </remarks>
         private async Task PerformRenewalAsync(CancellationToken ct)
         {
             _renewalCorrelationId = Guid.NewGuid().ToString("N");

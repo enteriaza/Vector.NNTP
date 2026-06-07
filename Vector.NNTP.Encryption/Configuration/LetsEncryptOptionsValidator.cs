@@ -14,11 +14,20 @@ namespace Vector.NNTP.Encryption.Configuration
     internal sealed class LetsEncryptOptionsValidator : IValidateOptions<LetsEncryptOptions>
     {
         /// <summary>
-        /// Validates the <see cref="LetsEncryptOptions"/> when Let's Encrypt is enabled.
+        /// Validates enabled Let's Encrypt options and normalises domain names in place.
         /// </summary>
-        /// <param name="name">The name of the options.</param>
-        /// <param name="options">The options to validate.</param>
-        /// <returns>The result of the validation.</returns>
+        /// <param name="name">Options name (unused).</param>
+        /// <param name="options">Bound options instance to validate and compact.</param>
+        /// <returns>
+        /// <see cref="ValidateOptionsResult.Success"/> when disabled or all constraints pass;
+        /// otherwise <see cref="ValidateOptionsResult.Fail(IEnumerable{string})"/> with one message per violation.
+        /// </returns>
+        /// <remarks>
+        /// Trims and compacts <see cref="LetsEncryptOptions.DomainNames"/> (drops blanks, removes trailing dots) before
+        /// checking cardinality. Delegates account-key PEM parsing to
+        /// <see cref="LetsEncryptOptions.NormaliseAndValidateAccountKeyPem"/>.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
         public ValidateOptionsResult Validate(string? name, LetsEncryptOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);

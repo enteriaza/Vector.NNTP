@@ -17,8 +17,12 @@ namespace Vector.NNTP.Encryption.Acme
         /// <param name="directoryUri">ACME directory URI.</param>
         /// <param name="maxSkew">Maximum tolerated skew.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task that completes when validation succeeds.</returns>
+        /// <returns>A task that completes when skew is within <paramref name="maxSkew"/> or the directory omits a Date header.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="logger"/>, <paramref name="http"/>, or <paramref name="directoryUri"/> is <see langword="null"/>.
+        /// </exception>
         /// <exception cref="InvalidOperationException">Thrown when skew exceeds <paramref name="maxSkew"/>.</exception>
+        /// <exception cref="HttpRequestException">Thrown when the directory HEAD request fails.</exception>
         public static async Task AssertSkewAcceptableAsync(
             ILogger logger,
             HttpClient http,

@@ -45,10 +45,10 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Normalizes a domain name.
+        /// Trims whitespace and trailing dots so multiset comparisons align with validator normalisation.
         /// </summary>
-        /// <param name="value">The domain name to normalize.</param>
-        /// <returns>The normalized domain name.</returns>
+        /// <param name="value">Raw domain label from configuration or cluster payload.</param>
+        /// <returns>Trimmed domain without trailing dot, or empty when null/whitespace.</returns>
         private static string NormalizeDomain(string? value)
         {
             return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().TrimEnd('.');

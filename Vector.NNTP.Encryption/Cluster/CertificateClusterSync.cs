@@ -72,52 +72,52 @@ namespace Vector.NNTP.Encryption.Cluster
         private static readonly char[] ClusterAdoptionLineSeparators = ['\r', '\n'];
 
         /// <summary>
-        /// The function to get the Let's Encrypt options.
+        /// Accessor for current <see cref="LetsEncryptOptions"/> (cluster exchange names, signing secrets, cert dir).
         /// </summary>
         private readonly Func<LetsEncryptOptions> _getOptions = getOptions;
 
         /// <summary>
-        /// The hosting environment.
+        /// Hosting environment for exchange/queue name segments and leader-lock queue naming.
         /// </summary>
         private readonly IHostEnvironment _hostEnvironment = hostEnvironment;
 
         /// <summary>
-        /// The RabbitMQ connection factory.
+        /// RabbitMQ connection factory for topology declaration and exclusive leader-lock channels.
         /// </summary>
         private readonly IRabbitMqConnectionFactory _connectionFactory = connectionFactory;
 
         /// <summary>
-        /// The RabbitMQ options.
+        /// RabbitMQ connection options passed to factory and publisher pool scopes.
         /// </summary>
         private readonly RabbitMQOptions _rabbitOptions = rabbitOptions;
 
         /// <summary>
-        /// The RabbitMQ publisher pool.
+        /// Publisher pool used to fan out signed certificate payloads to the cluster exchange.
         /// </summary>
         private readonly IRabbitMqPublisherPool _publisherPool = publisherPool;
 
         /// <summary>
-        /// The RabbitMQ consumer manager.
+        /// Long-lived consumer manager that delivers follower adoption messages to <see cref="OnClusterMessageAsync"/>.
         /// </summary>
         private readonly IRabbitMqConsumerManager _consumerManager = consumerManager;
 
         /// <summary>
-        /// The certificate store.
+        /// Local PFX persistence for adopted cluster certificates.
         /// </summary>
         private readonly CertificateStore _store = store;
 
         /// <summary>
-        /// The function to activate a certificate.
+        /// Host callback that installs an adopted certificate for live TLS handshakes.
         /// </summary>
         private readonly Func<X509Certificate2, Task> _activateCertificateAsync = activateCertificateAsync;
 
         /// <summary>
-        /// The last accepted epoch.
+        /// Highest certificate epoch accepted locally; stale fanout messages with lower epochs are acked and ignored.
         /// </summary>
         private long _lastAcceptedEpoch;
 
         /// <summary>
-        /// The started flag.
+        /// One-shot startup guard (<c>0</c> = not started, <c>1</c> = consumer topology established).
         /// </summary>
         private int _started;
 
@@ -125,7 +125,7 @@ namespace Vector.NNTP.Encryption.Cluster
         /// Loads persisted adoption state and starts the fanout consumer when cluster mode is enabled.
         /// </summary>
         /// <param name="cancellationToken">Host shutdown token.</param>
-        /// <returns>A task that completes when startup finishes or is skipped.</returns>
+        /// <returns>A task that completes after adoption state is loaded and the fanout consumer is registered (or skipped when already started).</returns>
         internal async Task StartAsync(CancellationToken cancellationToken)
         {
             if (Interlocked.CompareExchange(ref _started, 1, 0) != 0)
@@ -149,7 +149,10 @@ namespace Vector.NNTP.Encryption.Cluster
         /// </summary>
         /// <param name="issueAsync">Issuance delegate invoked while the leader lock is held.</param>
         /// <param name="cancellationToken">Host shutdown token.</param>
-        /// <returns>A task that completes when this node is not leader or issuance finishes.</returns>
+        /// <returns>
+        /// A task that completes when the exclusive leader queue cannot be acquired, the leader connection shuts down,
+        /// or <paramref name="issueAsync"/> finishes while the lock is held.
+        /// </returns>
         internal async Task TryRenewAsLeaderAsync(Func<CancellationToken, Task> issueAsync, CancellationToken cancellationToken)
         {
             IConnection leaderConnection = await _connectionFactory
@@ -217,7 +220,7 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <param name="pfxBytes">Exported PFX bytes.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <param name="correlationId">Optional renewal correlation id propagated to cluster subscribers via MessageBus headers.</param>
-        /// <returns>A task that completes when publish and local state update finish.</returns>
+        /// <returns>A task that completes after optional fanout publish and local adoption state are persisted.</returns>
         internal async Task PublishAndRecordAsync(
             X509Certificate2 certificate,
             byte[] pfxBytes,
@@ -281,20 +284,20 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Disposes the cluster sync.
+        /// Releases cluster sync resources; consumer lifetime is owned by <see cref="IRabbitMqConsumerManager"/>.
         /// </summary>
-        /// <returns>A task that completes when the cluster sync is disposed.</returns>
+        /// <returns>A completed <see cref="ValueTask"/> (no asynchronous teardown required today).</returns>
         public ValueTask DisposeAsync()
         {
             return ValueTask.CompletedTask;
         }
 
         /// <summary>
-        /// Ensures the topology and consumer are set up.
+        /// Declares the fanout exchange, per-node quorum queue, binding, and registers the adoption consumer.
         /// </summary>
-        /// <param name="options">The Let's Encrypt options.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A task that completes when the topology and consumer are set up.</returns>
+        /// <param name="options">Let's Encrypt options supplying <see cref="LetsEncryptOptions.ClusterBroadcastExchange"/>.</param>
+        /// <param name="cancellationToken">Host shutdown token for RabbitMQ I/O.</param>
+        /// <returns>A task that completes when the consumer subscription is active.</returns>
         private async Task EnsureTopologyAndConsumerAsync(LetsEncryptOptions options, CancellationToken cancellationToken)
         {
             string exchange = ResolveBroadcastExchangeName(options);
@@ -337,11 +340,15 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Handles a cluster message.
+        /// Validates, verifies, and optionally adopts a cluster certificate fanout message.
         /// </summary>
-        /// <param name="sender">The sender.</param>
-        /// <param name="args">The arguments.</param>
-        /// <returns>A task that completes when the message is handled.</returns>
+        /// <param name="sender">RabbitMQ <see cref="AsyncEventingBasicConsumer"/> delivering <paramref name="args"/>.</param>
+        /// <param name="args">Delivered message body and delivery tag for ack/nack.</param>
+        /// <returns>A task that completes after the message is acked, nacked, or ignored.</returns>
+        /// <remarks>
+        /// Invalid envelopes, HMAC failures, domain mismatches, and expired certificates are nacked without requeue.
+        /// Superseded epochs and foreign payload types are acked silently.
+        /// </remarks>
         private async Task OnClusterMessageAsync(object sender, BasicDeliverEventArgs args)
         {
             _ = sender;
@@ -506,10 +513,10 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Resolves the broadcast exchange name.
+        /// Builds the environment-scoped fanout exchange name from configuration and hosting environment.
         /// </summary>
-        /// <param name="options">The Let's Encrypt options.</param>
-        /// <returns>The broadcast exchange name.</returns>
+        /// <param name="options">Let's Encrypt options supplying the exchange prefix.</param>
+        /// <returns><c>{ClusterBroadcastExchange}.{environment}</c> with non-alphanumeric segments normalised.</returns>
         private string ResolveBroadcastExchangeName(LetsEncryptOptions options)
         {
             string prefix = options.ClusterBroadcastExchange.Trim();
@@ -518,10 +525,10 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Sanitizes a segment of a string.
+        /// Normalises a queue or exchange name segment to lowercase ASCII letters, digits, or underscores.
         /// </summary>
-        /// <param name="value">The value to sanitize.</param>
-        /// <returns>The sanitized value.</returns>
+        /// <param name="value">Raw environment or machine name segment.</param>
+        /// <returns>Sanitised segment, or <c>default</c> when blank.</returns>
         private static string SanitizeSegment(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -538,21 +545,23 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Gets the cluster adoption state path.
+        /// Resolves the on-disk path for persisted cluster adoption epoch and thumbprint metadata.
         /// </summary>
-        /// <param name="options">The Let's Encrypt options.</param>
-        /// <returns>The cluster adoption state path.</returns>
+        /// <param name="options">Let's Encrypt options supplying <see cref="LetsEncryptOptions.CertDir"/>.</param>
+        /// <returns>Absolute path to <c>cluster-adoption.state</c> under the certificate directory.</returns>
         private static string ClusterAdoptionStatePath(LetsEncryptOptions options)
         {
             return Path.Combine(Path.GetFullPath(options.CertDir), "cluster-adoption.state");
         }
 
         /// <summary>
-        /// Reads the cluster adoption state.
+        /// Reads the last accepted epoch and SHA-256 certificate fingerprint from local adoption state.
         /// </summary>
-        /// <param name="options">The Let's Encrypt options.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A task that completes when the cluster adoption state is read.</returns>
+        /// <param name="options">Let's Encrypt options supplying the certificate directory.</param>
+        /// <param name="cancellationToken">Cancellation token for resilient file read.</param>
+        /// <returns>
+        /// Parsed epoch and thumbprint, or <c>(0, string.Empty)</c> when the state file is missing or malformed.
+        /// </returns>
         private static async Task<(long Epoch, string Sha256Thumbprint)> ReadClusterAdoptionStateAsync(
             LetsEncryptOptions options,
             CancellationToken cancellationToken)
@@ -574,11 +583,11 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Increments the epoch.
+        /// Allocates the next monotonic certificate epoch for a leader publish.
         /// </summary>
-        /// <param name="options">The Let's Encrypt options.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The incremented epoch.</returns>
+        /// <param name="options">Let's Encrypt options supplying the certificate directory.</param>
+        /// <param name="cancellationToken">Cancellation token for adoption state read.</param>
+        /// <returns><c>lastEpoch + 1</c> based on persisted adoption state.</returns>
         private static async Task<long> IncrementEpochAsync(LetsEncryptOptions options, CancellationToken cancellationToken)
         {
             (long current, _) = await ReadClusterAdoptionStateAsync(options, cancellationToken).ConfigureAwait(false);
@@ -586,13 +595,13 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Records the cluster adoption.
+        /// Atomically persists adoption epoch and thumbprint and updates <see cref="_lastAcceptedEpoch"/>.
         /// </summary>
-        /// <param name="options">The Let's Encrypt options.</param>
-        /// <param name="epoch">The epoch.</param>
-        /// <param name="sha256Hex">The SHA-256 hex.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A task that completes when the cluster adoption is recorded.</returns>
+        /// <param name="options">Let's Encrypt options supplying the certificate directory.</param>
+        /// <param name="epoch">Accepted certificate epoch.</param>
+        /// <param name="sha256Hex">SHA-256 hex digest of the adopted certificate raw bytes.</param>
+        /// <param name="cancellationToken">Cancellation token for atomic file write.</param>
+        /// <returns>A task that completes when adoption state is written.</returns>
         private async Task RecordClusterAdoptionAsync(LetsEncryptOptions options, long epoch, string sha256Hex, CancellationToken cancellationToken)
         {
             string body = $"{epoch}{Environment.NewLine}{sha256Hex}{Environment.NewLine}";
@@ -602,11 +611,14 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Tries to verify the cluster certificate signature.
+        /// Verifies the HMAC signature on a cluster certificate payload using current and optional previous secrets.
         /// </summary>
-        /// <param name="dto">The DTO.</param>
-        /// <param name="options">The Let's Encrypt options.</param>
-        /// <returns>True if the signature is valid.</returns>
+        /// <param name="dto">Deserialised cluster certificate payload.</param>
+        /// <param name="options">Let's Encrypt options supplying broadcast signing secrets.</param>
+        /// <returns>
+        /// <see langword="true"/> when no secrets are configured and the payload has no signature, or when the
+        /// signature matches the current or previous secret; otherwise <see langword="false"/>.
+        /// </returns>
         private static bool TryVerifyClusterCertificateSignature(ClusterCertificatePayload dto, LetsEncryptOptions options)
         {
             byte[]? current = GetClusterSigningSecretUtf8(options.ClusterBroadcastSigningSecret);
@@ -625,10 +637,11 @@ namespace Vector.NNTP.Encryption.Cluster
         }
 
         /// <summary>
-        /// Gets the cluster signing secret UTF-8.
+        /// Materialises a trimmed cluster signing secret as UTF-8 bytes for HMAC verification.
         /// </summary>
-        /// <param name="secret">The secret.</param>
-        /// <returns>The cluster signing secret UTF-8.</returns>
+        /// <param name="secret">Configured signing secret, or <see langword="null"/>/whitespace when unset.</param>
+        /// <returns>UTF-8 secret bytes, or <see langword="null"/> when <paramref name="secret"/> is blank.</returns>
+        /// <remarks>Callers must zero returned buffers via <c>SecureMemoryUtilities.ZeroBuffers</c>.</remarks>
         private static byte[]? GetClusterSigningSecretUtf8(string? secret)
         {
             return string.IsNullOrWhiteSpace(secret) ? null : Encoding.UTF8.GetBytes(secret.Trim());

@@ -29,23 +29,27 @@ namespace Vector.NNTP.Encryption.Dns
         EncryptionMetrics? metrics = null) : IDnsTxtPropagationProbe
     {
         /// <summary>
-        /// The maximum number of parallel name servers to check.
+        /// Maximum concurrent authoritative NS queries per TXT record during quorum polling.
         /// </summary>
         private const int QuorumParallelism = 8;
 
         /// <summary>
-        /// The cache of authoritative NS addresses by zone.
+        /// Per-zone cache of resolved authoritative NS addresses with TTL expiry to avoid repeated delegation walks.
         /// </summary>
+        /// <remarks>Thread-safe via <see cref="ConcurrentDictionary{TKey,TValue}"/>; entries expire per options TTL.</remarks>
         private readonly ConcurrentDictionary<string, (IReadOnlyList<IPAddress> Ips, DateTimeOffset ExpiresUtc)> _authoritativeNsByZone =
             new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// Waits for the TXT records to reach quorum.
+        /// Polls authoritative name servers until every challenge TXT satisfies the configured quorum ratio or the budget elapses.
         /// </summary>
-        /// <param name="records">The records to check.</param>
-        /// <param name="options">The options.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A task that completes when the TXT records reach quorum.</returns>
+        /// <param name="records">DNS names and expected ACME DNS-01 TXT digests.</param>
+        /// <param name="options">Poll interval, timeout, quorum ratio, and NS cache TTL.</param>
+        /// <param name="cancellationToken">Host shutdown token observed between poll iterations.</param>
+        /// <returns>A task that completes when all entries satisfy quorum.</returns>
+        /// <exception cref="TimeoutException">Thrown when the poll budget elapses before quorum is reached.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is signalled.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="records"/> or <paramref name="options"/> is <see langword="null"/>.</exception>
         async Task IDnsTxtPropagationProbe.WaitForTxtRecordsAsync(
             IReadOnlyList<(string RecordName, string ExpectedTxt)> records,
             LetsEncryptOptions options,
@@ -134,12 +138,15 @@ namespace Vector.NNTP.Encryption.Dns
         /// <summary>
         /// Checks if the quorum of name servers shows the expected TXT record.
         /// </summary>
-        /// <param name="recordName">The name of the record to check.</param>
-        /// <param name="expectedTxt">The expected TXT record bytes (ASCII challenge digest).</param>
-        /// <param name="nameServers">The name servers to check.</param>
-        /// <param name="quorumRatio">The quorum ratio.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns><see langword="true"/> if the quorum of name servers shows the expected TXT record; otherwise <see langword="false"/>.</returns>
+        /// <param name="recordName">Challenge FQDN being polled.</param>
+        /// <param name="expectedTxt">Expected ASCII challenge digest bytes.</param>
+        /// <param name="nameServers">Authoritative NS addresses for <paramref name="recordName"/>; empty list triggers recursive fallback.</param>
+        /// <param name="quorumRatio">Minimum fraction of NS that must return a matching TXT (for example 0.7).</param>
+        /// <param name="cancellationToken">Cancellation token for parallel NS queries.</param>
+        /// <returns>
+        /// <see langword="true"/> when at least <see cref="DnsAuthoritativeQuorum.RequiredMatchCount"/> servers return the
+        /// expected TXT; otherwise <see langword="false"/>.
+        /// </returns>
         private async Task<bool> QuorumShowsTxtAsync(
             string recordName,
             byte[] expectedTxt,
@@ -199,9 +206,11 @@ namespace Vector.NNTP.Encryption.Dns
         /// <summary>
         /// Checks if the list of TXT records contains the expected TXT record.
         /// </summary>
-        /// <param name="txts">The list of TXT records.</param>
-        /// <param name="expectedTxt">The expected TXT record bytes.</param>
-        /// <returns><see langword="true"/> if the list of TXT records contains the expected TXT record; otherwise <see langword="false"/>.</returns>
+        /// <param name="txts">TXT strings returned by a resolver or wire client.</param>
+        /// <param name="expectedTxt">Expected ASCII challenge digest bytes.</param>
+        /// <returns>
+        /// <see langword="true"/> when any same-length printable ASCII TXT equals <paramref name="expectedTxt"/> byte-for-byte.
+        /// </returns>
         private static bool TxtListContains(IReadOnlyList<string> txts, ReadOnlySpan<byte> expectedTxt)
         {
             foreach (string? part in txts)

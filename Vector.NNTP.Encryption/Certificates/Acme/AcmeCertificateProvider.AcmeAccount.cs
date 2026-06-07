@@ -47,7 +47,12 @@ using Vector.NNTP.Encryption.Configuration;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
-
+    /// <summary>
+    /// ACME account and clock-skew partial for <see cref="AcmeCertificateProvider"/>.
+    /// </summary>
+    /// <remarks>
+    /// Loads the account key from configuration (not disk) and verifies or registers the ACME account before issuance.
+    /// </remarks>
     internal sealed partial class AcmeCertificateProvider
     {
         #region Private Methods -- Clock Skew Guard
@@ -57,8 +62,12 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// </summary>
         /// <param name="directoryUri">ACME directory URI for this issuance.</param>
         /// <param name="ct">Cancellation token for host shutdown.</param>
-        /// <returns>A task that completes when skew is acceptable or cached.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when skew exceeds configured limits.</exception>
+        /// <returns>A task that completes when skew is within limits or a recent success is cached for <paramref name="directoryUri"/>.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when skew exceeds configured limits after one retry.</exception>
+        /// <remarks>
+        /// Uses <see cref="ClockSkewTtlCache"/> to avoid repeated directory HEAD requests; records success after
+        /// <see cref="ClockSkewGuard.AssertSkewAcceptableAsync"/> passes.
+        /// </remarks>
         private async Task AssertClockSkewIfNeededAsync(Uri directoryUri, CancellationToken ct)
         {
             TimeSpan ttl = TimeSpan.FromMinutes(options.ClockSkewCheckTtlMinutes);
@@ -147,7 +156,10 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// <param name="store">Filesystem persistence for the account key PEM (written for cluster broadcast
         /// compatibility).</param>
         /// <param name="ct">Cancellation token for host shutdown.</param>
-        /// <returns>An <see cref="AcmeContext"/> bound to the account.</returns>
+        /// <returns>
+        /// Configured <see cref="AcmeContext"/> verified against the ACME directory using
+        /// <see cref="LetsEncryptOptions.AccountKeyPem"/>.
+        /// </returns>
         /// <exception cref="OperationCanceledException">Thrown when <paramref name="ct"/> is cancelled (host
         /// shutdown).</exception>
         /// <exception cref="AcmeRequestException">Thrown when Let's Encrypt rejects the account key or the new account

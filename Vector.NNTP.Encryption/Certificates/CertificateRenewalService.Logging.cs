@@ -54,7 +54,12 @@ using Vector.NNTP.Encryption.Configuration;
 
 namespace Vector.NNTP.Encryption.Certificates
 {
-
+    /// <summary>
+    /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="CertificateRenewalService"/>.
+    /// </summary>
+    /// <remarks>
+    /// Event IDs 100–139; see file header for lifecycle vs certificate-state caller mapping.
+    /// </remarks>
     internal sealed partial class CertificateRenewalService
     {
         #region Logging Methods — Startup and Configuration (100-109)

@@ -45,7 +45,12 @@ using Vector.NNTP.Encryption.Acme;
 
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
-
+    /// <summary>
+    /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="AcmeCertificateProvider"/>.
+    /// </summary>
+    /// <remarks>
+    /// Event IDs 200–259; see file header for allocation ranges, log-level policy, and security constraints.
+    /// </remarks>
     internal sealed partial class AcmeCertificateProvider
     {
         #region Logging Methods -- ACME Account (200-209)

@@ -47,8 +47,12 @@ using Vector.NNTP.Encryption.Acme;
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
     /// <summary>
-    /// Provides functionality for managing ACME DNS-01 challenges.
+    /// DNS-01 challenge orchestration partial for <see cref="AcmeCertificateProvider"/>.
     /// </summary>
+    /// <remarks>
+    /// Creates Cloudflare TXT records, waits for authoritative propagation quorum, validates challenges with Let's Encrypt,
+    /// and polls to terminal status. See file header for cancellation and cleanup invariants.
+    /// </remarks>
     internal sealed partial class AcmeCertificateProvider
     {
         /// <summary>

@@ -48,10 +48,12 @@ using Vector.NNTP.Utilities.IO;
 namespace Vector.NNTP.Encryption.Certificates.Acme
 {
     /// <summary>
-    /// Provides functionality for managing ACME certificate issuance and renewal using Cloudflare's DNS.
+    /// Cloudflare DNS API partial for <see cref="AcmeCertificateProvider"/> ACME DNS-01 TXT record lifecycle.
     /// </summary>
-    /// <remarks>Handles interaction with Cloudflare's API to manage DNS records necessary for ACME
-    /// challenges, including creating, updating, and deleting TXT records.</remarks>
+    /// <remarks>
+    /// Creates, updates, and deletes challenge TXT records via the Cloudflare REST API with bounded response sizes,
+    /// per-request credential scrubbing, and bounded-concurrency cleanup. See file header for security and concurrency rules.
+    /// </remarks>
     internal sealed partial class AcmeCertificateProvider
     {
         #region Constants -- Cloudflare Response Validation
@@ -147,9 +149,11 @@ namespace Vector.NNTP.Encryption.Certificates.Acme
         /// </summary>
         /// <param name="apiName">The API name to search for the TXT record ID.</param>
         /// <param name="fqdnName">The fully qualified domain name to search for the TXT record ID.</param>
-        /// <param name="ct">A token to monitor for cancellation requests.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains the TXT record ID if found;
-        /// otherwise, null.</returns>
+        /// <param name="ct">Cancellation token for host shutdown.</param>
+        /// <returns>
+        /// Existing Cloudflare record ID when a matching TXT name is found (API-relative or FQDN search); otherwise
+        /// <see langword="null"/> so the caller can POST a new record.
+        /// </returns>
         private async Task<string?> TryFindCloudflareTxtRecordIdAsync(string apiName, string fqdnName, CancellationToken ct)
         {
             if (string.Equals(apiName, fqdnName, StringComparison.OrdinalIgnoreCase))

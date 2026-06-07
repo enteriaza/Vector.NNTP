@@ -8,6 +8,9 @@ namespace Vector.NNTP.Encryption.Cluster
     /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="CertificateClusterSync"/>.
     /// </summary>
+    /// <remarks>
+    /// Event IDs 330–347 for fanout consumer startup, leader lock, publish/adopt outcomes, and rejection diagnostics.
+    /// </remarks>
     internal sealed partial class CertificateClusterSync
     {
         #region Logging -- Cluster Sync (330-346)
@@ -15,7 +18,7 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <summary>
         /// Logs that the cluster certificate consumer could not be started; continuing without live fanout sync.
         /// </summary>
-        /// <param name="ex">The exception that occurred.</param>
+        /// <param name="ex">RabbitMQ topology or consumer registration failure.</param>
         [LoggerMessage(EventId = 330, Level = LogLevel.Warning,
             Message = "Certificates: Cluster certificate consumer could not be started; continuing without live fanout sync")]
         private partial void LogClusterConsumerStartFailed(Exception ex);
@@ -23,8 +26,8 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <summary>
         /// Logs that this node is not the ACME leader (queue {Queue} is held elsewhere).
         /// </summary>
-        /// <param name="ex">The exception that occurred.</param>
-        /// <param name="queue">The queue that is held elsewhere.</param>
+        /// <param name="ex">Exclusive queue declare failure indicating another node holds the leader lock.</param>
+        /// <param name="queue">Exclusive leader queue name that could not be acquired.</param>
         [LoggerMessage(EventId = 331, Level = LogLevel.Information,
             Message = "Certificates: This node is not the ACME leader (queue {Queue} is held elsewhere)")]
         private partial void LogNotAcmeLeader(Exception ex, string queue);
@@ -58,6 +61,7 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <summary>
         /// Logs that the cluster certificate message is not a valid envelope JSON.
         /// </summary>
+        /// <remarks>Emitted when the epoch prefilter or deserialiser cannot parse the fanout body.</remarks>
         [LoggerMessage(EventId = 335, Level = LogLevel.Warning,
             Message = "Certificates: Cluster certificate message is not a valid envelope JSON")]
         private partial void LogClusterInvalidEnvelope();
@@ -72,6 +76,7 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <summary>
         /// Logs that the cluster certificate payload failed HMAC verification; not activating.
         /// </summary>
+        /// <remarks>Emitted when neither current nor previous cluster signing secret validates the payload.</remarks>
         [LoggerMessage(EventId = 337, Level = LogLevel.Warning,
             Message = "Certificates: Cluster certificate payload failed HMAC verification; not activating")]
         private partial void LogClusterHmacVerificationFailed();
@@ -86,7 +91,7 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <summary>
         /// Logs that the cluster certificate PFX base64 is invalid.
         /// </summary>
-        /// <param name="ex">The exception that occurred.</param>
+        /// <param name="ex"><see cref="FormatException"/> from base64 decode of the payload PFX field.</param>
         [LoggerMessage(EventId = 339, Level = LogLevel.Warning,
             Message = "Certificates: Cluster certificate PFX base64 is invalid")]
         private partial void LogClusterInvalidPfxBase64(Exception ex);
@@ -137,7 +142,7 @@ namespace Vector.NNTP.Encryption.Cluster
         /// <summary>
         /// Logs that the cluster certificate message handling failed.
         /// </summary>
-        /// <param name="ex">The exception that occurred.</param>
+        /// <param name="ex">Unexpected exception during fanout message validation or adoption I/O.</param>
         [LoggerMessage(EventId = 346, Level = LogLevel.Warning,
             Message = "Certificates: Cluster certificate message handling failed")]
         private partial void LogClusterMessageHandlingFailed(Exception ex);

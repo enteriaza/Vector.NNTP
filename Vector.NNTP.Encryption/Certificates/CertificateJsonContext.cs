@@ -101,7 +101,8 @@ namespace Vector.NNTP.Encryption.Certificates
         public required int Ttl { get; init; }
 
         /// <summary>
-        /// Gets a value indicating whether the record is proxied through Cloudflare.  Must be <see langword="false"/> for TXT.
+        /// Cloudflare orange-cloud proxy flag for the TXT record; must remain <see langword="false"/> so ACME validators
+        /// reach authoritative DNS answers.
         /// </summary>
         public bool Proxied { get; init; }
     }

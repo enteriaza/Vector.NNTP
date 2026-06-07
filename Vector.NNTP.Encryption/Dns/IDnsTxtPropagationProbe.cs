@@ -20,7 +20,13 @@ namespace Vector.NNTP.Encryption.Dns
         /// <param name="records">DNS names and expected TXT values.</param>
         /// <param name="options">Poll interval, timeout, quorum ratio.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task that completes when all records satisfy quorum.</returns>
+        /// <returns>A task that completes when every entry in <paramref name="records"/> satisfies the quorum ratio.</returns>
+        /// <exception cref="TimeoutException">
+        /// Thrown when the poll budget in <paramref name="options"/> elapses before quorum is reached.
+        /// </exception>
+        /// <exception cref="OperationCanceledException">
+        /// Thrown when <paramref name="cancellationToken"/> is signalled during polling.
+        /// </exception>
         public Task WaitForTxtRecordsAsync(IReadOnlyList<(string RecordName, string ExpectedTxt)> records, LetsEncryptOptions options, CancellationToken cancellationToken);
     }
 }

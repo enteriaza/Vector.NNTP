@@ -41,7 +41,12 @@ using Vector.NNTP.Utilities.IO;
 
 namespace Vector.NNTP.Encryption.Certificates
 {
-
+    /// <summary>
+    /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="CertificateStore"/>.
+    /// </summary>
+    /// <remarks>
+    /// Event IDs 300–312; see file header for caller mapping and security constraints.
+    /// </remarks>
     internal sealed partial class CertificateStore
     {
         #region Logging Methods — Directory Management and Disposal (300–302)

@@ -43,8 +43,11 @@ using Vector.NNTP.Utilities.IO;
 namespace Vector.NNTP.Encryption.Certificates
 {
     /// <summary>
-    /// Manages the storage and retrieval of certificates and their associated keys.
+    /// Persistence partial for <see cref="CertificateStore"/> PFX, account-key, and certificate-key save/load paths.
     /// </summary>
+    /// <remarks>
+    /// All writes use atomic replace; loads use resilient read helpers with documented exception-to-null mapping.
+    /// </remarks>
     internal sealed partial class CertificateStore
     {
         #region Internal Methods — Certificate

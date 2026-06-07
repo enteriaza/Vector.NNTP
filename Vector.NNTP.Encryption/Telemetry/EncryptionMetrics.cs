@@ -21,27 +21,27 @@ namespace Vector.NNTP.Encryption.Telemetry
         private static readonly Meter Meter = new("Vector.NNTP.Encryption", "1.0.0");
 
         /// <summary>
-        /// Steady-state renewal check counter.
+        /// Counter <c>encryption.renewal.check</c> labelled by bounded <c>outcome</c> values from <see cref="RecordRenewalCheck"/>.
         /// </summary>
         private readonly Counter<long> _renewalCheck;
 
         /// <summary>
-        /// Certificate issuance counter.
+        /// Counter <c>encryption.certificate.issue</c> labelled by bounded <c>outcome</c> values from <see cref="RecordCertificateIssue"/>.
         /// </summary>
         private readonly Counter<long> _certificateIssue;
 
         /// <summary>
-        /// Certificate issuance duration histogram in milliseconds.
+        /// Histogram <c>encryption.certificate.issue.duration_ms</c> for end-to-end ACME issuance latency.
         /// </summary>
         private readonly Histogram<double> _certificateIssueDurationMs;
 
         /// <summary>
-        /// DNS TXT propagation duration histogram in milliseconds.
+        /// Histogram <c>encryption.dns.propagation.duration_ms</c> for authoritative TXT quorum polling.
         /// </summary>
         private readonly Histogram<double> _dnsPropagationDurationMs;
 
         /// <summary>
-        /// Cluster message counter.
+        /// Counter <c>encryption.cluster.message</c> labelled by bounded <c>outcome</c> values from <see cref="RecordClusterMessage"/>.
         /// </summary>
         private readonly Counter<long> _clusterMessage;
 
@@ -60,7 +60,8 @@ namespace Vector.NNTP.Encryption.Telemetry
         /// <summary>
         /// Records a steady-state renewal check outcome.
         /// </summary>
-        /// <param name="outcome">Bounded outcome: skipped, renewed, failed, or no_cert.</param>
+        /// <param name="outcome">Bounded outcome: <c>skipped</c>, <c>renewed</c>, <c>failed</c>, or <c>no_cert</c>.</param>
+        /// <remarks>Labels are fixed strings to keep metric cardinality bounded.</remarks>
         internal void RecordRenewalCheck(string outcome)
         {
             _renewalCheck.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
@@ -69,7 +70,8 @@ namespace Vector.NNTP.Encryption.Telemetry
         /// <summary>
         /// Records a certificate issuance outcome.
         /// </summary>
-        /// <param name="outcome">Bounded outcome: success, transient_failure, or cancelled.</param>
+        /// <param name="outcome">Bounded outcome: <c>success</c>, <c>transient_failure</c>, or <c>cancelled</c>.</param>
+        /// <remarks>Labels are fixed strings to keep metric cardinality bounded.</remarks>
         internal void RecordCertificateIssue(string outcome)
         {
             _certificateIssue.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
@@ -96,7 +98,8 @@ namespace Vector.NNTP.Encryption.Telemetry
         /// <summary>
         /// Records a cluster message outcome.
         /// </summary>
-        /// <param name="outcome">Bounded outcome: published, accepted, rejected, or invalid_hmac.</param>
+        /// <param name="outcome">Bounded outcome: <c>published</c>, <c>accepted</c>, <c>rejected</c>, or <c>invalid_hmac</c>.</param>
+        /// <remarks>Labels are fixed strings to keep metric cardinality bounded.</remarks>
         internal void RecordClusterMessage(string outcome)
         {
             _clusterMessage.Add(1, new KeyValuePair<string, object?>("outcome", outcome));

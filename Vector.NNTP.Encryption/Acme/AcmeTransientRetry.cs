@@ -40,8 +40,12 @@ namespace Vector.NNTP.Encryption.Acme
         /// <param name="operationName">Logical operation name for logs.</param>
         /// <param name="maxAttempts">Maximum attempts including the first try.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>The operation result.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when all attempts fail.</exception>
+        /// <returns>Result from the first successful <paramref name="operation"/> invocation.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when all attempts fail or the last failure is not retriable.</exception>
+        /// <remarks>
+        /// <see cref="OperationCanceledException"/> propagates immediately when <paramref name="cancellationToken"/> is
+        /// signalled; retriable failures are logged and delayed with jittered exponential back-off.
+        /// </remarks>
         public static async Task<T> ExecuteAsync<T>(
             Func<Task<T>> operation,
             ILogger logger,
@@ -90,8 +94,8 @@ namespace Vector.NNTP.Encryption.Acme
         /// <param name="operationName">Logical operation name for logs.</param>
         /// <param name="maxAttempts">Maximum attempts including the first try.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task that completes when the operation succeeds.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when all attempts fail.</exception>
+        /// <returns>A task that completes after <paramref name="operation"/> succeeds without throwing.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when all attempts fail or the last failure is not retriable.</exception>
         public static async Task ExecuteAsync(
             Func<Task> operation,
             ILogger logger,
@@ -112,10 +116,14 @@ namespace Vector.NNTP.Encryption.Acme
         }
 
         /// <summary>
-        /// The set of exceptions considered transient and worth retrying, including nested inner exceptions.
+        /// Determines whether <paramref name="ex"/> represents a transient ACME or transport failure worth retrying.
         /// </summary>
-        /// <param name="ex"></param>
-        /// <returns></returns>
+        /// <param name="ex">Observed exception from an ACME operation attempt.</param>
+        /// <returns>
+        /// <see langword="true"/> for <see cref="HttpRequestException"/>, <see cref="IOException"/>,
+        /// <see cref="TaskCanceledException"/> (excluding host cancellation), <see cref="InvalidOperationException"/>
+        /// messages containing <c>timeout</c>, or any retriable inner exception; otherwise <see langword="false"/>.
+        /// </returns>
         private static bool IsRetriable(Exception ex)
         {
             return ex is HttpRequestException or IOException or TaskCanceledException || (ex is InvalidOperationException ioe && ioe.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase)) || (ex.InnerException is not null && IsRetriable(ex.InnerException));

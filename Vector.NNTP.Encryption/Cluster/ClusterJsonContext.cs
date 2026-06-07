@@ -9,6 +9,10 @@ namespace Vector.NNTP.Encryption.Cluster
     /// <summary>
     /// Source-generated JSON context for cluster certificate fanout messages.
     /// </summary>
+    /// <remarks>
+    /// Reflection-disabled serializer context for <see cref="ClusterBusEnvelope"/> and
+    /// <see cref="ClusterCertificatePayload"/> used by <see cref="CertificateClusterSync"/> publish/consume paths.
+    /// </remarks>
     [JsonSerializable(typeof(ClusterBusEnvelope))]
     [JsonSerializable(typeof(ClusterCertificatePayload))]
     internal partial class ClusterJsonContext : JsonSerializerContext

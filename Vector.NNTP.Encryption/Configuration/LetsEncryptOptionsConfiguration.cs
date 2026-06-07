@@ -16,6 +16,11 @@ namespace Vector.NNTP.Encryption.Configuration
         /// </summary>
         /// <param name="options">Bound options instance (mutated in place).</param>
         /// <param name="logger">Optional logger for hydration failures.</param>
+        /// <remarks>
+        /// Best-effort hydration: I/O failures are logged when <paramref name="logger"/> is supplied and are not
+        /// rethrown so post-configuration can still apply Development fallbacks and <c>ValidateOnStart</c> can surface
+        /// a missing key explicitly.
+        /// </remarks>
         public static void HydrateAccountKeyFromCertDir(LetsEncryptOptions options, ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(options);
