@@ -40,6 +40,12 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public long MemoryLimitBytes { get; set; } = 1_073_741_824;
 
         /// <summary>
+        /// Gets or sets the number of memory-cache shards (power of two; default 64).
+        /// </summary>
+        [Range(1, 256)]
+        public int MemoryShardCount { get; set; } = 64;
+
+        /// <summary>
         /// Gets or sets the bounded backfill queue capacity.
         /// </summary>
         [Range(1024, int.MaxValue)]

@@ -227,15 +227,15 @@ namespace Vector.NNTP.HistoryDB.Metrics
 
             _ = Meter.CreateObservableGauge(
                 "history.memory.entries",
-                () => new Measurement<long>(_memoryEntries),
+                () => new Measurement<long>(Volatile.Read(ref _memoryEntries)),
                 description: "Live in-memory history entries.");
             _ = Meter.CreateObservableGauge(
                 "history.memory.bytes",
-                () => new Measurement<long>(_memoryBytes),
+                () => new Measurement<long>(Volatile.Read(ref _memoryBytes)),
                 description: "Tracked in-memory history logical bytes.");
             _ = Meter.CreateObservableGauge(
                 "history.memory.heap_entries",
-                () => new Measurement<long>(_memoryHeapEntries),
+                () => new Measurement<long>(Volatile.Read(ref _memoryHeapEntries)),
                 description: "In-memory eviction heap entries including lazy tombstones.");
             _ = Meter.CreateObservableGauge(
                 "history.rebuild.keys_processed",
@@ -509,6 +509,18 @@ namespace Vector.NNTP.HistoryDB.Metrics
         }
 
         /// <summary>
+        /// Adds a delta to the memory entry gauge (shard write aggregation).
+        /// </summary>
+        /// <param name="delta">Entry count change.</param>
+        internal void AddMemoryEntriesDelta(int delta)
+        {
+            if (delta != 0)
+            {
+                _ = Interlocked.Add(ref _memoryEntries, delta);
+            }
+        }
+
+        /// <summary>
         /// Sets memory bytes gauge.
         /// </summary>
         /// <param name="bytes">Tracked logical bytes.</param>
@@ -518,12 +530,36 @@ namespace Vector.NNTP.HistoryDB.Metrics
         }
 
         /// <summary>
+        /// Adds a delta to the memory bytes gauge (shard write aggregation).
+        /// </summary>
+        /// <param name="delta">Logical byte change.</param>
+        internal void AddMemoryBytesDelta(long delta)
+        {
+            if (delta != 0)
+            {
+                _ = Interlocked.Add(ref _memoryBytes, delta);
+            }
+        }
+
+        /// <summary>
         /// Sets eviction heap entry gauge.
         /// </summary>
         /// <param name="count">Heap entries including tombstones.</param>
         internal void SetMemoryHeapEntries(int count)
         {
             _memoryHeapEntries = count;
+        }
+
+        /// <summary>
+        /// Adds a delta to the eviction heap entry gauge (shard write aggregation).
+        /// </summary>
+        /// <param name="delta">Heap entry change.</param>
+        internal void AddMemoryHeapEntriesDelta(int delta)
+        {
+            if (delta != 0)
+            {
+                _ = Interlocked.Add(ref _memoryHeapEntries, delta);
+            }
         }
 
         /// <summary>

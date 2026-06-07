@@ -59,6 +59,12 @@ namespace Vector.NNTP.HistoryDB.Configuration
                 : options.RocksDb.ExpirationBlockCacheBytes < 0
                 ? ValidateOptionsResult.Fail(
                     $"{nameof(HistoryRocksDbOptions.ExpirationBlockCacheBytes)} must be non-negative.")
+                : options.MemoryShardCount is < 1 or > 256
+                ? ValidateOptionsResult.Fail(
+                    $"{nameof(HistoryDbOptions.MemoryShardCount)} must be between 1 and 256.")
+                : (options.MemoryShardCount & (options.MemoryShardCount - 1)) != 0
+                ? ValidateOptionsResult.Fail(
+                    $"{nameof(HistoryDbOptions.MemoryShardCount)} must be a power of two.")
                 : ValidateOptionsResult.Success;
         }
     }

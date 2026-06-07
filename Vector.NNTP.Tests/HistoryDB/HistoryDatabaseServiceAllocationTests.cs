@@ -33,7 +33,7 @@ namespace Vector.NNTP.Tests.HistoryDB
         public void MemoryHit_CheckAsync_DoesNotAllocate()
         {
             var metrics = new HistoryMetrics();
-            var memory = new HistoryMemoryCache(1_073_741_824, metrics);
+            var memory = new HistoryMemoryCache(1_073_741_824, shardCount: 64, metrics);
             Span<byte> digest = stackalloc byte[HistoryKeyEncoder.DigestLength];
             Assert.That(HistoryKeyEncoder.TryComputeDigest(MessageId, digest), Is.True);
             var digestKey = new DigestKey(digest);

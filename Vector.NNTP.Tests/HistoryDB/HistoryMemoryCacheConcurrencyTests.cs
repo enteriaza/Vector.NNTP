@@ -21,7 +21,7 @@ namespace Vector.NNTP.Tests.HistoryDB
         public void ConcurrentTryGetDuplicateAndInsertOrUpdate_DoesNotThrow()
         {
             var metrics = new HistoryMetrics();
-            var cache = new HistoryMemoryCache(1_073_741_824, metrics);
+            var cache = new HistoryMemoryCache(1_073_741_824, shardCount: 64, metrics);
             ulong now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             const int threadCount = 16;
             const int iterationsPerThread = 5_000;

@@ -43,7 +43,7 @@ namespace Vector.NNTP.Tests.HistoryDB
                     options,
                     NullLogger<HistoryRocksPersistPump>.Instance);
                 var lifetime = new TestHostApplicationLifetime();
-                var memory = new Vector.NNTP.HistoryDB.Memory.HistoryMemoryCache(1_073_741_824, metrics);
+                var memory = new Vector.NNTP.HistoryDB.Memory.HistoryMemoryCache(1_073_741_824, shardCount: 64, metrics);
                 var redis = new HistoryRedisStore(
                     options,
                     new UnreachableRedisAccessor(),

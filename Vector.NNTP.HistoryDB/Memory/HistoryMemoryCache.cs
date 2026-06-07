@@ -8,37 +8,27 @@ using Vector.NNTP.HistoryDB.Metrics;
 namespace Vector.NNTP.HistoryDB.Memory
 {
     /// <summary>
-    /// Bounded in-memory duplicate filter keyed by digest (newest / highest expiration retained).
+    /// Sharded bounded in-memory duplicate filter keyed by digest (newest / highest expiration retained).
     /// </summary>
     /// <remarks>
     /// <para>
     /// Registered as a process singleton and invoked concurrently from every transit session (CHECK and TAKETHIS).
-    /// A single <see cref="object"/> monitor protects the dictionary and eviction heap, so every CHECK and TAKETHIS
-    /// serializes through one critical section. The section is a single <see cref="Dictionary{TKey, TValue}.TryGetValue"/>
-    /// on the hot path and is expected to be cheap, but aggregate throughput is fundamentally single-lane until
-    /// measured. Do not change synchronization strategy without BenchmarkDotNet evidence on production-like hardware.
+    /// Digests map to one of <see cref="ShardCount"/> shards via <see cref="DigestKey.GetShardIndex"/> so unrelated
+    /// keys avoid sharing a monitor. Each <see cref="HistoryMemoryCacheShard"/> owns a dictionary, min-heap, and
+    /// <c>MemoryLimitBytes / ShardCount</c> logical byte budget.
     /// </para>
     /// <para>
-    /// If contention appears on large core-count hosts (for example 48-core transit nodes), prefer digest-key sharding
-    /// (for example 64 shards, each with its own dictionary, min-heap, and lock) over returning to
-    /// <see cref="ReaderWriterLockSlim"/>: unrelated digests then avoid sharing a monitor.
+    /// OpenTelemetry hit/miss counters run after the shard lock is released. Gauge aggregates use
+    /// <see cref="Interlocked"/> deltas from shard writes instead of scanning all shards per insert.
+    /// </para>
+    /// <para>Eviction uses a min-heap with lazy tombstones per shard; observe
+    /// <c>history.memory.heap_entries / history.memory.entries</c> for tombstone inflation.</para>
+    /// <para>
+    /// Expired entries are treated as misses on read and are not removed until shard memory-pressure eviction runs.
     /// </para>
     /// <para>
-    /// OpenTelemetry gauge updates and hit/miss counters run <b>after</b> the monitor is released so lock hold time
-    /// stays minimal on the hot CHECK path.
-    /// </para>
-    /// <para>Eviction uses a min-heap with lazy tombstones: heap entries are not updated on expiration bump;
-    /// stale tops are discarded during eviction by comparing against the authoritative dictionary. Repeated expiration
-    /// bumps can inflate <c>history.memory.heap_entries</c> relative to <c>history.memory.entries</c>; observe the
-    /// ratio to decide whether heap rebuild is warranted.</para>
-    /// <para>
-    /// Expired entries are treated as misses on read and are not removed until memory-pressure eviction runs. This
-    /// defers mutation cost on the hot path but allows expired keys to remain resident while under the logical byte
-    /// budget.
-    /// </para>
-    /// <para>
-    /// <see cref="LogicalBytesPerEntry"/> budgets digest payload size (32-byte digest + 8-byte expiration), not actual
-    /// managed heap consumption (dictionary nodes, heap storage, alignment).
+    /// Logical byte budgeting uses digest payload size (32-byte digest + 8-byte expiration), not actual managed heap
+    /// consumption.
     /// </para>
     /// </remarks>
     internal sealed class HistoryMemoryCache
@@ -46,58 +36,72 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <summary>
         /// Logical payload bytes per entry used for budget enforcement (digest + expiration epoch).
         /// </summary>
-        private const int LogicalBytesPerEntry = HistoryKeyEncoder.DigestLength + 8;
+        internal const int LogicalBytesPerEntry = HistoryKeyEncoder.DigestLength + 8;
 
         /// <summary>
-        /// The limit bytes.
-        /// </summary>
-        private readonly long _limitBytes;
-
-        /// <summary>
-        /// Authoritative digest to expiration map.
-        /// </summary>
-        private readonly Dictionary<DigestKey, ulong> _entries = [];
-
-        /// <summary>
-        /// Expiration-ordered eviction candidates (may contain lazy tombstones).
-        /// </summary>
-        private readonly ExpirationMinHeap _evictionHeap = new();
-
-        /// <summary>
-        /// The metrics.
+        /// The metrics recorder.
         /// </summary>
         private readonly HistoryMetrics _metrics;
 
         /// <summary>
-        /// Exclusive gate for dictionary, heap, and budget fields.
+        /// Shard mask (<c>shardCount - 1</c>).
         /// </summary>
-        private readonly object _syncRoot = new();
+        private readonly int _shardMask;
 
         /// <summary>
-        /// Authoritative entry count mirrored under <see cref="_syncRoot"/> for lock-free reads.
+        /// Per-digest shards.
+        /// </summary>
+        private readonly HistoryMemoryCacheShard[] _shards;
+
+        /// <summary>
+        /// Authoritative entry count mirrored via <see cref="Interlocked"/> for lock-free reads.
         /// </summary>
         private int _entryCount;
 
         /// <summary>
-        /// The tracked bytes.
-        /// </summary>
-        private long _trackedBytes;
-
-        /// <summary>
         /// Initializes a new instance of the <see cref="HistoryMemoryCache"/> class.
         /// </summary>
-        /// <param name="limitBytes">Maximum tracked logical bytes.</param>
+        /// <param name="limitBytes">Maximum tracked logical bytes across all shards.</param>
+        /// <param name="shardCount">Number of shards (power of two).</param>
         /// <param name="metrics">Metrics recorder.</param>
-        internal HistoryMemoryCache(long limitBytes, HistoryMetrics metrics)
+        internal HistoryMemoryCache(long limitBytes, int shardCount, HistoryMetrics metrics)
         {
-            _limitBytes = limitBytes;
+            ArgumentOutOfRangeException.ThrowIfLessThan(shardCount, 1);
+            if ((shardCount & (shardCount - 1)) != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(shardCount), shardCount, "Shard count must be a power of two.");
+            }
+
             _metrics = metrics;
+            ShardCount = shardCount;
+            _shardMask = shardCount - 1;
+            long shardLimitBytes = limitBytes / shardCount;
+            _shards = new HistoryMemoryCacheShard[shardCount];
+            for (int i = 0; i < shardCount; i++)
+            {
+                _shards[i] = new HistoryMemoryCacheShard(shardLimitBytes);
+            }
         }
 
         /// <summary>
-        /// Gets tracked entry count without acquiring the monitor.
+        /// Gets the configured shard count.
+        /// </summary>
+        internal int ShardCount { get; }
+
+        /// <summary>
+        /// Gets tracked entry count without acquiring a shard monitor.
         /// </summary>
         internal int Count => Volatile.Read(ref _entryCount);
+
+        /// <summary>
+        /// Gets the shard index for a digest (test and diagnostics).
+        /// </summary>
+        /// <param name="digestKey">Digest key.</param>
+        /// <returns>Shard index.</returns>
+        internal int GetShardIndexForKey(in DigestKey digestKey)
+        {
+            return digestKey.GetShardIndex(_shardMask);
+        }
 
         /// <summary>
         /// Tries a duplicate lookup without allocating (hot path).
@@ -107,12 +111,8 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <returns><see langword="true"/> when an unexpired entry exists.</returns>
         internal bool TryGetDuplicate(in DigestKey digestKey, ulong nowEpochSeconds)
         {
-            bool hit;
-            lock (_syncRoot)
-            {
-                hit = _entries.TryGetValue(digestKey, out ulong expiration) && expiration > nowEpochSeconds;
-            }
-
+            int shardIndex = digestKey.GetShardIndex(_shardMask);
+            bool hit = _shards[shardIndex].TryGetDuplicate(in digestKey, nowEpochSeconds);
             if (hit)
             {
                 _metrics.RecordMemoryHit();
@@ -132,91 +132,95 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <param name="expirationEpochSeconds">Expiration epoch.</param>
         internal void InsertOrUpdate(in DigestKey digestKey, ulong expirationEpochSeconds)
         {
-            int entryCount;
-            long trackedBytes;
-            int heapCount;
-            int evictions;
-            lock (_syncRoot)
-            {
-                bool exists = _entries.TryGetValue(digestKey, out ulong existing);
-                if (exists && existing >= expirationEpochSeconds)
-                {
-                    return;
-                }
-
-                if (!exists)
-                {
-                    _trackedBytes += LogicalBytesPerEntry;
-                }
-
-                _entries[digestKey] = expirationEpochSeconds;
-                _evictionHeap.Push(expirationEpochSeconds, in digestKey);
-                evictions = EvictIfNeeded();
-                entryCount = _entries.Count;
-                _entryCount = entryCount;
-                trackedBytes = _trackedBytes;
-                heapCount = _evictionHeap.Count;
-            }
-
-            if (evictions > 0)
-            {
-                _metrics.RecordMemoryEvictions(evictions);
-            }
-
-            _metrics.SetMemoryEntries(entryCount);
-            _metrics.SetMemoryBytes(trackedBytes);
-            _metrics.SetMemoryHeapEntries(heapCount);
+            int shardIndex = digestKey.GetShardIndex(_shardMask);
+            HistoryMemoryCacheShardWriteResult result = _shards[shardIndex].InsertOrUpdate(in digestKey, expirationEpochSeconds);
+            ApplyWriteResult(in result);
         }
 
         /// <summary>
         /// Clears all entries (used by tests).
         /// </summary>
         /// <remarks>
-        /// Resets every mutable cache field under <see cref="_syncRoot"/> (<see cref="_entries"/>,
-        /// <see cref="_evictionHeap"/>, <see cref="_trackedBytes"/>, <see cref="_entryCount"/>). Any future per-cache
-        /// counters (for example tombstone totals) must be zeroed here as well.
+        /// Resets every shard and zeroes global aggregates. Any future per-shard counters must be cleared in
+        /// <see cref="HistoryMemoryCacheShard.Clear"/> and folded into <see cref="HistoryMemoryCacheShardWriteResult"/>.
         /// </remarks>
         internal void Clear()
         {
-            lock (_syncRoot)
+            HistoryMemoryCacheShardWriteResult total = default;
+            for (int i = 0; i < _shards.Length; i++)
             {
-                _entries.Clear();
-                _evictionHeap.Clear();
-                _trackedBytes = 0;
-                _entryCount = 0;
+                HistoryMemoryCacheShardWriteResult shardResult = _shards[i].Clear();
+                total = CombineWriteResults(total, shardResult);
             }
 
-            _metrics.SetMemoryEntries(0);
-            _metrics.SetMemoryBytes(0);
-            _metrics.SetMemoryHeapEntries(0);
+            _entryCount = 0;
+            if (total.Changed)
+            {
+                _metrics.AddMemoryEntriesDelta(total.EntryDelta);
+                _metrics.AddMemoryBytesDelta(total.ByteDelta);
+                _metrics.AddMemoryHeapEntriesDelta(total.HeapDelta);
+            }
+            else
+            {
+                _metrics.SetMemoryEntries(0);
+                _metrics.SetMemoryBytes(0);
+                _metrics.SetMemoryHeapEntries(0);
+            }
         }
 
         /// <summary>
-        /// Evicts lowest-expiration entries until within the byte budget.
+        /// Applies shard write deltas to global counters and metrics.
         /// </summary>
-        /// <remarks>Caller must hold <see cref="_syncRoot"/>.</remarks>
-        /// <returns>Number of entries removed.</returns>
-        private int EvictIfNeeded()
+        /// <param name="result">Shard write result.</param>
+        private void ApplyWriteResult(in HistoryMemoryCacheShardWriteResult result)
         {
-            int evictions = 0;
-            while (_trackedBytes > _limitBytes && _evictionHeap.TryPeek(out ulong heapExp, out DigestKey heapKey))
+            if (!result.Changed)
             {
-                if (!_entries.TryGetValue(heapKey, out ulong currentExp) || currentExp != heapExp)
-                {
-                    _evictionHeap.Pop();
-                    continue;
-                }
-
-                if (_entries.Remove(heapKey))
-                {
-                    _trackedBytes -= LogicalBytesPerEntry;
-                    evictions++;
-                }
-
-                _evictionHeap.Pop();
+                return;
             }
 
-            return evictions;
+            if (result.EntryDelta != 0)
+            {
+                _ = Interlocked.Add(ref _entryCount, result.EntryDelta);
+                _metrics.AddMemoryEntriesDelta(result.EntryDelta);
+            }
+
+            if (result.ByteDelta != 0)
+            {
+                _metrics.AddMemoryBytesDelta(result.ByteDelta);
+            }
+
+            if (result.HeapDelta != 0)
+            {
+                _metrics.AddMemoryHeapEntriesDelta(result.HeapDelta);
+            }
+
+            if (result.EvictionCount > 0)
+            {
+                _metrics.RecordMemoryEvictions(result.EvictionCount);
+            }
+        }
+
+        /// <summary>
+        /// Combines two shard write results for bulk clear aggregation.
+        /// </summary>
+        /// <param name="left">Accumulated result.</param>
+        /// <param name="right">Shard result to add.</param>
+        /// <returns>Combined deltas.</returns>
+        private static HistoryMemoryCacheShardWriteResult CombineWriteResults(
+            HistoryMemoryCacheShardWriteResult left,
+            HistoryMemoryCacheShardWriteResult right)
+        {
+            return !right.Changed
+                ? left
+                : new HistoryMemoryCacheShardWriteResult
+                {
+                    EntryDelta = left.EntryDelta + right.EntryDelta,
+                    ByteDelta = left.ByteDelta + right.ByteDelta,
+                    HeapDelta = left.HeapDelta + right.HeapDelta,
+                    EvictionCount = left.EvictionCount + right.EvictionCount,
+                    Changed = left.Changed || right.Changed,
+                };
         }
     }
 }

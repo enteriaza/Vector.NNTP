@@ -23,7 +23,7 @@ namespace Vector.NNTP.Tests.HistoryDB
         public void MemoryHit_TryGetDuplicate_DoesNotAllocate()
         {
             var metrics = new HistoryMetrics();
-            var cache = new HistoryMemoryCache(1_073_741_824, metrics);
+            var cache = new HistoryMemoryCache(1_073_741_824, shardCount: 64, metrics);
             const string messageId = "<alloc@test.local>";
             Span<byte> digest = stackalloc byte[32];
             Assert.That(HistoryKeyEncoder.TryComputeDigest(messageId, digest), Is.True);

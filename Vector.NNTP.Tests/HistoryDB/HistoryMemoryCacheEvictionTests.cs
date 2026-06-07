@@ -26,7 +26,7 @@ namespace Vector.NNTP.Tests.HistoryDB
         public void EvictIfNeeded_RemovesLowestExpirationFirst()
         {
             var metrics = new HistoryMetrics();
-            var cache = new HistoryMemoryCache(BytesPerEntry * 2, metrics);
+            var cache = new HistoryMemoryCache(BytesPerEntry * 2, shardCount: 1, metrics);
             ulong now = 1000;
 
             DigestKey keyLow = CreateKey(1);
@@ -50,7 +50,7 @@ namespace Vector.NNTP.Tests.HistoryDB
         public void EvictIfNeeded_IgnoresStaleHeapTombstonesAfterExpirationBump()
         {
             var metrics = new HistoryMetrics();
-            var cache = new HistoryMemoryCache(BytesPerEntry * 2, metrics);
+            var cache = new HistoryMemoryCache(BytesPerEntry * 2, shardCount: 1, metrics);
             ulong now = 1000;
 
             DigestKey keyA = CreateKey(10);

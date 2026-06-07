@@ -75,6 +75,16 @@ namespace Vector.NNTP.HistoryDB.Encoding
         }
 
         /// <summary>
+        /// Gets a shard index from the low bits of the digest (power-of-2 <paramref name="shardMask"/>).
+        /// </summary>
+        /// <param name="shardMask"><c>shardCount - 1</c> where <c>shardCount</c> is a power of two.</param>
+        /// <returns>Shard index in <c>[0, shardMask]</c>.</returns>
+        internal int GetShardIndex(int shardMask)
+        {
+            return (int)(_w0 & (uint)shardMask);
+        }
+
+        /// <summary>
         /// Copies digest bytes into <paramref name="destination"/>.
         /// </summary>
         /// <param name="destination">32-byte span.</param>

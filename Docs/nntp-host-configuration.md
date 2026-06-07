@@ -115,6 +115,7 @@ Unit tests that do not call `AddNntpSessionRedis` keep in-memory coordinators fr
 | `DbDir` | RocksDB directory (required for transit). |
 | `RememberDays` | Retention window for duplicate suppression. |
 | `MemoryLimitBytes` | Hot in-memory cache budget (default 1 GiB). |
+| `MemoryShardCount` | Digest-key shard count for parallel CHECK/TAKETHIS (power of two; default 64). Per-shard budget is `MemoryLimitBytes / MemoryShardCount`. |
 | `QueueCapacity` | Bounded backfill queue after Redis record on accept. |
 | `RebuildCheckpointInterval` | Redis `history:rebuild_state` checkpoint interval during rebuild. |
 | `RebuildRedisBatchSize` | Pipeline batch size for Rocks→Redis rebuild. |

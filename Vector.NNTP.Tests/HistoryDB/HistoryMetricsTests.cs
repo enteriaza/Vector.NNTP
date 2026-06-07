@@ -43,15 +43,18 @@ namespace Vector.NNTP.Tests.HistoryDB
             metrics.SetMemoryEntries(42);
             metrics.SetMemoryBytes(3360);
             metrics.SetMemoryHeapEntries(55);
+            metrics.AddMemoryEntriesDelta(3);
+            metrics.AddMemoryBytesDelta(120);
+            metrics.AddMemoryHeapEntriesDelta(2);
             metrics.SetRebuildKeysProcessed(1_500_000);
             metrics.SetOperational(true);
             metrics.SetQueueDepth(7);
 
             listener.RecordObservableInstruments();
 
-            Assert.That(measurements["history.memory.entries"], Is.EqualTo(42));
-            Assert.That(measurements["history.memory.bytes"], Is.EqualTo(3360));
-            Assert.That(measurements["history.memory.heap_entries"], Is.EqualTo(55));
+            Assert.That(measurements["history.memory.entries"], Is.EqualTo(45));
+            Assert.That(measurements["history.memory.bytes"], Is.EqualTo(3480));
+            Assert.That(measurements["history.memory.heap_entries"], Is.EqualTo(57));
             Assert.That(measurements["history.rebuild.keys_processed"], Is.EqualTo(1_500_000));
             Assert.That(measurements["history.operational"], Is.EqualTo(1));
             Assert.That(measurements["history.queue.depth"], Is.EqualTo(7));

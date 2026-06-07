@@ -48,7 +48,10 @@ namespace Vector.NNTP.HistoryDB.DependencyInjection
             _ = services.AddSingleton(sp =>
             {
                 HistoryDbOptions opts = sp.GetRequiredService<IOptions<HistoryDbOptions>>().Value;
-                return new HistoryMemoryCache(opts.MemoryLimitBytes, sp.GetRequiredService<HistoryMetrics>());
+                return new HistoryMemoryCache(
+                    opts.MemoryLimitBytes,
+                    opts.MemoryShardCount,
+                    sp.GetRequiredService<HistoryMetrics>());
             });
             _ = services.AddSingleton<RocksHistoryStore>();
             _ = services.AddSingleton<HistoryRedisStore>();
