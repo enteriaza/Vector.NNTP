@@ -76,6 +76,7 @@ namespace Vector.NNTP.MessageBus.Consuming
         /// <param name="cancellationToken">Cancellation token for registration operations.</param>
         /// <returns>Subscription identifier for this registration.</returns>
         /// <exception cref="MessageBusUnavailableException">Thrown when the manager is stopped or no pooled connection exists.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during channel creation or registration.</exception>
         async Task<Guid> IRabbitMqConsumerManager.RegisterSubscriptionAsync(
             string queue,
             AsyncEventHandler<BasicDeliverEventArgs> handler,
@@ -109,8 +110,8 @@ namespace Vector.NNTP.MessageBus.Consuming
         /// <summary>
         /// Stops the consumer manager.
         /// </summary>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A task that completes when the consumer manager is stopped.</returns>
+        /// <param name="cancellationToken">Host shutdown token; cancels waiting on the registration gate.</param>
+        /// <returns>A task that completes after all consumer channels are disposed.</returns>
         /// <exception cref="OperationCanceledException">Thrown when the cancellation token is canceled.</exception>
         async Task IRabbitMqConsumerManager.StopAsync(CancellationToken cancellationToken)
         {
@@ -134,10 +135,9 @@ namespace Vector.NNTP.MessageBus.Consuming
         }
 
         /// <summary>
-        /// Disposes the consumer manager.
+        /// Stops all subscriptions and releases consumer channels (always uses a non-cancellable stop token).
         /// </summary>
-        /// <returns>A task that completes when the consumer manager is disposed.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when the cancellation token is canceled.</exception>
+        /// <returns>A value task that completes when <see cref="IRabbitMqConsumerManager.StopAsync"/> finishes.</returns>
         public async ValueTask DisposeAsync()
         {
             await ((IRabbitMqConsumerManager)this).StopAsync(CancellationToken.None).ConfigureAwait(false);

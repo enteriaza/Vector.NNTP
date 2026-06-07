@@ -40,6 +40,7 @@ namespace Vector.NNTP.MessageBus.Publishing
         /// <exception cref="Exceptions.MessageBusConnectionFaultException">
         /// Thrown when AMQP channel creation fails after a slot was acquired.
         /// </exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during slot wait or channel creation.</exception>
         public Task<IPublisherScope> CreateScopeAsync(CancellationToken cancellationToken);
     }
 }

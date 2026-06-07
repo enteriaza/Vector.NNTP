@@ -19,7 +19,6 @@ namespace Vector.NNTP.MessageBus.Exceptions
     /// <para><b>Recovery:</b> At-least-once semantics apply — the message may have reached the broker. Hosts must use
     /// idempotent handlers or deduplication before retrying the RPC.</para>
     /// </remarks>
-    /// <remarks>Initializes a new instance of the <see cref="MessageBusPublishConfirmTimeoutException"/> class.</remarks>
     /// <param name="message">Human-readable timeout context including configured duration when helpful.</param>
     public sealed class MessageBusPublishConfirmTimeoutException(string message) : MessageBusException(message)
     {

@@ -55,6 +55,7 @@ namespace Vector.NNTP.MessageBus.Publishing
         /// Thrown when confirmation is not received before the configured confirm timeout and the caller did not cancel.
         /// </exception>
         /// <exception cref="ObjectDisposedException">Thrown when the scope was already disposed.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled before confirm completes.</exception>
         public ValueTask PublishAsync(string exchange, string routingKey, ReadOnlyMemory<byte> body, string? correlationId = null, CancellationToken cancellationToken = default);
     }
 }

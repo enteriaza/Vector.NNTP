@@ -33,7 +33,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <summary>Per-host-index failure and suppression state.</summary>
         private readonly Dictionary<int, HostState> _hosts = [];
 
-        /// <summary>Initializes a new instance of the <see cref="HostHealthTracker"/> class.</summary>
+        /// <summary>Creates per-host reconnect backoff state from bound <see cref="RabbitMQOptions"/>.</summary>
         /// <param name="options">RabbitMQ options providing reconnect delay bounds.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
         public HostHealthTracker(IOptions<RabbitMQOptions> options)
@@ -88,7 +88,7 @@ namespace Vector.NNTP.MessageBus.Connections
             return state.SuppressedUntilUtc is { } until && until > DateTimeOffset.UtcNow;
         }
 
-        /// <summary>Gets or creates mutable state for <paramref name="hostIndex"/>.</summary>
+        /// <summary>Returns existing per-host tracking state, creating an entry when <paramref name="hostIndex"/> is first seen.</summary>
         /// <param name="hostIndex">Zero-based host index.</param>
         /// <returns>Per-host tracking object.</returns>
         private HostState GetOrCreate(int hostIndex)

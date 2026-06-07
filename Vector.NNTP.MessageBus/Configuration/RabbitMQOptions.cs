@@ -130,7 +130,7 @@ namespace Vector.NNTP.MessageBus.Configuration
         #region Constants
 
         /// <summary>
-        /// The configuration section name used to bind these options from <c>host configuration (IOptions)</c>.
+        /// Configuration section key (<c>"RabbitMQ"</c>) for binding via <c>IOptions&lt;RabbitMQOptions&gt;</c>.
         /// </summary>
         public const string SectionName = "RabbitMQ";
 
@@ -169,8 +169,9 @@ namespace Vector.NNTP.MessageBus.Configuration
         /// <para>Required -- the application will not start if this is missing or empty.</para>
         ///
         /// <para>The RabbitMQ client maps each host to an <c>AmqpTcpEndpoint</c> and tries them in declaration order on
-        /// initial connect.  Automatic recovery cycles through all endpoints on reconnect, providing transparent failover
-        /// across an HA cluster.</para>
+        /// each new TCP connect.  <see cref="Connections.ConnectionPool"/> and
+        /// <see cref="Connections.RabbitMqBackgroundScaler"/> open replacement connections after faults using
+        /// <see cref="Connections.HostHealthTracker"/> backoff rather than client-library automatic recovery.</para>
         ///
         /// <para>Each entry must be a bare hostname or IP address -- no URI scheme, no port suffix.  IPv6 addresses are
         /// supported (e.g., <c>"2001:db8::1"</c>).  The <see cref="Port"/> property applies to all endpoints
@@ -255,36 +256,27 @@ namespace Vector.NNTP.MessageBus.Configuration
         public ushort ChannelPoolSize { get; set; } = 2047;
 
         /// <summary>
-        /// Maximum number of consecutive automatic recovery failures before the application triggers a self-shutdown to
-        /// allow the external supervisor (systemd, container orchestrator) to restart the process.
+        /// Maximum consecutive <see cref="RabbitMQ.Client.IConnection.ConnectionRecoveryErrorAsync"/> events before
+        /// <see cref="Connections.RabbitMqConnectionFactory"/> calls <see cref="IHostApplicationLifetime.StopApplication"/>.
         /// </summary>
         /// <remarks>
-        /// <para><b>Rationale:</b> The RabbitMQ client library's automatic recovery handles most transient failures (broker
-        /// restarts, network blips, failovers) transparently.  However, some failure modes are permanently unrecoverable
-        /// from within the process: TLS renegotiation failures after certificate rotation, SASL credential changes, topology
-        /// drift that breaks recovery, or client library bugs.  In these cases, automatic recovery will fail indefinitely,
-        /// producing repeated <c>ConnectionRecoveryErrorAsync</c> events while the application appears healthy to external
-        /// monitors (process is running, health-check port is open) but is functionally dead (no working AMQP
-        /// connection).</para>
+        /// <para><b>Pool-managed recovery:</b> TCP healing is normally performed by <see cref="Connections.ConnectionPool"/>
+        /// and <see cref="Connections.RabbitMqBackgroundScaler"/> because client-library automatic recovery is disabled in
+        /// <see cref="Connections.RabbitMqConnectionFactory.CreateFactory"/>.</para>
         ///
-        /// <para>When the consecutive failure count reaches this threshold, <see cref="Connections.RabbitMqConnectionFactory"/>
-        /// logs at <see cref="LogLevel.Critical"/> and calls
-        /// <see cref="IHostApplicationLifetime.StopApplication"/> to initiate a graceful shutdown.  The external process
-        /// supervisor (systemd <c>Restart=always</c>, Kubernetes <c>restartPolicy: Always</c>) then restarts the process,
-        /// which performs a fresh connection from scratch -- bypassing whatever stale state the client library's recovery
-        /// mechanism could not clear.</para>
+        /// <para><b>Fail-fast hook:</b> This threshold guards the dormant client-library recovery error handler path. If
+        /// automatic recovery were enabled and repeated <c>ConnectionRecoveryErrorAsync</c> events indicated an unrecoverable
+        /// zombie connection, the factory logs at <see cref="LogLevel.Critical"/> and stops the host so systemd/Kubernetes
+        /// can restart the process with a clean TCP handshake.</para>
         ///
-        /// <para><b>Default:</b> 10 consecutive failures.  At the default <see cref="NetworkRecoveryIntervalSeconds"/> of
-        /// 5 seconds, this triggers a shutdown after approximately 50 seconds of continuous recovery failure -- long enough
-        /// to ride out a rolling broker restart (typically &lt; 30 s) but short enough to avoid prolonged zombie
-        /// operation.</para>
+        /// <para><b>Default:</b> 10 consecutive handler events.  With the default <see cref="NetworkRecoveryIntervalSeconds"/>
+        /// of 5 seconds, that is roughly 50 seconds of continuous recovery failure before shutdown.</para>
         ///
-        /// <para><b>Disable:</b> Set to <c>0</c> to disable the fail-fast mechanism entirely, preserving the original
-        /// behaviour where recovery retries indefinitely.  This is appropriate only if an external liveness probe (e.g.,
-        /// Kubernetes liveness check against <c>IConnection.IsOpen</c>) handles the zombie-detection responsibility.</para>
+        /// <para><b>Disable:</b> Set to <c>0</c> to disable the fail-fast hook.  Use only when an external liveness probe
+        /// owns zombie detection.</para>
         ///
-        /// <para><b>Consumer:</b> Read by <c>RabbitMqConnectionFactory.AttachConnectionEventHandlers</c> and
-        /// evaluated in the <see cref="RabbitMQ.Client.IConnection.ConnectionRecoveryErrorAsync"/> event handler.</para>
+        /// <para><b>Consumer:</b> Evaluated in <c>RabbitMqConnectionFactory.AttachConnectionEventHandlers</c> on
+        /// <see cref="RabbitMQ.Client.IConnection.ConnectionRecoveryErrorAsync"/>.</para>
         /// </remarks>
         /// <value>Defaults to <c>10</c>.</value>
         [Range(0, 1000, ErrorMessage = "RabbitMQ:MaxConsecutiveRecoveryFailures must be between 0 (disabled) and 1,000.")]
@@ -408,19 +400,19 @@ namespace Vector.NNTP.MessageBus.Configuration
         public int RequestedHeartbeatSeconds { get; set; } = 15;
 
         /// <summary>
-        /// Delay in seconds between automatic recovery attempts after a connection loss.
+        /// Interval in seconds assigned to <see cref="RabbitMQ.Client.ConnectionFactory.NetworkRecoveryInterval"/> and
+        /// referenced in shutdown/recovery log messages.
         /// </summary>
         /// <remarks>
-        /// <para>Balances reconnection responsiveness against the risk of a connection storm when many instances recover
-        /// simultaneously after a broker restart.  At the default of 5 seconds, the client retries quickly enough for
-        /// sub-10-second failovers but slowly enough that a fleet of NNRPD instances does not overwhelm a recovering
-        /// broker.</para>
+        /// <para><b>Pool-managed recovery:</b> Active reconnect backoff for new TCP connections uses
+        /// <see cref="PoolReconnectBaseDelayMs"/> and <see cref="PoolReconnectMaxDelayMs"/> via
+        /// <see cref="Connections.HostHealthTracker"/>, not this property.</para>
         ///
-        /// <para>The RabbitMQ client library applies this delay uniformly between each reconnection attempt, cycling
-        /// through all endpoints in <see cref="Hosts"/>.</para>
+        /// <para><b>Factory setting:</b> Still applied to <see cref="RabbitMQ.Client.ConnectionFactory"/> for API
+        /// completeness and for recovery-event log context.  Client-library automatic recovery is disabled today, so this
+        /// interval does not drive live reconnect loops unless factory recovery flags change.</para>
         ///
-        /// <para><b>Consumer:</b> Read by <see cref="Connections.RabbitMqConnectionFactory"/> and applied to
-        /// <see cref="RabbitMQ.Client.ConnectionFactory.NetworkRecoveryInterval"/>.</para>
+        /// <para><b>Consumer:</b> Read by <see cref="Connections.RabbitMqConnectionFactory.CreateFactory"/>.</para>
         /// </remarks>
         /// <value>Defaults to <c>5</c> seconds.</value>
         [Range(1, 60, ErrorMessage = "RabbitMQ:NetworkRecoveryIntervalSeconds must be between 1 and 60.")]

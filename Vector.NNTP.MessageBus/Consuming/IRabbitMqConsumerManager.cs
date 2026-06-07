@@ -42,6 +42,7 @@ namespace Vector.NNTP.MessageBus.Consuming
         /// <exception cref="Exceptions.MessageBusUnavailableException">
         /// Thrown when the manager is stopped or no pooled TCP connection is available.
         /// </exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during registration.</exception>
         public Task<Guid> RegisterSubscriptionAsync(
             string queue,
             AsyncEventHandler<BasicDeliverEventArgs> handler,
@@ -51,7 +52,8 @@ namespace Vector.NNTP.MessageBus.Consuming
         /// Stops accepting new subscriptions and disposes all active consumer channels.
         /// </summary>
         /// <param name="cancellationToken">Host shutdown cancellation token.</param>
-        /// <returns>A task representing the asynchronous stop operation.</returns>
+        /// <returns>A task that completes after all consumer channels are closed.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled while waiting on the registration gate.</exception>
         public Task StopAsync(CancellationToken cancellationToken);
     }
 }

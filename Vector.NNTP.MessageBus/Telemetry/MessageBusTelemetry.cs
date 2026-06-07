@@ -18,7 +18,7 @@ namespace Vector.NNTP.MessageBus.Telemetry
     /// </para>
     /// <para><b>Spans:</b> <c>messagebus.publish</c>, <c>messagebus.consume</c>, and connection/pool lifecycle spans
     /// emitted by pool, publisher, and consumer components.</para>
-    /// <para>The source is process-wide and reused for all activity creation to avoid repeated allocations.</para>
+    /// <para><b>Allocation:</b> The source is process-wide and reused for all activity creation to avoid repeated allocations.</para>
     /// </remarks>
     internal static class MessageBusTelemetry
     {

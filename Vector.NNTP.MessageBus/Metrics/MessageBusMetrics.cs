@@ -11,8 +11,9 @@ namespace Vector.NNTP.MessageBus.Metrics
     /// Holds OpenTelemetry instruments used by MessageBus publishers, consumers, and health tracking.
     /// </summary>
     /// <remarks>
-    /// <para>This type is registered as a singleton so hot-path components can increment counters without static globals.</para>
-    /// <para>Label values are bounded to prevent metric cardinality growth in long-running servers.</para>
+    /// <para><b>Layering:</b> Registered as a singleton so hot-path components increment counters without static globals.</para>
+    /// <para><b>Cardinality:</b> Failure and health label values are bounded to prevent unbounded metric growth in
+    /// long-running servers.</para>
     /// </remarks>
     internal sealed class MessageBusMetrics
     {
@@ -38,7 +39,7 @@ namespace Vector.NNTP.MessageBus.Metrics
         private readonly Counter<long> _healthCounter;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="MessageBusMetrics"/> class.
+        /// Creates OpenTelemetry counters for publisher, consumer, and pool health signals.
         /// </summary>
         public MessageBusMetrics()
         {

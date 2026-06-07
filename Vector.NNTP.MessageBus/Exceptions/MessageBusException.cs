@@ -24,19 +24,19 @@ namespace Vector.NNTP.MessageBus.Exceptions
     /// </remarks>
     public class MessageBusException : Exception
     {
-        /// <summary>Initializes a new instance of the <see cref="MessageBusException"/> class.</summary>
+        /// <summary>Creates a MessageBus exception with default framework message text.</summary>
         public MessageBusException()
         {
         }
 
-        /// <summary>Initializes a new instance of the <see cref="MessageBusException"/> class.</summary>
+        /// <summary>Creates a MessageBus exception with the specified operator-facing message.</summary>
         /// <param name="message">Human-readable error description.</param>
         public MessageBusException(string message)
             : base(message)
         {
         }
 
-        /// <summary>Initializes a new instance of the <see cref="MessageBusException"/> class.</summary>
+        /// <summary>Creates a MessageBus exception wrapping an underlying AMQP, DNS, or I/O failure.</summary>
         /// <param name="message">Human-readable error description.</param>
         /// <param name="innerException">Underlying cause (AMQP, DNS, or I/O failure), when present.</param>
         public MessageBusException(string message, Exception? innerException)

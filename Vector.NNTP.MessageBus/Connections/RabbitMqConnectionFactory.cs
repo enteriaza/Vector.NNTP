@@ -81,13 +81,14 @@ namespace Vector.NNTP.MessageBus.Connections
     /// addresses (e.g., an AWS Amazon MQ HA cluster providing 3 nodes).  Each host is mapped to an
     /// <see cref="AmqpTcpEndpoint"/> and passed to
     /// <see cref="ConnectionFactory.CreateConnectionAsync(IEnumerable{AmqpTcpEndpoint}, CancellationToken)"/>.
-    /// The client library attempts each endpoint in order until one succeeds; automatic recovery cycles through all
-    /// endpoints on reconnect, providing transparent failover.</para>
+    /// The client library attempts each endpoint in order until one succeeds at connect time.</para>
     ///
-    /// <para><b>Automatic recovery:</b> Both connection and topology recovery are unconditionally enabled -- they are not
-    /// operator-configurable because the <see cref="ConnectionPool"/> lifecycle model
-    /// (<c>Empty -> Connected -> Cleared</c>) requires automatic recovery to function.  Disabling recovery would cause
-    /// transient broker failures to permanently break the application until a process restart.</para>
+    /// <para><b>Pool-managed recovery:</b> Client-library automatic recovery is intentionally disabled
+    /// (<c>AutomaticRecoveryEnabled = false</c>, <c>TopologyRecoveryEnabled = false</c> in <see cref="CreateFactory"/>).
+    /// <see cref="ConnectionPool"/> owns TCP lifecycle instead: faulted entries are removed, waiters are signalled, and
+    /// <see cref="RabbitMqBackgroundScaler"/> opens replacement connections with jittered host backoff via
+    /// <see cref="HostHealthTracker"/>. This keeps slot accounting, flow-control quarantine, and snapshot semantics under
+    /// explicit pool control rather than opaque client-library reconnect loops.</para>
     ///
     /// <para><b>Connection lifecycle events:</b> After a successful connect, <see cref="AttachConnectionEventHandlers"/>
     /// subscribes to all <see cref="IConnection"/> lifecycle events:</para>
@@ -110,11 +111,11 @@ namespace Vector.NNTP.MessageBus.Connections
     ///
     /// <para><b>Connection parameters:</b></para>
     /// <list type="bullet">
-    ///   <item><description><c>AutomaticRecoveryEnabled</c> + <c>TopologyRecoveryEnabled</c> -- always <c>true</c>;
-    ///     non-configurable (see above).</description></item>
+    ///   <item><description><c>AutomaticRecoveryEnabled</c> + <c>TopologyRecoveryEnabled</c> -- always <c>false</c>;
+    ///     pool-managed replacement instead of client-library reconnect (see <b>Pool-managed recovery</b>).</description></item>
     ///   <item><description><c>NetworkRecoveryInterval</c> -- from
-    ///     <see cref="RabbitMQOptions.NetworkRecoveryIntervalSeconds"/>; delay between reconnection
-    ///     attempts.</description></item>
+    ///     <see cref="RabbitMQOptions.NetworkRecoveryIntervalSeconds"/>; assigned for log context and client-library API
+    ///     completeness (live reconnect uses pool backoff while automatic recovery is disabled).</description></item>
     ///   <item><description><c>RequestedHeartbeat</c> -- from <see cref="RabbitMQOptions.RequestedHeartbeatSeconds"/>;
     ///     AMQP heartbeat interval; the server declares the connection dead after 2x this value.</description></item>
     ///   <item><description><c>RequestedFrameMax</c> (<see cref="MaxFrameSize"/>) -- maximum AMQP frame size; keeps
@@ -229,9 +230,9 @@ namespace Vector.NNTP.MessageBus.Connections
         #region Fields
 
         /// <summary>
-        /// Tracks the number of consecutive automatic recovery failures since the last successful recovery or initial
-        /// connection.  Incremented atomically in the <see cref="IConnection.ConnectionRecoveryErrorAsync"/> handler;
-        /// reset to zero in the <see cref="IConnection.RecoverySucceededAsync"/> handler.
+        /// Tracks consecutive <see cref="IConnection.ConnectionRecoveryErrorAsync"/> events for the fail-fast shutdown hook.
+        /// Incremented in the recovery-error handler; reset in <see cref="IConnection.RecoverySucceededAsync"/>.  Dormant while
+        /// client-library automatic recovery remains disabled in <see cref="CreateFactory"/>.
         /// </summary>
         /// <remarks>
         /// <para><b>Thread safety:</b> Accessed exclusively via <see cref="Interlocked.Increment(ref int)"/> (in the
@@ -334,8 +335,8 @@ namespace Vector.NNTP.MessageBus.Connections
         /// passed <see cref="RabbitMQOptionsValidator.Validate"/>.</param>
         /// <param name="cancellationToken">Cancellation token propagated to the underlying connection attempt.  Cancelled
         /// when the host is shutting down or the startup timeout expires.</param>
-        /// <returns>A <see cref="Task{IConnection}"/> that resolves to an open AMQP connection with automatic recovery
-        /// enabled and lifecycle event handlers attached.</returns>
+        /// <returns>A <see cref="Task{IConnection}"/> that resolves to an open AMQP connection with lifecycle event
+        /// handlers attached (client-library automatic recovery disabled — see <see cref="CreateFactory"/>).</returns>
         /// <exception cref="RabbitMQ.Client.Exceptions.BrokerUnreachableException">All configured endpoints failed to
         /// connect.</exception>
         /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before a
@@ -381,10 +382,10 @@ namespace Vector.NNTP.MessageBus.Connections
         ///   <item><description>Credentials (<see cref="RabbitMQOptions.Username"/>,
         ///     <see cref="RabbitMQOptions.Password"/>) and <see cref="RabbitMQOptions.VirtualHost"/> from the validated
         ///     options.</description></item>
-        ///   <item><description>Automatic recovery + topology recovery -- always enabled (non-configurable); required by the
-        ///     <see cref="ConnectionPool"/> lifecycle model.</description></item>
-        ///   <item><description><see cref="RabbitMQOptions.NetworkRecoveryIntervalSeconds"/> -- delay between reconnection
-        ///     attempts.</description></item>
+        ///   <item><description>Automatic recovery + topology recovery -- always disabled; <see cref="ConnectionPool"/> and
+        ///     <see cref="RabbitMqBackgroundScaler"/> replace faulted TCP entries explicitly.</description></item>
+        ///   <item><description><see cref="RabbitMQOptions.NetworkRecoveryIntervalSeconds"/> -- assigned to
+        ///     <c>NetworkRecoveryInterval</c> (pool-managed reconnect uses <see cref="HostHealthTracker"/> instead).</description></item>
         ///   <item><description><see cref="RabbitMQOptions.RequestedHeartbeatSeconds"/> -- AMQP heartbeat; dead after
         ///     2x.</description></item>
         ///   <item><description><see cref="MaxFrameSize"/> -- 128 KB maximum AMQP frame.</description></item>
@@ -492,8 +493,8 @@ namespace Vector.NNTP.MessageBus.Connections
         /// TLS/SSL configuration.
         /// </summary>
         /// <remarks>
-        /// <para><b>Failover ordering:</b> The RabbitMQ client tries endpoints in declaration order on initial connect and
-        /// cycles through them on automatic recovery, providing transparent failover across an HA cluster.</para>
+        /// <para><b>Failover ordering:</b> The RabbitMQ client tries endpoints in declaration order on each new TCP
+        /// connect.  Replacement connections opened by <see cref="ConnectionPool"/> follow the same ordered endpoint list.</para>
         ///
         /// <para>Each host in <see cref="RabbitMQOptions.Hosts"/> is paired with the shared
         /// <see cref="RabbitMQOptions.Port"/> to form a single <see cref="AmqpTcpEndpoint"/>.  The resulting list typically

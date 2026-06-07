@@ -56,7 +56,7 @@ namespace Vector.NNTP.MessageBus.Publishing
         /// <summary>Logger factory used to create scope loggers without storing extra ILogger fields.</summary>
         private readonly ILoggerFactory _loggerFactory;
 
-        /// <summary>Initializes a new instance of the <see cref="RabbitMqPublisherPool"/> class.</summary>
+        /// <summary>Creates a publisher pool that opens confirms-enabled channels on leased connection slots.</summary>
         /// <param name="pool">Connection pool for slot acquisition.</param>
         /// <param name="options">RabbitMQ options (<see cref="RabbitMQOptions.PublishConfirmTimeout"/>).</param>
         /// <param name="logger">Logger for debug scope creation events.</param>
@@ -90,6 +90,7 @@ namespace Vector.NNTP.MessageBus.Publishing
         /// <exception cref="MessageBusUnavailableException">Thrown when the pool is not accepting new leases.</exception>
         /// <exception cref="MessageBusLeaseTimeoutException">Thrown when lease acquisition exceeds the configured timeout.</exception>
         /// <exception cref="MessageBusConnectionFaultException">Thrown when channel creation fails after lease acquisition.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during slot wait or channel creation.</exception>
         async Task<IPublisherScope> IRabbitMqPublisherPool.CreateScopeAsync(CancellationToken cancellationToken)
         {
             PublisherSlotLease slot = await _pool.AcquirePublisherSlotAsync(cancellationToken).ConfigureAwait(false);

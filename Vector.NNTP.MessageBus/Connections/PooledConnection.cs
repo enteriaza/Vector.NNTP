@@ -41,7 +41,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <summary>Underlying AMQP connection; cleared on dispose.</summary>
         private IConnection? _connection;
 
-        /// <summary>Initializes a new instance of the <see cref="PooledConnection"/> class.</summary>
+        /// <summary>Wraps an open AMQP connection with slot accounting and flow-control state for pool routing.</summary>
         /// <param name="connectionId">Stable pool-local identifier for logging and fault handling.</param>
         /// <param name="hostIndex">Index into <see cref="RabbitMQOptions.Hosts"/> used for this TCP connection.</param>
         /// <param name="connection">Open AMQP connection from <see cref="RabbitMqConnectionFactory"/>.</param>
@@ -163,7 +163,7 @@ namespace Vector.NNTP.MessageBus.Connections
         }
 
         /// <summary>Closes and disposes the underlying <see cref="IConnection"/>.</summary>
-        /// <returns>A <see cref="ValueTask"/> representing the asynchronous dispose operation.</returns>
+        /// <returns>A value task that completes after the underlying <see cref="IConnection"/> is closed and disposed.</returns>
         /// <remarks><b>Idempotency:</b> Safe to call multiple times; only the first call closes TCP.</remarks>
         public async ValueTask DisposeAsync()
         {

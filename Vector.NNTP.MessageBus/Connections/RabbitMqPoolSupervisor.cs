@@ -55,7 +55,8 @@ namespace Vector.NNTP.MessageBus.Connections
         /// Starts the connection pool and records initial health.
         /// </summary>
         /// <param name="cancellationToken">Host startup cancellation token.</param>
-        /// <returns>A task representing the asynchronous start operation.</returns>
+        /// <returns>A task that completes after the pool starts and initial health is published.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during pool startup.</exception>
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             await _pool.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -69,7 +70,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// Disposes the pool, bounded by <see cref="RabbitMQOptions.MaximumShutdownDrainTimeout"/>.
         /// </summary>
         /// <param name="cancellationToken">Host shutdown cancellation token.</param>
-        /// <returns>A task representing the asynchronous stop operation.</returns>
+        /// <returns>A task that completes after the pool is disposed or the shutdown drain timeout elapses.</returns>
         public async Task StopAsync(CancellationToken cancellationToken)
         {
             using CancellationTokenSource drainCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

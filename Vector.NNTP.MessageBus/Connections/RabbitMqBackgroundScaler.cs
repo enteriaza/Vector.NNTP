@@ -50,7 +50,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// Processes scale-up signals until host shutdown.
         /// </summary>
         /// <param name="stoppingToken">Host shutdown token.</param>
-        /// <returns>A task representing the background loop.</returns>
+        /// <returns>A task that runs until the host stopping token is canceled.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             await foreach (bool scaleUpSignal in _pool.ScaleUpReader.ReadAllAsync(stoppingToken).ConfigureAwait(false))

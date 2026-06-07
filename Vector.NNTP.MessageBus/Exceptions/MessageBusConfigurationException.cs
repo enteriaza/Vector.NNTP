@@ -19,7 +19,6 @@ namespace Vector.NNTP.MessageBus.Exceptions
     ///
     /// <para><b>Distinct from:</b> Runtime <see cref="MessageBusUnavailableException"/> during broker outages.</para>
     /// </remarks>
-    /// <remarks>Initializes a new instance of the <see cref="MessageBusConfigurationException"/> class.</remarks>
     /// <param name="message">Validation failure description suitable for operator logs.</param>
     public sealed class MessageBusConfigurationException(string message) : MessageBusException(message)
     {

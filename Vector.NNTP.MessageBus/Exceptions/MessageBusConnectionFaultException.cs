@@ -18,7 +18,6 @@ namespace Vector.NNTP.MessageBus.Exceptions
     /// <para><b>Recovery:</b> Retry on a new scope; allow <see cref="Connections.RabbitMqPoolSupervisor"/> and background
     /// scaler to heal the TCP layer.</para>
     /// </remarks>
-    /// <remarks>Initializes a new instance of the <see cref="MessageBusConnectionFaultException"/> class.</remarks>
     /// <param name="message">Human-readable failure context.</param>
     /// <param name="innerException">Underlying AMQP or I/O exception, when present.</param>
     public sealed class MessageBusConnectionFaultException(string message, Exception? innerException = null) : MessageBusException(message, innerException)

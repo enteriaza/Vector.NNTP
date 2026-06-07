@@ -9,8 +9,8 @@ namespace Vector.NNTP.MessageBus.Exceptions
     /// Classifies MessageBus exceptions into stable low-cardinality categories.
     /// </summary>
     /// <remarks>
-    /// <para>The returned class labels are intended for structured logs and metrics tags.</para>
-    /// <para>All labels are ASCII, bounded, and suitable for long-running telemetry pipelines.</para>
+    /// <para><b>Policy:</b> Returned class labels are intended for structured logs and metrics tags.</para>
+    /// <para><b>Cardinality:</b> All labels are ASCII, bounded, and suitable for long-running telemetry pipelines.</para>
     /// </remarks>
     internal static class MessageBusFailureClassifier
     {

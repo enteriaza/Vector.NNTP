@@ -61,7 +61,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// Periodically enforces stalled quarantine and updates pool health until shutdown.
         /// </summary>
         /// <param name="stoppingToken">Host shutdown token.</param>
-        /// <returns>A task representing the background scan loop.</returns>
+        /// <returns>A task that runs periodic flow-control scans until host shutdown.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)

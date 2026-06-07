@@ -29,6 +29,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <returns>A task that resolves to an open connection.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is <see langword="null"/>.</exception>
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled before connect completes.</exception>
+        /// <exception cref="RabbitMQ.Client.Exceptions.BrokerUnreachableException">Thrown when all configured broker endpoints fail to connect.</exception>
         public Task<IConnection> CreateConnectionAsync(RabbitMQOptions options, CancellationToken cancellationToken = default);
     }
 }

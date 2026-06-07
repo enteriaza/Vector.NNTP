@@ -140,8 +140,8 @@ namespace Vector.NNTP.MessageBus.Connections
         /// elapsed time reflects only the async TCP/AMQP handshake, not synchronous configuration overhead.</param>
         /// <param name="cancellationToken">Cancellation token forwarded to the RabbitMQ client library.  Cancelled when
         /// the host is shutting down or the startup timeout expires.</param>
-        /// <returns>An open <see cref="IConnection"/> with automatic recovery enabled and lifecycle event handlers
-        /// attached.</returns>
+        /// <returns>An open <see cref="IConnection"/> with lifecycle event handlers attached. Client-library automatic
+        /// recovery is disabled — the pool replaces faulted connections.</returns>
         /// <exception cref="RabbitMQ.Client.Exceptions.BrokerUnreachableException">All configured endpoints failed to
         /// connect.  Logged at <see cref="LogLevel.Error"/> before rethrowing.</exception>
         /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled or the

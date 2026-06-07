@@ -97,8 +97,10 @@ namespace Vector.NNTP.MessageBus.Connections
         /// Opens <see cref="RabbitMQOptions.MinConnections"/> TCP connections.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token for connection establishment.</param>
-        /// <returns>A task representing the asynchronous start operation.</returns>
+        /// <returns>A task that completes after <see cref="RabbitMQOptions.MinConnections"/> TCP connections are opened.</returns>
         /// <exception cref="ObjectDisposedException">Thrown when the pool has been disposed.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during connect.</exception>
+        /// <exception cref="RabbitMQ.Client.Exceptions.BrokerUnreachableException">Propagated when all broker endpoints fail during connect.</exception>
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -119,6 +121,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <exception cref="MessageBusLeaseTimeoutException">
         /// Thrown when no slot becomes available before <see cref="RabbitMQOptions.ChannelLeaseTimeout"/>.
         /// </exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during slot wait.</exception>
         /// <remarks>
         /// <para><b>Acquisition loop:</b></para>
         /// <list type="number">
@@ -194,8 +197,9 @@ namespace Vector.NNTP.MessageBus.Connections
         /// Creates a new <see cref="PooledConnection"/>, attaches flow-control handlers, and appends to the snapshot.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token for TCP connect.</param>
-        /// <returns>The new pooled entry.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when factory returns null (should not occur).</exception>
+        /// <returns>The new pooled entry appended to <see cref="Snapshot"/>.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during connect.</exception>
+        /// <exception cref="RabbitMQ.Client.Exceptions.BrokerUnreachableException">Propagated when all broker endpoints fail.</exception>
         internal async Task<PooledConnection> AddConnectionAsync(CancellationToken cancellationToken)
         {
             RabbitMQOptions options = _options.Value;
@@ -297,7 +301,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <summary>
         /// Stops accepting slots, completes signal channels, and disposes all pooled connections.
         /// </summary>
-        /// <returns>A <see cref="ValueTask"/> representing the asynchronous dispose operation.</returns>
+        /// <returns>A value task that completes after all pooled connections are disposed and signals are completed.</returns>
         public async ValueTask DisposeAsync()
         {
             if (_disposed)

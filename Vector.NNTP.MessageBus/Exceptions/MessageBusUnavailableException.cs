@@ -18,7 +18,6 @@ namespace Vector.NNTP.MessageBus.Exceptions
     /// <para><b>Distinct from:</b> <see cref="MessageBusLeaseTimeoutException"/> (waited but no slot in time) and
     /// <see cref="MessageBusConfigurationException"/> (invalid static configuration).</para>
     /// </remarks>
-    /// <remarks>Initializes a new instance of the <see cref="MessageBusUnavailableException"/> class.</remarks>
     /// <param name="message">Human-readable failure context for logs and metrics.</param>
     public sealed class MessageBusUnavailableException(string message) : MessageBusException(message)
     {

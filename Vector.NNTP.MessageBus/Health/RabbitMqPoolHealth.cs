@@ -47,7 +47,7 @@ namespace Vector.NNTP.MessageBus.Health
         private readonly MessageBusMetrics _metrics;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="RabbitMqPoolHealth"/> class.
+        /// Creates a health aggregator that records pool status transitions via OpenTelemetry.
         /// </summary>
         /// <param name="metrics">Metrics sink for health transitions.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="metrics"/> is <see langword="null"/>.</exception>
@@ -57,7 +57,7 @@ namespace Vector.NNTP.MessageBus.Health
         }
 
         /// <summary>
-        /// Gets the latest computed aggregate pool health status.
+        /// Latest aggregate pool health derived from the last <see cref="UpdateFromPool"/> call.
         /// </summary>
         /// <remarks>
         /// Defaults to <see cref="PoolHealthStatus.Recovering"/> until the first update from pool state.

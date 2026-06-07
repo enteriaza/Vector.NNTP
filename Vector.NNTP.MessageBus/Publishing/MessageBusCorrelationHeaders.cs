@@ -9,7 +9,7 @@ namespace Vector.NNTP.MessageBus.Publishing
     /// Declares the stable AMQP header names used for MessageBus correlation metadata.
     /// </summary>
     /// <remarks>
-    /// <para>Header names are centralized to prevent divergent literals between publisher and consumer code paths.</para>
+    /// <para><b>Policy:</b> Header names are centralized to prevent divergent literals between publisher and consumer code paths.</para>
     /// </remarks>
     internal static class MessageBusCorrelationHeaders
     {

@@ -20,7 +20,6 @@ namespace Vector.NNTP.MessageBus.Exceptions
     /// <see cref="Configuration.RabbitMQOptions.MinConnections"/>, and
     /// <see cref="Configuration.RabbitMQOptions.MaxPendingLeaseWaiters"/> when this appears under steady-state load.</para>
     /// </remarks>
-    /// <remarks>Initializes a new instance of the <see cref="MessageBusLeaseTimeoutException"/> class.</remarks>
     /// <param name="message">Human-readable failure context for logs and metrics.</param>
     public sealed class MessageBusLeaseTimeoutException(string message) : MessageBusException(message)
     {

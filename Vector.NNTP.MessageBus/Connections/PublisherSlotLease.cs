@@ -35,7 +35,7 @@ namespace Vector.NNTP.MessageBus.Connections
         /// <summary><c>0</c> = active, <c>1</c> = slot released.</summary>
         private int _released;
 
-        /// <summary>Initializes a new instance of the <see cref="PublisherSlotLease"/> class.</summary>
+        /// <summary>Records a slot grant from <paramref name="pool"/> on <paramref name="connection"/>.</summary>
         /// <param name="pool">Owning connection pool.</param>
         /// <param name="connection">Connection that granted the slot permit.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="pool"/> or <paramref name="connection"/> is null.</exception>
@@ -48,7 +48,7 @@ namespace Vector.NNTP.MessageBus.Connections
         }
 
         /// <summary>
-        /// The pooled connection that owns this slot permit.
+        /// Pooled TCP connection that reserved one publisher slot for this lease.
         /// </summary>
         /// <remarks>Used by <see cref="Publishing.RabbitMqPublisherPool"/> to open an ephemeral <see cref="RabbitMQ.Client.IChannel"/>.</remarks>
         public PooledConnection Connection { get; }

@@ -12,7 +12,8 @@ namespace Vector.NNTP.MessageBus.Publishing
     /// Source-generated <see cref="LoggerMessageAttribute"/> methods for <see cref="RabbitMqPublisherScope"/>.
     /// </summary>
     /// <remarks>
-    /// These events capture per-scope publish faults with bounded classifier labels for production triage.
+    /// <para><b>Event ID range:</b> Publish failures use 300–309 (see file synopsis).</para>
+    /// <para><b>Logging:</b> Events capture per-scope publish faults with bounded classifier labels for production triage.</para>
     /// </remarks>
     internal sealed partial class RabbitMqPublisherScope
     {

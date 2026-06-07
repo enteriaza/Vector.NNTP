@@ -64,7 +64,7 @@ namespace Vector.NNTP.MessageBus.Publishing
         /// <summary>Non-zero after <see cref="DisposeAsync"/> has entered disposal.</summary>
         private int _disposed;
 
-        /// <summary>Initializes a new instance of the <see cref="RabbitMqPublisherScope"/> class.</summary>
+        /// <summary>Binds a confirms-enabled channel to a publisher slot lease for the scope lifetime.</summary>
         /// <param name="scopeId">Stable scope identifier used for logging and tracing.</param>
         /// <param name="slotLease">Owning slot lease; disposed after the channel.</param>
         /// <param name="channel">Open ephemeral channel with confirms enabled.</param>
@@ -88,7 +88,7 @@ namespace Vector.NNTP.MessageBus.Publishing
         }
 
         /// <summary>
-        /// Gets the unique identifier assigned to this publisher scope.
+        /// Stable identifier for structured logging and OpenTelemetry publish spans.
         /// </summary>
         public Guid ScopeId { get; }
 
@@ -103,6 +103,7 @@ namespace Vector.NNTP.MessageBus.Publishing
         /// <returns>A value task that completes when broker confirmation arrives.</returns>
         /// <exception cref="ObjectDisposedException">Thrown when the scope has been disposed.</exception>
         /// <exception cref="MessageBusPublishConfirmTimeoutException">Thrown when confirm wait exceeds timeout while caller token remains active.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled before confirm completes.</exception>
         public async ValueTask PublishAsync(
             string exchange,
             string routingKey,
