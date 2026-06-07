@@ -165,6 +165,32 @@ namespace Vector.NNTP.Tests.Sockets
         }
 
         /// <summary>
+        /// Verifies reader commands reject syntactically invalid Message-ID selectors with 501.
+        /// </summary>
+        /// <param name="commandLine">Authenticated reader command line.</param>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [TestCase("ARTICLE <a@>")]
+        [TestCase("OVER <a@>")]
+        [TestCase("HDR Subject <a@>")]
+        public async Task Reader_InvalidMessageId_Returns501(string commandLine)
+        {
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateReader();
+            try
+            {
+                await harness.AuthenticateAsync().ConfigureAwait(false);
+                await harness.SendAsync("GROUP test.local").ConfigureAwait(false);
+                _ = await harness.ReadLineAsync().ConfigureAwait(false);
+                await harness.SendAsync(commandLine).ConfigureAwait(false);
+                string line = await harness.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(line, Does.StartWith("501 "));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
         /// Verifies NEWGROUPS and SLAVE return 503.
         /// </summary>
         /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>

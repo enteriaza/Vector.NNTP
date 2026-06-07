@@ -27,13 +27,15 @@ namespace Vector.NNTP.Sockets.Session
         /// <param name="hostRole">Reader or transit role.</param>
         /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
         /// <param name="transitPeerName">Configured transit peer name when Redis admission succeeded.</param>
+        /// <param name="transitPeerMatchedEntry">AcceptFrom entry that matched the peer address, when known.</param>
         public NntpConnectionContext(
             string sessionId,
             IPEndPoint clientRemoteEndPoint,
             IPEndPoint proxyHopEndPoint,
             NntpHostRole hostRole,
             string nodeName,
-            string? transitPeerName = null)
+            string? transitPeerName = null,
+            string? transitPeerMatchedEntry = null)
         {
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             ArgumentNullException.ThrowIfNull(clientRemoteEndPoint);
@@ -45,6 +47,7 @@ namespace Vector.NNTP.Sockets.Session
             HostRole = hostRole;
             NodeName = nodeName;
             TransitPeerName = transitPeerName;
+            TransitPeerMatchedEntry = transitPeerMatchedEntry;
             SessionStartedUtc = DateTimeOffset.UtcNow;
             ConnectionLogPrefix = FormattingUtilities.FormatConnectionLogPrefix(clientRemoteEndPoint);
         }
@@ -92,6 +95,15 @@ namespace Vector.NNTP.Sockets.Session
         /// Gets the configured transit peer name when this connection was admitted as a trusted transit peer.
         /// </summary>
         public string? TransitPeerName { get; }
+
+        /// <summary>
+        /// Gets the <c>AcceptFrom</c> configuration entry that matched this peer (literal IP, CIDR, or hostname text).
+        /// </summary>
+        /// <remarks>
+        /// Populated at accept time for trusted transit peers. Used when resolving peer hostnames for SpamAssassin scan
+        /// header synthesis without repeating DNS policy work on the writer path.
+        /// </remarks>
+        public string? TransitPeerMatchedEntry { get; }
 
         /// <summary>
         /// Gets a value indicating whether this connection is a trusted transit peer (match + Redis admission).

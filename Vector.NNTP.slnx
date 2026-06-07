@@ -43,6 +43,12 @@
     <BuildDependency Project="Vector.NNTP.Session/Vector.NNTP.Session.csproj" />
     <Platform Project="x64" />
   </Project>
+  <Project Path="Vector.NNTP.Articles/Vector.NNTP.Articles.csproj" Id="f7a8b9c0-d1e2-3456-7890-abcdef123456">
+    <BuildDependency Project="Vector.NNTP.Sockets/Vector.NNTP.Sockets.csproj" />
+    <BuildDependency Project="Vector.NNTP.HistoryDB/Vector.NNTP.HistoryDB.csproj" />
+    <BuildDependency Project="Vector.NNTP.Utilities/Vector.NNTP.Utilities.csproj" />
+    <Platform Project="x64" />
+  </Project>
   <Project Path="Vector.NNTP.MessageBus/Vector.NNTP.MessageBus.csproj" Id="bb35d90a-ca94-43f1-9ad9-a3809ce22971">
     <Platform Project="x64" />
   </Project>

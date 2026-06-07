@@ -36,6 +36,11 @@ namespace Vector.NNTP.HistoryDB.Services
         private readonly RocksHistoryStore _rocks = null!;
 
         /// <summary>
+        /// Tombstones that suppress persist for released digests still queued.
+        /// </summary>
+        private readonly HistoryReleaseTombstoneSet _releaseTombstones = null!;
+
+        /// <summary>
         /// Metrics recorder for persist throughput and slow-milestone logging.
         /// </summary>
         private readonly HistoryMetrics _metrics = null!;
@@ -49,17 +54,20 @@ namespace Vector.NNTP.HistoryDB.Services
         /// Initializes a new instance of the <see cref="HistoryRocksPersistPump"/> class.
         /// </summary>
         /// <param name="rocks">Rocks store.</param>
+        /// <param name="releaseTombstones">Persist tombstone registry.</param>
         /// <param name="metrics">Metrics.</param>
         /// <param name="options">History options.</param>
         /// <param name="logger">Logger for source-generated <c>[LoggerMessage]</c> methods.</param>
         public HistoryRocksPersistPump(
             RocksHistoryStore rocks,
+            HistoryReleaseTombstoneSet releaseTombstones,
             HistoryMetrics metrics,
             IOptions<HistoryDbOptions> options,
             ILogger<HistoryRocksPersistPump> logger)
             : this(logger)
         {
             _rocks = rocks;
+            _releaseTombstones = releaseTombstones;
             _metrics = metrics;
             _options = options.Value;
         }
@@ -121,6 +129,12 @@ namespace Vector.NNTP.HistoryDB.Services
                 {
                     try
                     {
+                        if (_releaseTombstones.IsTombstoned(item.Digest))
+                        {
+                            history.NotifyPersistDequeued();
+                            continue;
+                        }
+
                         _rocks.PutReservation(item.Digest, item.ExpirationEpochSeconds);
                         _metrics.RecordRocksPersist();
                         history.NotifyPersistDequeued();

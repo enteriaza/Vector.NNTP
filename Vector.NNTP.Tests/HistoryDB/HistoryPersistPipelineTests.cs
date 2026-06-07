@@ -37,8 +37,10 @@ namespace Vector.NNTP.Tests.HistoryDB
                 });
                 var metrics = new HistoryMetrics();
                 using var rocks = new RocksHistoryStore(options, metrics, NullLogger<RocksHistoryStore>.Instance);
+                var tombstones = new HistoryReleaseTombstoneSet();
                 var pump = new HistoryRocksPersistPump(
                     rocks,
+                    tombstones,
                     metrics,
                     options,
                     NullLogger<HistoryRocksPersistPump>.Instance);
@@ -55,6 +57,8 @@ namespace Vector.NNTP.Tests.HistoryDB
                     redis,
                     metrics,
                     pump,
+                    rocks,
+                    tombstones,
                     lifetime,
                     NullLogger<HistoryDatabaseService>.Instance);
 

@@ -58,5 +58,19 @@ namespace Vector.NNTP.Tests.HistoryDB.Fakes
             this._recorded.Add(messageId);
             return ValueTask.FromResult(HistoryRecordResult.Recorded);
         }
+
+        /// <inheritdoc />
+        public ValueTask<HistoryReleaseResult> TryReleaseAsync(string messageId, CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            if (!this._operational)
+            {
+                return ValueTask.FromResult(HistoryReleaseResult.Unavailable);
+            }
+
+            return this._recorded.Remove(messageId)
+                ? ValueTask.FromResult(HistoryReleaseResult.Released)
+                : ValueTask.FromResult(HistoryReleaseResult.NotFound);
+        }
     }
 }

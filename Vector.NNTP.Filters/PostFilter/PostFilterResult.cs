@@ -13,9 +13,6 @@ namespace Vector.NNTP.Filters.PostFilter
     /// <para><b>Performance:</b> COLD PATH — small value type returned to the NNTP layer; optional rewritten body is
     /// carried as a <see cref="ReadOnlyMemory{T}"/>.</para>
     /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="PostFilterResult"/> struct.
-    /// </remarks>
     /// <param name="clientShouldSeeSuccess">When false, the host should send an NNTP 4xx style rejection with <see cref="ClientMessage"/>.</param>
     /// <param name="dropArticleAfterSuccessResponse">When true with <see cref="ClientShouldSeeSuccess"/>, the client may receive 240 while the article must not be stored.</param>
     /// <param name="code">Numeric postfilter-style code (0 on success path).</param>
@@ -49,24 +46,25 @@ namespace Vector.NNTP.Filters.PostFilter
         public ReadOnlyMemory<byte>? ModifiedArticleUtf8 { get; } = modifiedArticleUtf8;
 
         /// <summary>Builds an unconditional accept (no body rewrite).</summary>
-        /// <returns>Accept result.</returns>
+        /// <returns>Accept result mapped to NNTP 240 with storage allowed.</returns>
+        /// <remarks>Sets <see cref="ClientShouldSeeSuccess"/> to <see langword="true"/> and leaves <see cref="ModifiedArticleUtf8"/> null.</remarks>
         public static PostFilterResult Accept()
         {
             return new(clientShouldSeeSuccess: true, dropArticleAfterSuccessResponse: false, code: 0, clientMessage: null, modifiedArticleUtf8: null);
         }
 
         /// <summary>Builds an accept with optional modified article payload.</summary>
-        /// <param name="modifiedArticleUtf8">Rewritten article.</param>
-        /// <returns>Accept result.</returns>
+        /// <param name="modifiedArticleUtf8">Rewritten article bytes to store instead of the original POST buffer.</param>
+        /// <returns>Accept result mapped to NNTP 240 with storage allowed.</returns>
         public static PostFilterResult AcceptWithBody(ReadOnlyMemory<byte> modifiedArticleUtf8)
         {
             return new(clientShouldSeeSuccess: true, dropArticleAfterSuccessResponse: false, code: 0, clientMessage: null, modifiedArticleUtf8: modifiedArticleUtf8);
         }
 
-        /// <summary>Builds a hard reject.</summary>
-        /// <param name="code">Numeric code.</param>
-        /// <param name="clientMessage">Message for 441-style response.</param>
-        /// <returns>Reject result.</returns>
+        /// <summary>Builds a hard reject visible to the NNTP client.</summary>
+        /// <param name="code">Numeric postfilter audit code carried in <see cref="Code"/>.</param>
+        /// <param name="clientMessage">Message for a 441-style rejection response.</param>
+        /// <returns>Reject result with <see cref="ClientShouldSeeSuccess"/> <see langword="false"/>.</returns>
         public static PostFilterResult Reject(int code, string clientMessage)
         {
             return new(clientShouldSeeSuccess: false, dropArticleAfterSuccessResponse: false, code: code, clientMessage: clientMessage, modifiedArticleUtf8: null);

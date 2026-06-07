@@ -49,8 +49,10 @@ namespace Vector.NNTP.Tests.HistoryDB
             string rocksDir = Path.Combine(Path.GetTempPath(), "historydb-alloc-" + Guid.NewGuid().ToString("N"));
             var rocksOptions = Options.Create(new HistoryDbOptions { DbDir = rocksDir, RememberDays = 2, QueueCapacity = 1024 });
             using var rocks = new RocksHistoryStore(rocksOptions, metrics, NullLogger<RocksHistoryStore>.Instance);
+            var tombstones = new HistoryReleaseTombstoneSet();
             var pump = new HistoryRocksPersistPump(
                 rocks,
+                tombstones,
                 metrics,
                 rocksOptions,
                 NullLogger<HistoryRocksPersistPump>.Instance);
@@ -60,6 +62,8 @@ namespace Vector.NNTP.Tests.HistoryDB
                 redis,
                 metrics,
                 pump,
+                rocks,
+                tombstones,
                 new NullHostApplicationLifetime(),
                 NullLogger<HistoryDatabaseService>.Instance);
             service.SetOperational();

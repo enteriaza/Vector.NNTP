@@ -59,6 +59,7 @@ namespace Vector.NNTP.HistoryDB.DependencyInjection
             _ = services.AddSingleton<RocksHistoryStore>();
             _ = services.AddSingleton<HistoryRedisStore>();
             _ = services.AddSingleton<HistoryGenerationStore>();
+            _ = services.AddSingleton<HistoryReleaseTombstoneSet>();
             _ = services.AddSingleton<HistoryRocksPersistPump>();
             _ = services.AddSingleton<HistoryDatabaseService>();
             _ = services.AddSingleton<IHistoryDatabase>(sp => sp.GetRequiredService<HistoryDatabaseService>());

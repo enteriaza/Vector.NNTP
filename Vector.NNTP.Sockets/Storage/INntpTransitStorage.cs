@@ -35,11 +35,17 @@ namespace Vector.NNTP.Sockets.Storage
         /// </summary>
         /// <param name="messageId">Message-ID.</param>
         /// <param name="articleBytes">Article bytes.</param>
+        /// <param name="origin">Peer identity and reception timestamp captured at enqueue.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>
-        /// <see langword="true"/> when storage accepted the article. Command handlers map this to
-        /// <c>235 Article transferred OK</c> for IHAVE and <c>239 Article transferred OK</c> for TAKETHIS.
+        /// <see cref="NntpTransitStorageResult.Success"/> maps to <c>235</c>/<c>239</c>;
+        /// <see cref="NntpTransitStorageResult.QueueFull"/> maps to <c>437</c> (IHAVE) or <c>439</c> (TAKETHIS);
+        /// <see cref="NntpTransitStorageResult.ArticleRejected"/> maps to <c>437</c> (IHAVE) or <c>439</c> (TAKETHIS).
         /// </returns>
-        public ValueTask<bool> TakeThisAsync(string messageId, ReadOnlyMemory<byte> articleBytes, CancellationToken cancellationToken);
+        public ValueTask<NntpTransitStorageResult> TakeThisAsync(
+            string messageId,
+            ReadOnlyMemory<byte> articleBytes,
+            NntpTransitArticleOrigin origin,
+            CancellationToken cancellationToken);
     }
 }

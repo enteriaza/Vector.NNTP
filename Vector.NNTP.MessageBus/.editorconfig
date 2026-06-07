@@ -1,6 +1,5 @@
-# EditorConfig — MessageBus
+# EditorConfig — VectorNNTPD
 # Enforces coding standards in CONTRIBUTING.md and .cursor/rules/; strict build settings in Directory.Build.props.
-# Documentation bar: .cursor/rules/message-bus-documentation.mdc (synopsis headers, TaskUtilities-style XML, member spacing).
 # https://editorconfig.org
 # https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/code-style-rule-options
 
@@ -72,13 +71,9 @@ dotnet_diagnostic.IDE0003.severity = warning
 dotnet_diagnostic.IDE0052.severity = warning
 
 # ── Namespace declarations ──────────────────────────────────────────────────
-# MessageBus and repo C# use block-scoped namespaces (IDE0160). See block-scoped-namespaces.mdc.
-csharp_style_namespace_declarations = block_scoped:warning
-dotnet_diagnostic.IDE0160.severity = warning
+# Project allows file-scoped and block-scoped namespaces; do not enforce either.
+csharp_style_namespace_declarations = block_scoped:silent
 dotnet_diagnostic.IDE0161.severity = silent
-
-# IDE0006: Using directive placement (must precede namespace/type declarations).
-dotnet_diagnostic.IDE0006.severity = warning
 
 # ── Access modifiers ───────────────────────────────────────────────────────
 dotnet_style_require_accessibility_modifiers = always:warning

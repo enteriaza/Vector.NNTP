@@ -138,6 +138,19 @@ namespace Vector.NNTP.HistoryDB.Memory
         }
 
         /// <summary>
+        /// Removes an entry when present (release path).
+        /// </summary>
+        /// <param name="digestKey">Digest key.</param>
+        /// <returns><see langword="true"/> when an entry was removed.</returns>
+        internal bool TryRemove(in DigestKey digestKey)
+        {
+            int shardIndex = digestKey.GetShardIndex(_shardMask);
+            HistoryMemoryCacheShardWriteResult result = _shards[shardIndex].TryRemove(in digestKey);
+            ApplyWriteResult(in result);
+            return result.Changed;
+        }
+
+        /// <summary>
         /// Clears all entries (used by tests).
         /// </summary>
         /// <remarks>

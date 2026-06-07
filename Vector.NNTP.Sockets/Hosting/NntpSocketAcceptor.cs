@@ -519,7 +519,8 @@ namespace Vector.NNTP.Sockets.Hosting
                         tcpPeer,
                         _profile.Role,
                         nodeName,
-                        match.Name);
+                        match.Name,
+                        match.MatchedEntry);
                 case NntpTransitPeerAdmissionResult.AtCapacity:
                     NntpTransitPeerMetrics.RecordAcquireFailure(match.Name);
                     long occupied = TransitPeerCapacityRegistry.TryGetCurrentCapacity(match.Name, out long current)

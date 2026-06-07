@@ -3,6 +3,7 @@
 // </copyright>
 // COLD PATH: OVER and XOVER command handler.
 
+using Vector.NNTP.Sockets.Protocol;
 using Vector.NNTP.Sockets.Responses;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Storage;
@@ -12,6 +13,12 @@ namespace Vector.NNTP.Sockets.Transport.Commands
     /// <summary>
     /// Handles OVER and XOVER overview retrieval commands.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When a syntactically valid Message-ID selector is supplied, overview lookup by message-id is not yet implemented;
+    /// the handler falls back to the default group range until storage grows message-id overview support.
+    /// </para>
+    /// </remarks>
     internal static class NntpCmdOver
     {
         /// <summary>
@@ -42,7 +49,16 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 return true;
             }
 
-            ParseRange(NntpCommandLineHelpers.ExtractArgument(line), out long? rangeLow, out long? rangeHigh);
+            if (!ArticleRangeOrMessageIdSyntax.TryParse(
+                NntpCommandLineHelpers.ExtractArgument(line),
+                out long? rangeLow,
+                out long? rangeHigh,
+                out string? _))
+            {
+                await NntpReaderErrors.WriteBadSyntax501(session, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
             IReadOnlyList<string>? lines = await storage.GetOverviewAsync(
                 session.State.SelectedGroup,
                 rangeLow,
@@ -56,47 +72,6 @@ namespace Vector.NNTP.Sockets.Transport.Commands
 
             await session.Writer.WriteMultiLineAsync("224 Overview data follow", lines, cancellationToken).ConfigureAwait(false);
             return true;
-        }
-
-        /// <summary>
-        /// Parses a range of articles from a command line argument.
-        /// </summary>
-        /// <param name="argument">The command line argument.</param>
-        /// <param name="rangeLow">The low end of the range.</param>
-        /// <param name="rangeHigh">The high end of the range.</param>
-        /// <returns>The parsed range.</returns>
-        private static void ParseRange(string? argument, out long? rangeLow, out long? rangeHigh)
-        {
-            rangeLow = null;
-            rangeHigh = null;
-            if (string.IsNullOrWhiteSpace(argument))
-            {
-                return;
-            }
-
-            int dash = argument.IndexOf('-', StringComparison.Ordinal);
-            if (dash < 0)
-            {
-                if (long.TryParse(argument, NumberStyles.None, CultureInfo.InvariantCulture, out long single))
-                {
-                    rangeLow = single;
-                    rangeHigh = single;
-                }
-
-                return;
-            }
-
-            ReadOnlySpan<char> left = argument.AsSpan(0, dash).Trim();
-            ReadOnlySpan<char> right = argument.AsSpan(dash + 1).Trim();
-            if (left.Length > 0 && long.TryParse(left, NumberStyles.None, CultureInfo.InvariantCulture, out long low))
-            {
-                rangeLow = low;
-            }
-
-            if (right.Length > 0 && long.TryParse(right, NumberStyles.None, CultureInfo.InvariantCulture, out long high))
-            {
-                rangeHigh = high;
-            }
         }
     }
 }

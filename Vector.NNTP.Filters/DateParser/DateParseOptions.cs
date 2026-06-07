@@ -14,12 +14,8 @@ namespace Vector.NNTP.Filters.DateParser
     /// </summary>
     /// <remarks>
     /// <para><b>Thread safety:</b> Immutable after construction; safe to share across threads.</para>
-    ///
     /// <para><b>Performance:</b> HOT PATH — passed by value; success paths avoid allocations other than the returned
     /// canonical string.</para>
-    /// </remarks>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="DateParseOptions"/> struct.
     /// </remarks>
     /// <param name="maxInputLength">Maximum number of characters accepted for a single date header value.</param>
     /// <param name="requireKnownTimezoneAbbreviation">When <see langword="true"/>, trailing abbreviation patterns must map to the frozen table.</param>

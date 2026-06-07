@@ -25,5 +25,18 @@ namespace Vector.NNTP.Tests.HistoryDB
             Assert.That(HistoryKeyEncoder.TryComputeDigest(messageId, b), Is.True);
             Assert.That(a.ToArray(), Is.EqualTo(b.ToArray()));
         }
+
+        /// <summary>
+        /// Verifies lowercase hex encoding length and stability.
+        /// </summary>
+        [Test]
+        public void EncodeHexLower_ProducesStableLowercaseHex()
+        {
+            const string messageId = "<hex@test.local>";
+            string hex = HistoryKeyEncoder.EncodeHexLower(messageId);
+            Assert.That(hex.Length, Is.EqualTo(HistoryKeyEncoder.DigestHexLength));
+            Assert.That(hex, Is.EqualTo(HistoryKeyEncoder.EncodeHexLower(messageId)));
+            Assert.That(hex, Is.EqualTo(hex.ToLowerInvariant()));
+        }
     }
 }

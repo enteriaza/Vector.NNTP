@@ -41,6 +41,7 @@
     <ProjectReference Include="..\Vector.NNTP.Auth.MySql\Vector.NNTP.Auth.MySql.csproj" />
     <ProjectReference Include="..\Vector.NNTP.Session\Vector.NNTP.Session.csproj" />
     <ProjectReference Include="..\Vector.NNTP.HistoryDB\Vector.NNTP.HistoryDB.csproj" />
+    <ProjectReference Include="..\Vector.NNTP.Articles\Vector.NNTP.Articles.csproj" />
     <ProjectReference Include="..\Vector.NNTP.Session.Redis\Vector.NNTP.Session.Redis.csproj" />
   </ItemGroup>
 

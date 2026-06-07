@@ -3,7 +3,9 @@
 // </copyright>
 // COLD PATH: RFC 4644 transit command golden transcript tests.
 
+using Vector.NNTP.Sockets.Storage;
 using Vector.NNTP.Tests.HistoryDB.Fakes;
+using Vector.NNTP.Tests.Sockets.Fakes;
 
 namespace Vector.NNTP.Tests.Sockets
 {
@@ -116,6 +118,62 @@ namespace Vector.NNTP.Tests.Sockets
         }
 
         /// <summary>
+        /// Verifies IHAVE maps <see cref="NntpTransitStorageResult.ArticleRejected"/> to <c>437</c>, not <c>436</c>.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task IHave_ArticleRejected_Returns437()
+        {
+            var transitStorage = new FakeNntpTransitStorage
+            {
+                TakeThisResult = NntpTransitStorageResult.ArticleRejected,
+            };
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateTransit(new FakeHistoryDatabase(), transitStorage);
+            try
+            {
+                await NntpProtocolHarness.AuthenticateTransitAsync(harness).ConfigureAwait(false);
+                await harness.SendAsync("IHAVE <reject@test.local>").ConfigureAwait(false);
+                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Does.StartWith("335 "));
+                await harness.SendArticleBodyAsync("Subject: reject\r\nMessage-ID: <reject@test.local>\r\n\r\nbody\r\n")
+                    .ConfigureAwait(false);
+                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Is.EqualTo("437 Article rejected"));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Verifies TAKETHIS maps <see cref="NntpTransitStorageResult.ArticleRejected"/> to <c>439</c>, not <c>431</c>.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task Takethis_ArticleRejected_Returns439()
+        {
+            const string messageId = "<reject-takethis@test.local>";
+            var transitStorage = new FakeNntpTransitStorage
+            {
+                TakeThisResult = NntpTransitStorageResult.ArticleRejected,
+            };
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateTransit(new FakeHistoryDatabase(), transitStorage);
+            try
+            {
+                await NntpProtocolHarness.AuthenticateTransitAsync(harness).ConfigureAwait(false);
+                await harness.SendAsync("MODE STREAM").ConfigureAwait(false);
+                _ = await harness.ReadLineAsync().ConfigureAwait(false);
+                await harness.SendTakethisWithArticleAsync(
+                    messageId,
+                    "Subject: reject\r\nMessage-ID: " + messageId + "\r\n\r\nbody\r\n").ConfigureAwait(false);
+                Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Is.EqualTo("439 Transfer failed"));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
         /// Verifies TAKETHIS with a multi-line article (including dot-stuffing) returns 239.
         /// </summary>
         /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
@@ -134,6 +192,60 @@ namespace Vector.NNTP.Tests.Sockets
                     "Path: example\r\nFrom: a@b\r\n..leading-dot\r\nMessage-ID: " + messageId + "\r\n\r\nbody\r\n")
                     .ConfigureAwait(false);
                 Assert.That(await harness.ReadLineAsync().ConfigureAwait(false), Does.StartWith("239 "));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Verifies transit commands reject syntactically invalid Message-IDs with 501.
+        /// </summary>
+        /// <param name="commandLine">Full command line including verb.</param>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [TestCase("CHECK <a@>")]
+        [TestCase("IHAVE <a@>")]
+        public async Task Transit_InvalidMessageId_Returns501Invalid(string commandLine)
+        {
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateTransit();
+            try
+            {
+                await NntpProtocolHarness.AuthenticateTransitAsync(harness).ConfigureAwait(false);
+                if (commandLine.StartsWith("CHECK", StringComparison.Ordinal))
+                {
+                    await harness.SendAsync("MODE STREAM").ConfigureAwait(false);
+                    _ = await harness.ReadLineAsync().ConfigureAwait(false);
+                }
+
+                await harness.SendAsync(commandLine).ConfigureAwait(false);
+                string line = await harness.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(line, Is.EqualTo("501 Invalid Message-ID"));
+            }
+            finally
+            {
+                await harness.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Verifies pipelined TAKETHIS rejects invalid Message-IDs after draining the article body.
+        /// </summary>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+        [Test]
+        public async Task Takethis_InvalidMessageId_WithPipelinedBody_Returns501Invalid()
+        {
+            NntpProtocolHarness harness = NntpProtocolHarness.CreateTransit();
+            try
+            {
+                await NntpProtocolHarness.AuthenticateTransitAsync(harness).ConfigureAwait(false);
+                await harness.SendAsync("MODE STREAM").ConfigureAwait(false);
+                _ = await harness.ReadLineAsync().ConfigureAwait(false);
+                await harness.SendTakethisWithArticleAsync(
+                    "<a@>",
+                    "Subject: bad\r\n\r\nbody\r\n").ConfigureAwait(false);
+                string line = await harness.ReadLineAsync().ConfigureAwait(false);
+                Assert.That(line, Is.EqualTo("501 Invalid Message-ID"));
             }
             finally
             {

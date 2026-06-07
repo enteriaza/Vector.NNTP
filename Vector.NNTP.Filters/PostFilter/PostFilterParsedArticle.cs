@@ -9,9 +9,6 @@ namespace Vector.NNTP.Filters.PostFilter
     /// <summary>
     /// Parsed NNTP article (headers + body) for filter stages.
     /// </summary>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="PostFilterParsedArticle"/> class.
-    /// </remarks>
     /// <param name="rawUtf8">Original article octets (UTF-8 assumed for text checks).</param>
     /// <param name="headerLineCount">Number of header lines (before blank line).</param>
     /// <param name="headers">Lowercase header field names to decoded values.</param>

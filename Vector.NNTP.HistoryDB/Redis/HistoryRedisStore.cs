@@ -143,6 +143,32 @@ namespace Vector.NNTP.HistoryDB.Redis
         }
 
         /// <summary>
+        /// Deletes a history key on spool failure release.
+        /// </summary>
+        /// <param name="digest">Digest bytes.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Lua result code (0 released, 1 not found).</returns>
+        /// <remarks>
+        /// <paramref name="cancellationToken"/> is not passed to StackExchange.Redis today; cancellation applies only
+        /// before the call is made.
+        /// </remarks>
+        internal async ValueTask<int> TryReleaseAsync(
+            byte[] digest,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            IDatabase db = _redis.GetDatabase();
+            RedisKey key = BuildHistoryKey(digest);
+            RedisKey[] keys = [key];
+
+            Stopwatch sw = Stopwatch.StartNew();
+            RedisResult result = await db.ScriptEvaluateAsync(HistoryRedisScripts.HistoryReleaseV1, keys)
+                .ConfigureAwait(false);
+            MaybeLogSlowRedis("release", sw.ElapsedMilliseconds);
+            return (int)(long)result;
+        }
+
+        /// <summary>
         /// Pipelines SET for rebuild batch.
         /// </summary>
         /// <param name="items">Batch items.</param>

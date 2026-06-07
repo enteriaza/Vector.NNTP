@@ -12,6 +12,7 @@ using Vector.NNTP.HistoryDB.Encoding;
 using Vector.NNTP.HistoryDB.Memory;
 using Vector.NNTP.HistoryDB.Metrics;
 using Vector.NNTP.HistoryDB.Redis;
+using Vector.NNTP.HistoryDB.Rocks;
 using Vector.NNTP.HistoryDB.Telemetry;
 using Vector.NNTP.Session.Redis.Exceptions;
 
@@ -48,6 +49,16 @@ namespace Vector.NNTP.HistoryDB.Services
         private readonly HistoryRocksPersistPump _persistPump = null!;
 
         /// <summary>
+        /// RocksDB store for synchronous delete on release.
+        /// </summary>
+        private readonly RocksHistoryStore _rocks = null!;
+
+        /// <summary>
+        /// Tombstones that suppress persist for released digests still queued.
+        /// </summary>
+        private readonly HistoryReleaseTombstoneSet _releaseTombstones = null!;
+
+        /// <summary>
         /// Bounded channel queueing Rocks backfill items after successful Redis reserve.
         /// </summary>
         private readonly Channel<HistoryPersistItem> _queue = null!;
@@ -75,6 +86,8 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <param name="redis">Redis tier.</param>
         /// <param name="metrics">Metrics.</param>
         /// <param name="persistPump">Rocks persist pump.</param>
+        /// <param name="rocks">Rocks store for release deletes.</param>
+        /// <param name="releaseTombstones">Persist tombstone registry.</param>
         /// <param name="lifetime">Host lifetime for queue completion on shutdown.</param>
         /// <param name="logger">Logger for source-generated CHECK and record diagnostics.</param>
         public HistoryDatabaseService(
@@ -83,6 +96,8 @@ namespace Vector.NNTP.HistoryDB.Services
             HistoryRedisStore redis,
             HistoryMetrics metrics,
             HistoryRocksPersistPump persistPump,
+            RocksHistoryStore rocks,
+            HistoryReleaseTombstoneSet releaseTombstones,
             IHostApplicationLifetime lifetime,
             ILogger<HistoryDatabaseService> logger)
             : this(logger)
@@ -92,6 +107,8 @@ namespace Vector.NNTP.HistoryDB.Services
             _redis = redis;
             _metrics = metrics;
             _persistPump = persistPump;
+            _rocks = rocks;
+            _releaseTombstones = releaseTombstones;
             _lifetime = lifetime;
             BoundedChannelOptions channelOptions = new(_options.QueueCapacity)
             {
@@ -216,6 +233,26 @@ namespace Vector.NNTP.HistoryDB.Services
             }
 
             return RecordRedisAsync(digestKey, now, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public ValueTask<HistoryReleaseResult> TryReleaseAsync(string messageId, CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(messageId);
+            if (!_operational)
+            {
+                return new ValueTask<HistoryReleaseResult>(HistoryReleaseResult.Unavailable);
+            }
+
+            Span<byte> digest = stackalloc byte[HistoryKeyEncoder.DigestLength];
+            if (!HistoryKeyEncoder.TryComputeDigest(messageId, digest))
+            {
+                return new ValueTask<HistoryReleaseResult>(HistoryReleaseResult.TryAgainLater);
+            }
+
+            DigestKey digestKey = new(digest);
+            byte[] digestBytes = digest.ToArray();
+            return ReleaseAllTiersAsync(digestKey, digestBytes, cancellationToken);
         }
 
         /// <summary>
@@ -410,6 +447,46 @@ namespace Vector.NNTP.HistoryDB.Services
         {
             long depth = Interlocked.Increment(ref _queueDepth);
             _metrics.SetQueueDepth(depth);
+        }
+
+        /// <summary>
+        /// Tombstones, clears Redis/memory, and deletes Rocks rows for a digest.
+        /// </summary>
+        /// <param name="digestKey">Digest key.</param>
+        /// <param name="digestBytes">Digest bytes.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns><see cref="HistoryReleaseResult"/> after all tiers are processed.</returns>
+        private async ValueTask<HistoryReleaseResult> ReleaseAllTiersAsync(
+            DigestKey digestKey,
+            byte[] digestBytes,
+            CancellationToken cancellationToken)
+        {
+            _releaseTombstones.Add(in digestKey);
+            bool memoryRemoved = _memory.TryRemove(in digestKey);
+            try
+            {
+                int code = await _redis.TryReleaseAsync(digestBytes, cancellationToken).ConfigureAwait(false);
+                bool rocksRemoved = _rocks.DeleteByDigest(digestBytes);
+                _releaseTombstones.Remove(in digestKey);
+                if (code == 0 || memoryRemoved || rocksRemoved)
+                {
+                    return HistoryReleaseResult.Released;
+                }
+
+                return HistoryReleaseResult.NotFound;
+            }
+            catch (RedisUnavailableException)
+            {
+                return HistoryReleaseResult.TryAgainLater;
+            }
+            catch (TimeoutException)
+            {
+                return HistoryReleaseResult.TryAgainLater;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
         }
     }
 }

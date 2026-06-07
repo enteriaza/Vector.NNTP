@@ -19,12 +19,16 @@ namespace Vector.NNTP.Filters.PostFilter
     {
         /// <summary>
         /// Validates salt length when client tokens are enabled, regex syntax for <see cref="PostFilterOptions.PublicUserIdPattern"/>,
-        /// and DNS zone list entries.
+        /// DNS zone list entries, and required Tor DNS suffix configuration.
         /// </summary>
         /// <param name="name">Options name (unused).</param>
         /// <param name="options">Bound options instance.</param>
         /// <returns><see cref="ValidateOptionsResult.Success"/> or a failure result with a human-readable message.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is <see langword="null"/>.</exception>
+        /// <remarks>
+        /// <see cref="PostFilterDnsOptions.TorDnsSuffix"/> must be non-empty at startup regardless of whether Tor checks are
+        /// enabled in the current profile — hosts configure a placeholder suffix when Tor filtering is disabled.
+        /// </remarks>
         public ValidateOptionsResult Validate(string? name, PostFilterOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);
@@ -63,7 +67,7 @@ namespace Vector.NNTP.Filters.PostFilter
             }
 
             return string.IsNullOrWhiteSpace(options.Dns.TorDnsSuffix)
-                ? ValidateOptionsResult.Fail("PostFilter: Dns.TorDnsSuffix must not be empty when Tor checks are used.")
+                ? ValidateOptionsResult.Fail("PostFilter: Dns.TorDnsSuffix must not be empty.")
                 : ValidateOptionsResult.Success;
         }
     }

@@ -26,5 +26,24 @@ namespace Vector.NNTP.HistoryDB.Abstractions
         /// <returns>Record outcome for RFC response mapping.</returns>
         /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public ValueTask<HistoryRecordResult> TryRecordAsync(string messageId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Releases a message-id from all history tiers so the article may be offered again after spool failure.
+        /// </summary>
+        /// <param name="messageId">Wire-validated message-id.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>
+        /// <see cref="HistoryReleaseResult.Released"/> when Redis, memory, persist tombstone, and Rocks delete succeed;
+        /// <see cref="HistoryReleaseResult.NotFound"/> when no tier held the digest; transient or unavailable outcomes otherwise.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// Full-tier release for spool preprocess/write failure recovery. Tombstones block in-flight persist queue items;
+        /// tombstone entries are cleared after Rocks delete succeeds. Process restart may retain tombstones until natural
+        /// expiration — acceptable because Redis and memory are already cleared.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
+        public ValueTask<HistoryReleaseResult> TryReleaseAsync(string messageId, CancellationToken cancellationToken);
     }
 }

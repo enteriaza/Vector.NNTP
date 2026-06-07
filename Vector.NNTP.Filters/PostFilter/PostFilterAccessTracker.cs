@@ -11,6 +11,10 @@ namespace Vector.NNTP.Filters.PostFilter
     /// </summary>
     /// <remarks>
     /// <para><b>Thread safety:</b> Synchronizes access internally. This is designed for low to moderate POST rates.</para>
+    /// <para>
+    /// <b>Memory:</b> Retains timestamp lists per identity key until keys go idle; there is no global eviction of unused keys.
+    /// Each key prunes entries older than the active window on every post.
+    /// </para>
     /// </remarks>
     public sealed class PostFilterAccessTracker
     {

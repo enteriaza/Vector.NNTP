@@ -43,6 +43,10 @@ namespace Vector.NNTP.Filters.DateParser
         /// <param name="canonicalValue">When this method returns <see langword="true"/>, the canonical <c>ddd, dd MMM yyyy HH:mm:ss +0000</c> string.</param>
         /// <param name="failure">When this method returns <see langword="false"/>, the parse failure reason.</param>
         /// <returns><see langword="true"/> when any candidate produced a canonical date.</returns>
+        /// <remarks>
+        /// When headers are present but no candidate name matches, or every matching value fails to parse, returns
+        /// <see langword="false"/> with <see cref="DateParseFailureReason.ParseFailed"/> (not <see cref="DateParseFailureReason.Empty"/>).
+        /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="headers"/> is <see langword="null"/>.</exception>
         public static bool TryGetCanonicalArticleDate(
             IReadOnlyList<(string Name, string Value)> headers,
@@ -60,6 +64,10 @@ namespace Vector.NNTP.Filters.DateParser
         /// <param name="canonicalValue">When this method returns <see langword="true"/>, the canonical date string.</param>
         /// <param name="failure">When this method returns <see langword="false"/>, the parse failure reason.</param>
         /// <returns><see langword="true"/> when any candidate produced a canonical date.</returns>
+        /// <remarks>
+        /// When headers are present but no candidate name matches, or every matching value fails to parse, returns
+        /// <see langword="false"/> with <see cref="DateParseFailureReason.ParseFailed"/> (not <see cref="DateParseFailureReason.Empty"/>).
+        /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="headers"/> is <see langword="null"/>.</exception>
         public static bool TryGetCanonicalArticleDate(
             IReadOnlyList<(string Name, string Value)> headers,

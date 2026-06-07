@@ -249,15 +249,21 @@ namespace Vector.NNTP.Sockets.Hosting
             /// </summary>
             /// <param name="messageId">Message identifier (ignored).</param>
             /// <param name="articleBytes">Article bytes (ignored).</param>
+            /// <param name="origin">Peer origin metadata (ignored).</param>
             /// <param name="cancellationToken">Cancellation token (ignored).</param>
             /// <returns>A completed task with <see langword="false"/>.</returns>
-            public ValueTask<bool> TakeThisAsync(string messageId, ReadOnlyMemory<byte> articleBytes, CancellationToken cancellationToken)
+            public ValueTask<NntpTransitStorageResult> TakeThisAsync(
+                string messageId,
+                ReadOnlyMemory<byte> articleBytes,
+                NntpTransitArticleOrigin origin,
+                CancellationToken cancellationToken)
             {
                 LogOnce();
                 _ = messageId;
                 _ = articleBytes;
+                _ = origin;
                 _ = cancellationToken;
-                return ValueTask.FromResult(false);
+                return ValueTask.FromResult(NntpTransitStorageResult.QueueFull);
             }
 
             /// <summary>

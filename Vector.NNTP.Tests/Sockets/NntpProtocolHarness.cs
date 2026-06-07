@@ -121,10 +121,21 @@ namespace Vector.NNTP.Tests.Sockets
         /// <param name="historyDatabase">History implementation for CHECK and record paths.</param>
         /// <returns>Connected harness instance.</returns>
         internal static NntpProtocolHarness CreateTransit(FakeHistoryDatabase historyDatabase) =>
+            CreateTransit(historyDatabase, new FakeNntpTransitStorage());
+
+        /// <summary>
+        /// Creates a transit harness with supplied history and transit storage implementations.
+        /// </summary>
+        /// <param name="historyDatabase">History implementation for CHECK and record paths.</param>
+        /// <param name="transitStorage">Transit storage implementation for IHAVE and TAKETHIS.</param>
+        /// <returns>Connected harness instance.</returns>
+        internal static NntpProtocolHarness CreateTransit(
+            FakeHistoryDatabase historyDatabase,
+            INntpTransitStorage transitStorage) =>
             Create(
                 new NntpTransitHostProfile(),
                 null,
-                new FakeNntpTransitStorage(),
+                transitStorage,
                 historyDatabase,
                 scramCredentialStore: null);
 

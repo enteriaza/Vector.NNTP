@@ -3,6 +3,7 @@
 // </copyright>
 
 using Vector.NNTP.Auth.MySql.DependencyInjection;
+using Vector.NNTP.Filters.DependencyInjection;
 using Vector.NNTP.Session.Redis.DependencyInjection;
 using Vector.NNTP.Sockets.Hosting;
 using SocketsNntpServerOptions = Vector.NNTP.Sockets.Configuration.NntpServerOptions;
@@ -32,6 +33,7 @@ namespace Vector.NNTP.NNRPD
             _ = builder.Services.AddNntpSessionRedis(builder.Configuration);
             _ = builder.Services.AddNntpMySqlAuthFromHostConfiguration(builder.Configuration);
             _ = builder.Services.AddNntpSocketsReader();
+            _ = builder.Services.AddSpamAssassin(builder.Configuration);
 
             _ = builder.Services.PostConfigure<SocketsNntpServerOptions>(options =>
             {

@@ -78,6 +78,16 @@ namespace Vector.NNTP.Sockets.Configuration
         public string NodeName { get; set; } = string.Empty;
 
         /// <summary>
+        /// Gets or sets the DNS domain suffix for this node (for example <c>usenetninja.net</c>).
+        /// </summary>
+        /// <remarks>
+        /// Combined with <see cref="NodeName"/> to form the server FQDN used when synthesizing SpamAssassin
+        /// <c>Received:</c> and <c>To:</c> headers on the transit spool path. When empty, <see cref="NodeName"/> alone
+        /// is used.
+        /// </remarks>
+        public string DomainName { get; set; } = string.Empty;
+
+        /// <summary>
         /// Gets or sets the server identification string embedded in the initial greeting and HELP text.
         /// </summary>
         [Required]
@@ -108,7 +118,7 @@ namespace Vector.NNTP.Sockets.Configuration
         /// <c>192.0.2.0/24</c> or <c>2001:db8::/32</c>).
         /// </para>
         /// </remarks>
-        public string[] ProxyProtocolTrustedSources { get; set; } = Array.Empty<string>();
+        public string[] ProxyProtocolTrustedSources { get; set; } = [];
 
         /// <summary>
         /// Gets or sets trusted transit peer definitions for NNTPD peering (address matching, DNS refresh, cluster caps).
@@ -122,7 +132,7 @@ namespace Vector.NNTP.Sockets.Configuration
         public long MaxArtSize { get; set; } = 1_048_576;
 
         /// <summary>
-        /// Gets or sets the <see cref="System.IO.Pipelines.StreamPipeReader"/> buffer size for socket sessions.
+        /// Gets or sets the <see cref="StreamPipeReader"/> buffer size for socket sessions.
         /// </summary>
         [Range(4096, 16_777_216)]
         public int PipeReadBufferBytes { get; set; } = 65_536;
@@ -164,6 +174,51 @@ namespace Vector.NNTP.Sockets.Configuration
         /// Gets or sets a value indicating whether cgroup quota-relative CPU utilization contributes when available.
         /// </summary>
         public bool CpuRejectUseCgroup { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets the transit article spool root directory (empty → <c>{AppContext.BaseDirectory}/Spool</c>).
+        /// </summary>
+        public string SpoolDir { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the maximum in-flight spool queue item count.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each queued item holds a full <c>byte[]</c> copy of the article. Enqueue is rejected when either this
+        /// item cap or <see cref="MaxQueuedBytes"/> is exceeded — whichever trips first yields
+        /// <see cref="Storage.NntpTransitStorageResult.QueueFull"/>.
+        /// </para>
+        /// <para>
+        /// Example: <c>1024</c> items with <c>MaxArtSize = 4 MiB</c> and <c>MaxQueuedBytes = 1 GiB</c> binds on
+        /// bytes (~256 max-sized articles) before the item cap.
+        /// </para>
+        /// </remarks>
+        [Range(1, int.MaxValue)]
+        public int SpoolQueueCapacity { get; set; } = 1024;
+
+        /// <summary>
+        /// Gets or sets the maximum sum of queued article payload bytes across the spool write queue.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Default <c>1_073_741_824</c> (1 GiB). Tune independently of <see cref="SpoolQueueCapacity"/> so many small
+        /// articles and fewer large articles are not treated identically.
+        /// </para>
+        /// <para>
+        /// Worst-case RAM is bounded by <c>min(SpoolQueueCapacity × MaxArtSize, MaxQueuedBytes)</c> plus object overhead.
+        /// </para>
+        /// </remarks>
+        [Range(1, long.MaxValue)]
+        public long MaxQueuedBytes { get; set; } = 1_073_741_824;
+
+        /// <summary>
+        /// Gets or sets the path token prepended to <c>Path:</c> headers during spool preprocessing (transit hosts).
+        /// </summary>
+        /// <remarks>
+        /// <para>Empty or whitespace skips mutation. Transit NNTPD hosts should set a stable hop token.</para>
+        /// </remarks>
+        public string PathAppend { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -195,6 +250,10 @@ namespace Vector.NNTP.Sockets.Configuration
                 : !options.CpuRejectUseProcess && !options.CpuRejectUseHost && !options.CpuRejectUseCgroup
                 ? ValidateOptionsResult.Fail(
                     "At least one of CpuRejectUseProcess, CpuRejectUseHost, or CpuRejectUseCgroup must be true.")
+                : options.SpoolQueueCapacity <= 0
+                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.SpoolQueueCapacity)} must be positive.")
+                : options.MaxQueuedBytes <= 0
+                ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.MaxQueuedBytes)} must be positive.")
                 : NntpTransitPeersOptionsValidator.Validate(options.TransitPeers);
         }
     }

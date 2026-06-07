@@ -22,7 +22,16 @@ namespace Vector.NNTP.Filters.DateParser
     /// </remarks>
     public static partial class NewsDateParser
     {
-        /// <inheritdoc cref="TryParseToUtc(ReadOnlySpan{char}, DateParseOptions, out DateTime, out DateParseFailureReason)"/>
+        /// <summary>
+        /// Attempts to parse a date header value to UTC using <see cref="DateParseOptions.Default"/>.
+        /// </summary>
+        /// <param name="dateSpan">Raw characters (typically a single header field value).</param>
+        /// <param name="result">When this method returns <see langword="true"/>, the UTC <see cref="DateTime"/> (kind <see cref="DateTimeKind.Utc"/>).</param>
+        /// <returns><see langword="true"/> when the value parses; otherwise <see langword="false"/>.</returns>
+        /// <remarks>
+        /// Discards the failure reason. Use the overload with <see cref="DateParseFailureReason"/> when callers must distinguish
+        /// empty, too-long, and parse failures.
+        /// </remarks>
         public static bool TryParseToUtc(ReadOnlySpan<char> dateSpan, out DateTime result)
         {
             return TryParseToUtc(dateSpan, DateParseOptions.Default, out result, out _);
@@ -72,7 +81,16 @@ namespace Vector.NNTP.Filters.DateParser
             return TryParseToUtc(trimmed.ToString(), options, out result, out failure);
         }
 
-        /// <inheritdoc cref="TryParseToUtc(string, DateParseOptions, out DateTime, out DateParseFailureReason)"/>
+        /// <summary>
+        /// Attempts to parse a date header value to UTC using <see cref="DateParseOptions.Default"/>.
+        /// </summary>
+        /// <param name="dateRaw">The raw header value (may include comments or odd spacing).</param>
+        /// <param name="result">When this method returns <see langword="true"/>, the UTC instant.</param>
+        /// <returns><see langword="true"/> when the pipeline yields a UTC instant.</returns>
+        /// <remarks>
+        /// Delegates to <see cref="TryParseToUtc(string, DateParseOptions, out DateTime, out DateParseFailureReason)"/> with
+        /// default options and discards the failure classification.
+        /// </remarks>
         public static bool TryParseToUtc(string dateRaw, out DateTime result)
         {
             return TryParseToUtc(dateRaw, DateParseOptions.Default, out result, out _);
@@ -156,7 +174,11 @@ namespace Vector.NNTP.Filters.DateParser
             return false;
         }
 
-        /// <inheritdoc cref="ParseToUnixTimestamp(ReadOnlySpan{char}, DateParseOptions)"/>
+        /// <summary>
+        /// Parses to Unix seconds using <see cref="DateParseOptions.Default"/>, or <c>0</c> on failure or overflow.
+        /// </summary>
+        /// <param name="dateSpan">Raw characters to interpret as a date.</param>
+        /// <returns>Seconds since 1970-01-01Z, or <c>0</c> when parsing fails or the instant is outside the <see cref="uint"/> range.</returns>
         public static uint ParseToUnixTimestamp(ReadOnlySpan<char> dateSpan)
         {
             return ParseToUnixTimestamp(dateSpan, DateParseOptions.Default);
@@ -174,7 +196,11 @@ namespace Vector.NNTP.Filters.DateParser
             return trimmed.IsEmpty ? 0 : TryParseToUtc(trimmed, options, out DateTime utc, out _) ? UsenetEpoch.ToUnixTimestamp(utc) : 0;
         }
 
-        /// <inheritdoc cref="ParseToUnixTimestamp(string, DateParseOptions)"/>
+        /// <summary>
+        /// Parses to Unix seconds using <see cref="DateParseOptions.Default"/>, or <c>0</c> on failure or overflow.
+        /// </summary>
+        /// <param name="dateRaw">The raw date string.</param>
+        /// <returns>Seconds since 1970-01-01Z, or <c>0</c> when parsing fails or the instant is outside the <see cref="uint"/> range.</returns>
         public static uint ParseToUnixTimestamp(string dateRaw)
         {
             return ParseToUnixTimestamp(dateRaw, DateParseOptions.Default);
@@ -212,11 +238,15 @@ namespace Vector.NNTP.Filters.DateParser
         }
 
         /// <summary>
-        /// Parses and returns the canonical RFC 5322-style UTC header value (<c>... +0000</c>).
+        /// Parses and returns the canonical RFC 5322-style UTC header value using <see cref="DateParseOptions.Default"/>.
         /// </summary>
         /// <param name="raw">The raw date characters.</param>
         /// <param name="canonicalValue">When this method returns <see langword="true"/>, the canonical string.</param>
         /// <returns><see langword="true"/> when parsing succeeds.</returns>
+        /// <remarks>
+        /// Discards the failure reason. Use the overload with <see cref="DateParseFailureReason"/> when callers must report why
+        /// canonicalization failed.
+        /// </remarks>
         public static bool TryGetCanonicalDateValue(ReadOnlySpan<char> raw, out string canonicalValue)
         {
             return TryGetCanonicalDateValue(raw, DateParseOptions.Default, out canonicalValue, out _);
@@ -242,7 +272,17 @@ namespace Vector.NNTP.Filters.DateParser
             return true;
         }
 
-        /// <inheritdoc cref="TryGetCanonicalDateValue(ReadOnlySpan{char}, DateParseOptions, out string, out DateParseFailureReason)"/>
+        /// <summary>
+        /// Parses a string date value and returns the canonical RFC 5322-style UTC header value.
+        /// </summary>
+        /// <param name="raw">The raw date string.</param>
+        /// <param name="options">Guards and normalization behaviour.</param>
+        /// <param name="canonicalValue">When this method returns <see langword="true"/>, the canonical string.</param>
+        /// <param name="failure">When this method returns <see langword="false"/>, the failure classification.</param>
+        /// <returns><see langword="true"/> when parsing succeeds.</returns>
+        /// <remarks>
+        /// Forwards to the span overload without allocating when <paramref name="raw"/> is already available as characters.
+        /// </remarks>
         public static bool TryGetCanonicalDateValue(string raw, DateParseOptions options, out string canonicalValue, out DateParseFailureReason failure)
         {
             return TryGetCanonicalDateValue(raw.AsSpan(), options, out canonicalValue, out failure);

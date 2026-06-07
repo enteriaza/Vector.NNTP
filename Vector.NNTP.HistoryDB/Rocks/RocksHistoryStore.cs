@@ -310,6 +310,31 @@ namespace Vector.NNTP.HistoryDB.Rocks
         }
 
         /// <summary>
+        /// Deletes digest and paired expiration index rows when present (spool release path).
+        /// </summary>
+        /// <param name="digest">32-byte digest.</param>
+        /// <returns><see langword="true"/> when a <c>by_digest</c> row existed and was deleted.</returns>
+        /// <exception cref="ObjectDisposedException">Thrown when the store has been disposed.</exception>
+        internal bool DeleteByDigest(ReadOnlySpan<byte> digest)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            digest.CopyTo(_digestKeyScratch);
+            byte[]? existing = _db.Get(_digestKeyScratch, _digestCf);
+            if (existing is not { Length: HistoryRocksKeyEncoding.DigestValueLength })
+            {
+                return false;
+            }
+
+            ulong expiration = HistoryRocksKeyEncoding.DecodeDigestValue(existing);
+            using WriteBatch batch = new();
+            HistoryRocksKeyEncoding.EncodeExpirationKey(expiration, digest, _expKeyScratch);
+            _ = batch.Delete(_expKeyScratch, _expirationCf);
+            _ = batch.Delete(_digestKeyScratch, _digestCf);
+            _db.Write(batch);
+            return true;
+        }
+
+        /// <summary>
         /// Preloads memory cache from highest expiration keys.
         /// </summary>
         /// <param name="nowEpochSeconds">Current epoch.</param>

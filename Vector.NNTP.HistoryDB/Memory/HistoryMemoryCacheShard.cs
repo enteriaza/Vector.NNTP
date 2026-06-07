@@ -141,6 +141,34 @@ namespace Vector.NNTP.HistoryDB.Memory
         }
 
         /// <summary>
+        /// Removes an entry when present (release path).
+        /// </summary>
+        /// <param name="digestKey">Digest key.</param>
+        /// <returns>Deltas when an entry was removed; otherwise default.</returns>
+        internal HistoryMemoryCacheShardWriteResult TryRemove(in DigestKey digestKey)
+        {
+            lock (_syncRoot)
+            {
+                int entryBefore = _entries.Count;
+                long bytesBefore = _trackedBytes;
+                if (!_entries.Remove(digestKey))
+                {
+                    return default;
+                }
+
+                _trackedBytes -= LogicalBytesPerEntry;
+                return new HistoryMemoryCacheShardWriteResult
+                {
+                    EntryDelta = _entries.Count - entryBefore,
+                    ByteDelta = _trackedBytes - bytesBefore,
+                    HeapDelta = 0,
+                    EvictionCount = 0,
+                    Changed = true,
+                };
+            }
+        }
+
+        /// <summary>
         /// Clears all entries in this shard.
         /// </summary>
         /// <returns>Deltas negating prior shard state for facade aggregates.</returns>

@@ -137,6 +137,7 @@ namespace Vector.NNTP.Tests.Filters.SpamAssassinTests
             }
             catch (SpamdProtocolException ex)
             {
+                Assert.That(ex.IsSpamdError, Is.True);
                 Assert.That(ex.ExitCode, Is.EqualTo(73));
             }
         }

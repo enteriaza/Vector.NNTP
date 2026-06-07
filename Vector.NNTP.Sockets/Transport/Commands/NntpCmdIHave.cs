@@ -45,9 +45,15 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             ArgumentNullException.ThrowIfNull(lineReader);
 
             string? messageId = NntpCommandLineHelpers.ExtractArgument(line);
-            if (string.IsNullOrEmpty(messageId) || !MessageIdSyntax.IsValid(messageId))
+            if (string.IsNullOrEmpty(messageId))
             {
                 await session.Writer.WriteLineAsync("501 Message-ID required", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            if (!MessageIdSyntax.IsValid(messageId))
+            {
+                await session.Writer.WriteLineAsync("501 Invalid Message-ID", cancellationToken).ConfigureAwait(false);
                 return true;
             }
 
@@ -92,10 +98,23 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                     return true;
                 }
 
-                bool ok = await storage.TakeThisAsync(messageId, read.Body, cancellationToken).ConfigureAwait(false);
-                await session.Writer.WriteLineAsync(
-                    ok ? "235 Article transferred OK" : "439 Transfer failed",
-                    cancellationToken).ConfigureAwait(false);
+                NntpTransitArticleOrigin origin = await NntpTransitArticleOrigin
+                    .CreateFromConnectionAsync(session.Connection, cancellationToken)
+                    .ConfigureAwait(false);
+                NntpTransitStorageResult storageResult = await storage.TakeThisAsync(
+                        messageId,
+                        read.Body,
+                        origin,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                string responseLine = storageResult switch
+                {
+                    NntpTransitStorageResult.Success => "235 Article transferred OK",
+                    NntpTransitStorageResult.QueueFull => "437 Article rejected",
+                    NntpTransitStorageResult.ArticleRejected => "437 Article rejected",
+                    _ => "439 Transfer failed",
+                };
+                await session.Writer.WriteLineAsync(responseLine, cancellationToken).ConfigureAwait(false);
                 return true;
             }
             finally

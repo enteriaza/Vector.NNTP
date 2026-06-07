@@ -2,6 +2,7 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+using Vector.NNTP.Articles.DependencyInjection;
 using Vector.NNTP.Auth.MySql.DependencyInjection;
 using Vector.NNTP.HistoryDB.DependencyInjection;
 using Vector.NNTP.Session.Redis.DependencyInjection;
@@ -34,6 +35,7 @@ namespace Vector.NNTP.NNTPD
             _ = builder.Services.AddNntpHistoryDatabase(builder.Configuration);
             _ = builder.Services.AddNntpMySqlAuthFromHostConfiguration(builder.Configuration);
             _ = builder.Services.AddNntpSocketsTransit();
+            _ = builder.Services.AddNntpArticlesTransitSpool(builder.Configuration);
 
             _ = builder.Services.PostConfigure<SocketsNntpServerOptions>(options =>
             {

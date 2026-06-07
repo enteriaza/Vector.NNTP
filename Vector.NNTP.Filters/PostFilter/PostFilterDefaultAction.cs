@@ -14,7 +14,12 @@ namespace Vector.NNTP.Filters.PostFilter
     /// </remarks>
     public enum PostFilterDefaultAction
     {
-        /// <summary>Normal accept or reject semantics.</summary>
+        /// <summary>
+        /// Default non-inverting accept/reject semantics for the configured postfilter profile.
+        /// </summary>
+        /// <remarks>
+        /// Filter outcomes map directly to <see cref="PostFilterResult.ClientShouldSeeSuccess"/> without inversion.
+        /// </remarks>
         Accept = 0,
 
         /// <summary>Silently drop after reporting success to the client (Perl <c>DROP</c>).</summary>

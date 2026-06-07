@@ -5,6 +5,7 @@ NNRPD and NNTPD bind a single JSON section named `NntpServer` to **socket**, **s
 | Property | Subsystem | Purpose |
 |----------|-----------|---------|
 | `NodeName` | `Vector.NNTP.Encryption` | Stable node id for ACME/cluster logging (required). |
+| `DomainName` | Sockets | DNS domain suffix combined with `NodeName` for SpamAssassin scan header synthesis (for example `usenetninja.net` → `transit1.usenetninja.net`). Optional; when empty, `NodeName` alone is used. |
 | `Port` | `Vector.NNTP.Sockets` | Cleartext NNTP listener (default `119`). |
 | `TlsPort` | `Vector.NNTP.Sockets` | Implicit TLS (NNTPS) listener; `0` disables (default `0`). |
 | `BindAddress` | Sockets | Bind address (`0.0.0.0` or `*` for all interfaces). |
@@ -49,6 +50,48 @@ Console output and log levels continue to follow the `Serilog` configuration sec
 ### Article body ingestion (POST, TAKETHIS, IHAVE)
 
 `MaxArtSize` enforces the maximum **decoded** dot-stuffed article body size while reading from the session pipe. The default is **1 MiB** (`1048576`), matching typical `NNTPD.json` deployments. When a peer exceeds the limit, transit commands return **`439`** (TAKETHIS/IHAVE) or **`441`** (POST) and the session stays up; set **`0`** to disable the check. `PipeReadBufferBytes` sizes the socket `StreamPipeReader` buffer (default **65536**, minimum **4096**). Larger buffers reduce `ReadAsync` churn during RFC 4644 streaming at the cost of slightly more memory per connection.
+
+### Transit spool (NNTPD)
+
+**NNTPD only.** Accepted TAKETHIS/IHAVE articles are enqueued in memory and written asynchronously to `{SpoolDir}/Incoming/{aa}/{bb}/{blake3-hex}`. Socket threads never block on disk I/O or header validation.
+
+| Key | Purpose |
+|-----|---------|
+| `SpoolDir` | Spool root directory. Empty → `{AppContext.BaseDirectory}/Spool`. |
+| `SpoolQueueCapacity` | Maximum in-flight queued articles (default `1024`). |
+| `MaxQueuedBytes` | Maximum sum of queued article payload bytes (default `1073741824` / 1 GiB). |
+| `PathAppend` | Hop token prepended to `Path:` during writer preprocessing (empty skips mutation). |
+
+Enqueue rejects with **`437 Article rejected`** (IHAVE) or **`439 Transfer failed`** (TAKETHIS) when **either** limit is exceeded. Writer count scales automatically from absolute queue depth in fixed tiers (`ProcessorQueueSpoolWriterScalingPolicy.BacklogPerWriter`, default compile-time constant `64`) up to `min(ProcessorCount, 24)`; `SpoolQueueCapacity` is a safety/memory limit and does not change scaling aggressiveness. There is no fixed writer-count JSON knob — tune the backlog tier constant with host benchmarks if queue depth or throughput warrants it.
+
+#### Memory warning
+
+Each queued item holds a full `byte[]` copy of the article. Worst-case RAM is approximately **`min(SpoolQueueCapacity × MaxArtSize, MaxQueuedBytes)`** plus object overhead — not merely the item count.
+
+| SpoolQueueCapacity | MaxQueuedBytes | MaxArtSize | Effective binding |
+|--------------------|----------------|------------|-------------------|
+| 1024 | 1 GiB | 4 MiB | Bytes (~256 max-sized articles) |
+| 1024 | 4 GiB | 4 MiB | Item count (1024) |
+| 256 | 512 MiB | 10 MiB | Bytes (~51 max-sized articles) |
+
+```json
+"SpoolDir": "",
+"SpoolQueueCapacity": 1024,
+"MaxQueuedBytes": 1073741824,
+"PathAppend": "nntpd01.usenet.ninja!nntpspool.opticnetworks.net"
+```
+
+#### Spool observability
+
+OpenTelemetry counter **`article_type_total`** (meter `Vector.NNTP.Articles`) is incremented once per successfully postprocessed article for each classification tag present (`type` label). Examples: `yenc`, `archive`, `video`, `text`, `default`. Multiple flags on one article increment multiple counters (for example yEnc binaries emit both `yenc` and `binary`).
+
+Example PromQL for a five-minute rate by type:
+
+```promql
+sum by (type) (rate(article_type_total[5m]))
+```
+
+Other spool instruments: `nntp.spool.queue.*`, `nntp.spool.write.*`, `nntp.spool.preprocess.failure`, `nntp.spool.postprocess.failure`, `nntp.spool.payload.bytes_written`.
 
 ## Transit peers (NNTPD)
 
@@ -155,6 +198,34 @@ Unit tests that do not call `AddNntpSessionRedis` keep in-memory coordinators fr
 - **Orphan keys:** if history records a message-id but storage rejects the article (`439`), the id stays in history until TTL (documented in the ADR).
 
 Register `AddNntpHistoryDatabase` after `AddNntpSessionRedis` and before `AddNntpSocketsTransit`.
+
+## SpamAssassin (transit spool and reader hosts)
+
+NNTPD binds `SpamAssassin` and `PostFilter` when `AddNntpArticlesTransitSpool(configuration)` is registered. NNRPD registers `AddSpamAssassin` for future reader POST filtering.
+
+| Key | Purpose |
+|-----|---------|
+| `Hosts` | Round-robin spamd hostnames or IPs (one host per `CHECK`; required in practice). |
+| `Port` | spamd TCP port (default `783`). |
+| `SpamdProtocolVersion` | spamc protocol version (default `1.5`). |
+| `ConnectTimeoutMilliseconds` | TCP connect timeout (default `5000`). |
+| `OperationTimeoutMilliseconds` | End-to-end CHECK timeout (default `120000`). |
+
+Transit spool postprocessing scans **non-yEnc** articles under **128 KiB** only. Spamd connectivity and protocol errors **fail open** (article accepted). yEnc articles run `YEncSectionCrc.Validate` instead; CRC failure rejects the article.
+
+Synthetic spamd scan headers (`Received:`, `To:`, `X-Usenet-Newsgroups:`) are built from peer origin metadata and `NntpServer:NodeName` + `NntpServer:DomainName` — not from static scan-host JSON keys.
+
+Example:
+
+```json
+"SpamAssassin": {
+  "Hosts": ["198.18.0.70"],
+  "Port": 783,
+  "SpamdProtocolVersion": "1.5",
+  "ConnectTimeoutMilliseconds": 5000,
+  "OperationTimeoutMilliseconds": 120000
+}
+```
 
 ## TLS startup
 

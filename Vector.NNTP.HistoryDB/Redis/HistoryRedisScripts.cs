@@ -42,5 +42,16 @@ if v2 and tonumber(v2) > tonumber(ARGV[1]) then
 end
 return 0
 """;
+
+        /// <summary>
+        /// Release on spool failure: 0 released, 1 not found.
+        /// </summary>
+        internal const string HistoryReleaseV1 = """
+-- HISTORY_RELEASE_V1
+if redis.call('DEL', KEYS[1]) == 1 then
+  return 0
+end
+return 1
+""";
     }
 }

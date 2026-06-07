@@ -13,6 +13,12 @@ namespace Vector.NNTP.Sockets.Transport.Commands
     /// <summary>
     /// Handles HDR and XHDR header field retrieval commands.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When a syntactically valid Message-ID selector is supplied, header lookup by message-id is not yet implemented;
+    /// the handler falls back to the default group range until storage grows message-id HDR support.
+    /// </para>
+    /// </remarks>
     internal static class NntpCmdHdr
     {
         /// <summary>
@@ -78,7 +84,7 @@ namespace Vector.NNTP.Sockets.Transport.Commands
         /// <param name="headerField">The header field name.</param>
         /// <param name="rangeLow">The low end of the range.</param>
         /// <param name="rangeHigh">The high end of the range.</param>
-        /// <returns>True if the arguments are parsed successfully, false otherwise.</returns>
+        /// <returns><see langword="true"/> when arguments are syntactically valid.</returns>
         private static bool TryParseHdrArguments(
             string? argument,
             out string headerField,
@@ -101,38 +107,13 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             }
 
             headerField = argument[..firstSpace].Trim();
-            string rangeText = argument[(firstSpace + 1)..].Trim();
-            if (string.IsNullOrEmpty(rangeText))
+            string selectorText = argument[(firstSpace + 1)..].Trim();
+            if (string.IsNullOrEmpty(selectorText))
             {
                 return true;
             }
 
-            int dash = rangeText.IndexOf('-', StringComparison.Ordinal);
-            if (dash < 0)
-            {
-                if (long.TryParse(rangeText, NumberStyles.None, CultureInfo.InvariantCulture, out long single))
-                {
-                    rangeLow = single;
-                    rangeHigh = single;
-                    return true;
-                }
-
-                return false;
-            }
-
-            ReadOnlySpan<char> left = rangeText.AsSpan(0, dash).Trim();
-            ReadOnlySpan<char> right = rangeText.AsSpan(dash + 1).Trim();
-            if (left.Length > 0 && long.TryParse(left, NumberStyles.None, CultureInfo.InvariantCulture, out long low))
-            {
-                rangeLow = low;
-            }
-
-            if (right.Length > 0 && long.TryParse(right, NumberStyles.None, CultureInfo.InvariantCulture, out long high))
-            {
-                rangeHigh = high;
-            }
-
-            return true;
+            return ArticleRangeOrMessageIdSyntax.TryParse(selectorText, out rangeLow, out rangeHigh, out string? _);
         }
     }
 }

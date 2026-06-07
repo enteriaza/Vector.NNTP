@@ -36,11 +36,15 @@ namespace Vector.NNTP.Filters.PostFilter
         private IReadOnlyList<string> _whitelist = [];
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="PostFilterListRepository"/> class.
+        /// Loads banlist, badwords, and whitelist snapshots and subscribes to options changes for hot reload.
         /// </summary>
-        /// <param name="options">Options monitor.</param>
-        /// <param name="logger">Logger.</param>
+        /// <param name="options">Options monitor supplying list file paths relative to <see cref="PostFilterOptions.DataDirectory"/>.</param>
+        /// <param name="logger">Logger for reload and load-failure events.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> or <paramref name="logger"/> is <see langword="null"/>.</exception>
+        /// <remarks>
+        /// Performs an initial <c>Reload</c> from <see cref="IOptionsMonitor{TOptions}.CurrentValue"/> and registers
+        /// <see cref="IOptionsMonitor{TOptions}.OnChange"/> so list files refresh when configuration changes without restarting the host.
+        /// </remarks>
         public PostFilterListRepository(IOptionsMonitor<PostFilterOptions> options, ILogger<PostFilterListRepository> logger)
         {
             ArgumentNullException.ThrowIfNull(options);
@@ -49,7 +53,12 @@ namespace Vector.NNTP.Filters.PostFilter
             _subscription = options.OnChange((o, _) => Reload(o));
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Releases the <see cref="IOptionsMonitor{TOptions}.OnChange"/> subscription registered at construction.
+        /// </summary>
+        /// <remarks>
+        /// Does not dispose loaded list snapshots; callers retain valid references to the last swapped lists until GC.
+        /// </remarks>
         public void Dispose()
         {
             _subscription?.Dispose();
@@ -154,6 +163,12 @@ namespace Vector.NNTP.Filters.PostFilter
                 new EventId(6500, nameof(ListsReloaded)),
                 "PostFilter lists reloaded: banlist={Ban}, badwords={Bad}, whitelist={Wl}");
 
+            /// <summary>
+            /// Logs a warning when a list file cannot be read; the repository continues with an empty list for that file.
+            /// </summary>
+            /// <param name="logger">Logger instance.</param>
+            /// <param name="exception">I/O or access exception from the read attempt.</param>
+            /// <param name="path">Absolute path to the list file that failed to load.</param>
             [LoggerMessage(
                 EventId = 6501,
                 Level = LogLevel.Warning,

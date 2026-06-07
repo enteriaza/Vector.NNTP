@@ -9,9 +9,6 @@ namespace Vector.NNTP.Filters.PostFilter
     /// <summary>
     /// Per-post client identity and timing supplied by the NNTP host (analogous to INN/nnrpd Perl globals and connection metadata).
     /// </summary>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="PostFilterContext"/> class.
-    /// </remarks>
     /// <param name="clientIp">Client IP address.</param>
     /// <param name="utcNow">Clock time for rate windows.</param>
     /// <param name="isAuthenticated">Whether the reader session is authenticated.</param>
