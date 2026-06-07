@@ -12,17 +12,18 @@ namespace Vector.NNTP.Session.Coordination
     public sealed class InMemoryBlockQuotaCoordinator : INntpBlockQuotaCoordinator
     {
         /// <summary>
-        /// Quotas dictionary.
+        /// Remaining byte quotas keyed by normalized account key.
         /// </summary>
         private readonly ConcurrentDictionary<string, long> _quotas = new(StringComparer.Ordinal);
 
         /// <summary>
-        /// Tries to initialize a quota.
+        /// Attempts to seed the initial quota for an account key.
         /// </summary>
-        /// <param name="accountKey">The account key.</param>
-        /// <param name="initialBytes">The initial bytes.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A task that completes when the quota is initialized.</returns>
+        /// <param name="accountKey">Normalized account key.</param>
+        /// <param name="initialBytes">Initial remaining bytes.</param>
+        /// <param name="cancellationToken">Cancellation token (unused in-memory).</param>
+        /// <returns><see langword="true"/> when the key was newly inserted.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="accountKey"/> is null or empty.</exception>
         public ValueTask<bool> TryInitializeQuotaAsync(string accountKey, long initialBytes, CancellationToken cancellationToken)
         {
             _ = cancellationToken;
@@ -31,12 +32,13 @@ namespace Vector.NNTP.Session.Coordination
         }
 
         /// <summary>
-        /// Decrements a quota.
+        /// Decrements the remaining quota and returns the new balance.
         /// </summary>
-        /// <param name="accountKey">The account key.</param>
-        /// <param name="bytes">The bytes to decrement.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A task that completes when the quota is decremented.</returns>
+        /// <param name="accountKey">Normalized account key.</param>
+        /// <param name="bytes">Bytes to subtract from the quota.</param>
+        /// <param name="cancellationToken">Cancellation token (unused in-memory).</param>
+        /// <returns>Remaining bytes after decrement (may be negative).</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="accountKey"/> is null or empty.</exception>
         public ValueTask<long> DecrementAsync(string accountKey, long bytes, CancellationToken cancellationToken)
         {
             _ = cancellationToken;

@@ -14,11 +14,13 @@ namespace Vector.NNTP.Session.Coordination
     public interface INntpSessionCountCoordinator
     {
         /// <summary>
-        /// Gets the observed concurrent authenticated session count for an account.
+        /// Observes the concurrent authenticated session count for an account across the cluster.
         /// </summary>
         /// <param name="username">Authenticated username.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Session count (minimum 1 when called for shaping).</returns>
+        /// <returns>Session count used as fair-share divisor (implementations clamp to at least 1).</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public Task<long> GetSessionCountAsync(string username, CancellationToken cancellationToken);
     }
 }

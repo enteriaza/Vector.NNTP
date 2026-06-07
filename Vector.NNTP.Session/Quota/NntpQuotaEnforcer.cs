@@ -10,38 +10,40 @@ namespace Vector.NNTP.Session.Quota
     /// Applies byte quota decrement and rate allocation refresh after NNTP commands.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="NntpQuotaEnforcer"/> class.
+    /// <para>Invoked by the NNTP session runner after commands that carry billable bytes. Block quota failures force
+    /// deauthentication with stable reason codes for accounting.</para>
     /// </remarks>
     /// <param name="blockQuotaCoordinator">Block quota coordinator.</param>
     /// <param name="rateAllocationCoordinator">Rate allocation coordinator.</param>
-    /// <param name="logger">Logger.</param>
+    /// <param name="logger">Logger for quota and deauth events.</param>
+    /// <exception cref="ArgumentNullException">Thrown when any constructor argument is null.</exception>
     public sealed partial class NntpQuotaEnforcer(
         INntpBlockQuotaCoordinator blockQuotaCoordinator,
         INntpRateAllocationCoordinator rateAllocationCoordinator,
         ILogger<NntpQuotaEnforcer> logger)
     {
         /// <summary>
-        /// Block quota reason code.
+        /// Accounting stop reason when byte quota is exhausted.
         /// </summary>
         private const string AcctStopReasonBlockQuota = "block_quota";
 
         /// <summary>
-        /// Block quota error reason code.
+        /// Accounting stop reason when quota decrement fails unexpectedly.
         /// </summary>
         private const string AcctStopReasonBlockQuotaError = "block_quota_error";
 
         /// <summary>
-        /// Block quota coordinator.
+        /// Distributed or in-memory block quota coordinator.
         /// </summary>
         private readonly INntpBlockQuotaCoordinator _blockQuotaCoordinator = blockQuotaCoordinator ?? throw new ArgumentNullException(nameof(blockQuotaCoordinator));
 
         /// <summary>
-        /// Rate allocation coordinator.
+        /// Fair-share rate coordinator supplying per-session send caps.
         /// </summary>
         private readonly INntpRateAllocationCoordinator _rateAllocationCoordinator = rateAllocationCoordinator ?? throw new ArgumentNullException(nameof(rateAllocationCoordinator));
 
         /// <summary>
-        /// Logger.
+        /// Logger for quota decrement, exhaustion, and forced deauth events.
         /// </summary>
         private readonly ILogger<NntpQuotaEnforcer> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -53,6 +55,7 @@ namespace Vector.NNTP.Session.Quota
         /// <param name="commandBytes">Bytes attributed to the command.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Enforcement outcome for the runner.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="policy"/> is null.</exception>
         public async ValueTask<QuotaEnforcementResult> ApplyBlockQuotaAfterCommandAsync(
             NntpSessionPolicy policy,
             string sessionId,
@@ -94,6 +97,7 @@ namespace Vector.NNTP.Session.Quota
         /// <param name="policy">Authenticated policy.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Updated per-session bytes per second (0 = unlimited).</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="policy"/> is null.</exception>
         public async ValueTask<long> RefreshRateLimitAsync(NntpSessionPolicy policy, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(policy);

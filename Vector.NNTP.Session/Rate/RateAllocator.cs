@@ -8,10 +8,8 @@ namespace Vector.NNTP.Session.Rate
     /// Computes per-session fair-share send rates from aggregate account limits.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// The observed session count includes every live authenticated TCP on the node or cluster (idle included).
-    /// The account ceiling is never multiplied by session count.
-    /// </para>
+    /// <para><b>Fair-share:</b> The observed session count includes every live authenticated TCP on the node or cluster
+    /// (idle included). The account ceiling is divided by session count, never multiplied.</para>
     /// </remarks>
     public static class RateAllocator
     {

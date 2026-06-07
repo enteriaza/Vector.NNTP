@@ -11,7 +11,10 @@ namespace Vector.NNTP.Session.Coordination
     /// </summary>
     public static class TransitPeerCapacityRegistry
     {
+        /// <summary>Latest reconciled live session count per peer identifier.</summary>
         private static readonly ConcurrentDictionary<string, long> CurrentCapacity = new(StringComparer.Ordinal);
+
+        /// <summary>Configured maximum connections per peer identifier.</summary>
         private static readonly ConcurrentDictionary<string, long> MaxConnections = new(StringComparer.Ordinal);
 
         /// <summary>

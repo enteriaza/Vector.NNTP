@@ -23,7 +23,8 @@ namespace Vector.NNTP.Session.DependencyInjection
         /// Production hosts call <c>AddNntpSessionRedis</c> first, which replaces coordinators with Redis implementations.
         /// </remarks>
         /// <param name="services">Service collection.</param>
-        /// <returns>The service collection for chaining.</returns>
+        /// <returns><paramref name="services"/> for fluent chaining.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is null.</exception>
         public static IServiceCollection AddNntpSessionCore(this IServiceCollection services)
         {
             ArgumentNullException.ThrowIfNull(services);

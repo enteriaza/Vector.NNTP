@@ -11,40 +11,41 @@ namespace Vector.NNTP.Session.Utilities
     public sealed class BoundedCache<T>
     {
         /// <summary>
-        /// Maximum TTL in ticks.
+        /// Hard anti-thrash ceiling of 100 ms expressed in <see cref="DateTime"/> ticks.
         /// </summary>
         private static readonly long MaxTtlTicks = TimeSpan.FromMilliseconds(100).Ticks;
 
         /// <summary>
-        /// Factory on cache miss.
+        /// Async factory invoked when the cache is empty or expired.
         /// </summary>
         private readonly Func<CancellationToken, Task<T>> _factory;
 
         /// <summary>
-        /// TTL in ticks.
+        /// Effective TTL in ticks after coercing the requested value to 0–100 ms.
         /// </summary>
         private readonly long _ttlTicks;
 
         /// <summary>
-        /// Expires at ticks.
+        /// Absolute expiry instant in UTC ticks for the cached entry.
         /// </summary>
         private long _expiresAtTicks;
 
         /// <summary>
-        /// Indicates whether a cached value is present.
+        /// Non-zero when <see cref="_cachedValue"/> is valid until <see cref="_expiresAtTicks"/>.
         /// </summary>
         private int _hasValue;
 
         /// <summary>
-        /// Cached value.
+        /// Last produced value retained until expiry.
         /// </summary>
         private T? _cachedValue;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="BoundedCache{T}"/> class.
+        /// Initializes a new instance of the <see cref="BoundedCache{T}"/> class with TTL coerced to the 0–100 ms anti-thrash window.
         /// </summary>
         /// <param name="ttl">Requested TTL; coerced to 0..100 ms.</param>
-        /// <param name="factory">Factory on cache miss.</param>
+        /// <param name="factory">Factory invoked on cache miss.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="factory"/> is null.</exception>
         public BoundedCache(TimeSpan ttl, Func<CancellationToken, Task<T>> factory)
         {
             ArgumentNullException.ThrowIfNull(factory);

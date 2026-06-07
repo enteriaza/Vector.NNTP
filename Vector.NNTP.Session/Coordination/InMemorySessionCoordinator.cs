@@ -12,25 +12,28 @@ namespace Vector.NNTP.Session.Coordination
     public sealed class InMemorySessionCoordinator : INntpSessionCoordinator
     {
         /// <summary>
-        /// Sessions dictionary.
+        /// Held admission slots keyed by <c>accountKey|sessionId</c>.
         /// </summary>
         private readonly ConcurrentDictionary<string, byte> _sessions = new(StringComparer.Ordinal);
 
         /// <summary>
-        /// Account IPs dictionary.
+        /// Distinct client source IPs currently admitted per account key.
         /// </summary>
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _accountIps = new(StringComparer.Ordinal);
 
         /// <summary>
-        /// Tries to admit a session.
+        /// Attempts distributed admission using in-memory session and source-IP counters.
         /// </summary>
-        /// <param name="policy">The session policy.</param>
-        /// <param name="sessionId">The session ID.</param>
-        /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="policy">Authenticated session policy with limits.</param>
+        /// <param name="sessionId">Globally unique session identifier.</param>
+        /// <param name="clientIpText">Normalized client IP text for source-IP limits.</param>
         /// <param name="nodeName">Stable cluster node identity (ignored in-memory).</param>
-        /// <param name="ttlSeconds">The TTL seconds.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The admission result.</returns>
+        /// <param name="ttlSeconds">Lease TTL seconds (ignored in-memory).</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns><see cref="NntpSessionAdmissionResult"/> outcome.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="policy"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="sessionId"/> or <paramref name="clientIpText"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public ValueTask<NntpSessionAdmissionResult> TryAdmitAsync(
             NntpSessionPolicy policy,
             string sessionId,
@@ -89,14 +92,15 @@ namespace Vector.NNTP.Session.Coordination
         }
 
         /// <summary>
-        /// Releases a session.
+        /// Releases an admission slot and optionally removes the source-IP entry when unused.
         /// </summary>
-        /// <param name="policy">The session policy.</param>
-        /// <param name="sessionId">The session ID.</param>
-        /// <param name="clientIpText">The client IP text.</param>
+        /// <param name="policy">Authenticated session policy.</param>
+        /// <param name="sessionId">Session identifier used at admit time.</param>
+        /// <param name="clientIpText">Client IP text used for source-IP accounting.</param>
         /// <param name="nodeName">Stable cluster node identity (ignored in-memory).</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A task that completes when the session is released.</returns>
+        /// <param name="cancellationToken">Cancellation token (unused in-memory).</param>
+        /// <returns>A completed value task.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="policy"/> is null.</exception>
         public ValueTask ReleaseAsync(
             NntpSessionPolicy policy,
             string sessionId,

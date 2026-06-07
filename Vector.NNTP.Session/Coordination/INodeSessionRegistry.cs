@@ -15,10 +15,10 @@ namespace Vector.NNTP.Session.Coordination
     /// </remarks>
     public interface INodeSessionRegistry
     {
-        /// <summary>Gets the maximum purge loop iterations (defensive bound).</summary>
+        /// <summary>Gets the defensive upper bound on purge loop iterations to prevent unbounded Redis scans.</summary>
         int MaxPurgeIterations { get; }
 
-        /// <summary>Gets the batch size for each purge iteration.</summary>
+        /// <summary>Gets the number of lease entries processed per purge batch for progress logging.</summary>
         int PurgeBatchSize { get; }
 
         /// <summary>
@@ -27,6 +27,8 @@ namespace Vector.NNTP.Session.Coordination
         /// <param name="nodeName">Stable node identity.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Purge statistics.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="nodeName"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         ValueTask<NodeSessionPurgeResult> PurgeNodeAsync(string nodeName, CancellationToken cancellationToken);
     }
 }

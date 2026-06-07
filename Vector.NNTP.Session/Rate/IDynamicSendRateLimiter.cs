@@ -10,7 +10,7 @@ namespace Vector.NNTP.Session.Rate
     public interface IDynamicSendRateLimiter
     {
         /// <summary>
-        /// Gets the current maximum send bytes per second.
+        /// Gets the current maximum send bytes per second applied by the transport shaper.
         /// </summary>
         public long MaxSendBytesPerSecond { get; }
 

@@ -19,6 +19,7 @@ namespace Vector.NNTP.Session.Utilities
         /// </summary>
         /// <param name="idleTimeoutSeconds">Configured NNTP idle timeout in seconds (same as socket enforcement).</param>
         /// <returns>TTL seconds for acquire and heartbeat.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="idleTimeoutSeconds"/> is zero or negative.</exception>
         public static int ComputeTtlSeconds(int idleTimeoutSeconds)
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(idleTimeoutSeconds);
@@ -51,6 +52,7 @@ namespace Vector.NNTP.Session.Utilities
         /// </summary>
         /// <param name="leaseSeconds">Coordination lease seconds from <see cref="ComputeTtlSeconds"/>.</param>
         /// <returns>Metadata TTL seconds (twice the coordination lease).</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="leaseSeconds"/> is zero or negative.</exception>
         public static int ComputeMetadataTtlSeconds(int leaseSeconds)
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leaseSeconds);

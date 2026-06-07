@@ -16,27 +16,27 @@ namespace Vector.NNTP.Session.Context
     public sealed class SessionContext
     {
         /// <summary>
-        /// Authentication state.
+        /// Authentication state stored as <see cref="AuthenticationState"/> ordinal for CAS transitions.
         /// </summary>
         private int _authenticationState;
 
         /// <summary>
-        /// Received bytes.
+        /// Application-level bytes received, updated via atomic add.
         /// </summary>
         private long _rxBytes;
 
         /// <summary>
-        /// Sent bytes.
+        /// Application-level bytes sent, updated via atomic add.
         /// </summary>
         private long _txBytes;
 
         /// <summary>
-        /// Last activity timestamp.
+        /// Last activity instant as UTC Unix seconds for idle tracking.
         /// </summary>
         private long _lastActivityUnixSeconds;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="SessionContext"/> class.
+        /// Initializes a new instance of the <see cref="SessionContext"/> class for an unauthenticated TCP accept.
         /// </summary>
         /// <param name="sessionId">Stable session identifier.</param>
         /// <param name="remoteIp">Effective client IP (post-PROXY when applicable).</param>
@@ -45,6 +45,8 @@ namespace Vector.NNTP.Session.Context
         /// <param name="configVersion">Configuration version stamped at accept time.</param>
         /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
         /// <param name="transitPeerName">Optional configured transit peer name when admitted as a trusted peer.</param>
+        /// <exception cref="ArgumentException">Thrown when a required string argument is null or empty.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="remoteIp"/> is null.</exception>
         public SessionContext(
             string sessionId,
             IPAddress remoteIp,
@@ -71,27 +73,27 @@ namespace Vector.NNTP.Session.Context
         }
 
         /// <summary>
-        /// Gets the stable session identifier.
+        /// Gets the stable globally unique session identifier for Redis coordination and logging.
         /// </summary>
         public string SessionId { get; }
 
         /// <summary>
-        /// Gets the effective client IP address.
+        /// Gets the effective client IP after PROXY protocol parsing when applicable.
         /// </summary>
         public IPAddress RemoteIp { get; }
 
         /// <summary>
-        /// Gets the bracketed <c>[ip:port]</c> prefix used to correlate connection-scoped log lines.
+        /// Gets the bracketed <c>[ip:port]</c> prefix correlating connection-scoped log lines.
         /// </summary>
         public string ConnectionLogPrefix { get; }
 
         /// <summary>
-        /// Gets the UTC time the connection was accepted.
+        /// Gets the UTC instant when the TCP connection was accepted.
         /// </summary>
         public DateTimeOffset ConnectedAtUtc { get; }
 
         /// <summary>
-        /// Gets the configuration version stamped at session creation.
+        /// Gets the configuration version stamped at session creation for policy drift diagnostics.
         /// </summary>
         public string ConfigVersion { get; }
 
@@ -101,47 +103,47 @@ namespace Vector.NNTP.Session.Context
         public string NodeName { get; }
 
         /// <summary>
-        /// Gets the configured transit peer name when this connection was admitted as a trusted transit peer.
+        /// Gets the configured transit peer name when admitted as a trusted transit peer; otherwise <see langword="null"/>.
         /// </summary>
         public string? TransitPeerName { get; }
 
         /// <summary>
-        /// Gets the current authentication state.
+        /// Gets the current authentication state observed via volatile read.
         /// </summary>
         public AuthenticationState AuthenticationState => (AuthenticationState)Volatile.Read(ref _authenticationState);
 
         /// <summary>
-        /// Gets the optional authenticating sub-phase for logs and metrics.
+        /// Gets the authenticating sub-phase for structured logs and metrics while admission is pending.
         /// </summary>
         public AuthenticatingPhase AuthenticatingPhase { get; private set; }
 
         /// <summary>
-        /// Gets the authenticated username, if authenticated or pending admission.
+        /// Gets the authenticated username after credential validation; set while authenticating or authenticated.
         /// </summary>
         public string? PrincipalUsername { get; private set; }
 
         /// <summary>
-        /// Gets the normalized account key (BLAKE3 hex digest).
+        /// Gets the normalized BLAKE3 hex account key used for Redis coordination.
         /// </summary>
         public string? AccountKey { get; private set; }
 
         /// <summary>
-        /// Gets the current session policy when bound during authentication.
+        /// Gets the bound session policy awaiting or after distributed admission.
         /// </summary>
         public NntpSessionPolicy? SessionPolicy { get; private set; }
 
         /// <summary>
-        /// Gets application-level bytes received (RX) for this session.
+        /// Gets the application-level bytes received (RX) for this session.
         /// </summary>
         public long RxBytes => Interlocked.Read(ref _rxBytes);
 
         /// <summary>
-        /// Gets application-level bytes sent (TX) for this session.
+        /// Gets the application-level bytes sent (TX) for this session.
         /// </summary>
         public long TxBytes => Interlocked.Read(ref _txBytes);
 
         /// <summary>
-        /// Gets the last activity timestamp (UTC) recorded when bytes were accounted.
+        /// Gets the last activity instant (UTC) updated when RX or TX bytes are accounted.
         /// </summary>
         public DateTimeOffset LastActivityUtc => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _lastActivityUnixSeconds));
 
@@ -201,6 +203,8 @@ namespace Vector.NNTP.Session.Context
         /// <param name="policy">Session policy awaiting admission.</param>
         /// <param name="phase">Phase to record (typically <see cref="AuthenticatingPhase.PendingAdmission"/>).</param>
         /// <returns><see langword="true"/> when still authenticating and fields were bound.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> or <paramref name="accountKey"/> is null or empty.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="policy"/> is null.</exception>
         public bool TryBindPendingAuthentication(string username, string accountKey, NntpSessionPolicy policy, AuthenticatingPhase phase)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);

@@ -20,6 +20,7 @@ namespace Vector.NNTP.Session.Accounts
         /// </summary>
         /// <param name="username">Raw username from authentication.</param>
         /// <returns>Account key facet for Redis keys.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> is null or empty.</exception>
         public static string ComputeAccountKey(string username)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);

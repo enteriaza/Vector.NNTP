@@ -14,6 +14,7 @@ namespace Vector.NNTP.Session.Accounts
         /// </summary>
         /// <param name="username">Raw username from authentication.</param>
         /// <returns>Sixty-four character lowercase hexadecimal BLAKE3 digest.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> is null or empty.</exception>
         public string ComputeAccountKey(string username);
     }
 }

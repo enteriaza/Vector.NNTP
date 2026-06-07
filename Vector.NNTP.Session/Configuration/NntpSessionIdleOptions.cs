@@ -17,7 +17,7 @@ namespace Vector.NNTP.Session.Configuration
         public const string SectionName = "NntpServer";
 
         /// <summary>
-        /// Gets or sets the per-read idle timeout in seconds (same value as socket enforcement).
+        /// Gets or sets the per-read idle timeout in seconds; mirrored by socket enforcement and Redis lease TTL calculation.
         /// </summary>
         [Range(1, int.MaxValue)]
         public int IdleTimeoutSeconds { get; set; } = 600;

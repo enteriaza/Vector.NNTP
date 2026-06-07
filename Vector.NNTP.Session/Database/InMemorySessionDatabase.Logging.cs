@@ -12,51 +12,48 @@ namespace Vector.NNTP.Session.Database
     internal static partial class InMemorySessionDatabaseLog
     {
         /// <summary>
-        /// Log a session registered message.
+        /// Logs successful session registration at TCP accept.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger.</param>
         /// <param name="connectionPrefix">Bracketed client endpoint prefix for log correlation.</param>
-        /// <param name="sessionId">The session ID.</param>
+        /// <param name="sessionId">Registered session identifier.</param>
         [LoggerMessage(EventName = "SessionRegistered", Level = LogLevel.Debug, Message = "{ConnectionPrefix} Connection session registered SessionId={SessionId}")]
         public static partial void SessionRegistered(ILogger logger, string connectionPrefix, string sessionId);
 
         /// <summary>
-        /// Log a session registered duplicate message.
+        /// Logs a duplicate session insert attempt.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger.</param>
         /// <param name="connectionPrefix">Bracketed client endpoint prefix for log correlation.</param>
-        /// <param name="sessionId">The session ID.</param>
+        /// <param name="sessionId">Colliding session identifier.</param>
         [LoggerMessage(EventName = "SessionRegisteredDuplicate", Level = LogLevel.Warning, Message = "{ConnectionPrefix} Duplicate session insert SessionId={SessionId}")]
         public static partial void SessionRegisteredDuplicate(ILogger logger, string connectionPrefix, string sessionId);
 
         /// <summary>
-        /// Log a session removed message.
+        /// Logs session removal on connection teardown.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
-        /// <param name="sessionId">The session ID.</param>
-        /// <param name="reason">The reason.</param>
-        /// <returns><see langword="true"/> when removed.</returns>
-        /// <returns><see langword="true"/> when removed.</returns>
+        /// <param name="logger">Target logger.</param>
+        /// <param name="sessionId">Removed session identifier.</param>
+        /// <param name="reason">Teardown reason label.</param>
         [LoggerMessage(EventName = "SessionRemoved", Level = LogLevel.Debug, Message = "Connection session removed SessionId={SessionId} Reason={Reason}")]
         public static partial void SessionRemoved(ILogger logger, string sessionId, string reason);
 
         /// <summary>
-        /// Log a session authenticating message.
+        /// Logs transition into an authenticating sub-phase.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
-        /// <param name="sessionId">The session ID.</param>
-        /// <param name="phase">The phase.</param>
-        /// <returns><see langword="true"/> when authenticating.</returns>
+        /// <param name="logger">Target logger.</param>
+        /// <param name="sessionId">Session identifier.</param>
+        /// <param name="phase">Authenticating phase label.</param>
         [LoggerMessage(EventName = "SessionAuthenticating", Level = LogLevel.Debug, Message = "Session authenticating SessionId={SessionId} Phase={Phase}")]
         public static partial void SessionAuthenticating(ILogger logger, string sessionId, string phase);
 
         /// <summary>
-        /// Log a session authenticated message.
+        /// Logs successful authentication after distributed admission.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
-        /// <param name="sessionId">The session ID.</param>
-        /// <param name="username">The username.</param>
-        /// <param name="accountKey">The account key.</param>
+        /// <param name="logger">Target logger.</param>
+        /// <param name="sessionId">Session identifier.</param>
+        /// <param name="username">Authenticated username.</param>
+        /// <param name="accountKey">Normalized account key.</param>
         [LoggerMessage(EventName = "SessionAuthenticated", Level = LogLevel.Information, Message = "Session authenticated SessionId={SessionId} Username={Username} AccountKey={AccountKey}")]
         public static partial void SessionAuthenticated(ILogger logger, string sessionId, string username, string accountKey);
     }

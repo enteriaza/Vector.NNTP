@@ -24,6 +24,7 @@ namespace Vector.NNTP.Session.Policy
         /// <param name="accountKeyNormalizer">Account key normalizer (BLAKE3 hex).</param>
         /// <returns>Policy for authentication success and enforcement.</returns>
         /// <exception cref="ArgumentNullException">Thrown when a required argument is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="limits"/>.<see cref="NntpAccountLimits.Username"/> is null or empty.</exception>
         public static NntpSessionPolicy Create(
             NntpAccountLimits limits,
             bool allowPosting,

@@ -23,7 +23,7 @@ namespace Vector.NNTP.Session.Configuration
         public const string SectionName = "NntpServer";
 
         /// <summary>
-        /// Gets or sets the stable node identifier for this host instance (for example <c>nntpd01</c>).
+        /// Gets or sets the stable node identifier for this host instance (for example <c>nntpd01</c>); used in Redis key prefixes.
         /// </summary>
         [Required(ErrorMessage = "NntpServer:NodeName is required for Redis session coordination.")]
         public string NodeName { get; set; } = string.Empty;

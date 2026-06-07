@@ -11,9 +11,23 @@ namespace Vector.NNTP.Session.Coordination
     /// </summary>
     public sealed class InMemoryTransitPeerCoordinator : INntpTransitPeerCoordinator
     {
+        /// <summary>
+        /// Peer identifier to session-id map with last-refresh Unix scores (ZSET stand-in).
+        /// </summary>
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, double>> _peers = new(StringComparer.Ordinal);
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Attempts to acquire or refresh a peer session slot after purging stale scores.
+        /// </summary>
+        /// <param name="peerId">Stable peer identifier.</param>
+        /// <param name="sessionId">Globally unique session identifier.</param>
+        /// <param name="maxConnections">Configured cap (0 = unlimited).</param>
+        /// <param name="leaseSeconds">Stale score cutoff and lease extension window.</param>
+        /// <param name="nodeName">Stable cluster node identity (ignored in-memory).</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns><see cref="NntpTransitPeerAdmissionResult.Success"/> or <see cref="NntpTransitPeerAdmissionResult.AtCapacity"/>.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="peerId"/> or <paramref name="sessionId"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public ValueTask<NntpTransitPeerAdmissionResult> TryAcquireAsync(
             string peerId,
             string sessionId,
@@ -49,10 +63,19 @@ namespace Vector.NNTP.Session.Coordination
             return ValueTask.FromResult(NntpTransitPeerAdmissionResult.Success);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Removes a peer session slot when present (idempotent).
+        /// </summary>
+        /// <param name="peerId">Stable peer identifier.</param>
+        /// <param name="sessionId">Session identifier used at acquire time.</param>
+        /// <param name="nodeName">Stable cluster node identity (ignored in-memory).</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A completed value task.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="peerId"/> or <paramref name="sessionId"/> is null or empty.</exception>
         public ValueTask ReleaseAsync(string peerId, string sessionId, string nodeName, CancellationToken cancellationToken)
         {
             _ = nodeName;
+            _ = cancellationToken;
             ArgumentException.ThrowIfNullOrEmpty(peerId);
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             if (_peers.TryGetValue(peerId, out ConcurrentDictionary<string, double>? sessions))
@@ -63,7 +86,16 @@ namespace Vector.NNTP.Session.Coordination
             return ValueTask.CompletedTask;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Updates the ZSET score for a live peer session when still registered.
+        /// </summary>
+        /// <param name="peerId">Stable peer identifier.</param>
+        /// <param name="sessionId">Session identifier.</param>
+        /// <param name="nodeName">Stable cluster node identity (ignored in-memory).</param>
+        /// <param name="leaseSeconds">Lease window (ignored except for API parity).</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A completed value task.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="peerId"/> or <paramref name="sessionId"/> is null or empty.</exception>
         public ValueTask RefreshLeaseAsync(
             string peerId,
             string sessionId,
@@ -73,6 +105,7 @@ namespace Vector.NNTP.Session.Coordination
         {
             _ = nodeName;
             _ = leaseSeconds;
+            _ = cancellationToken;
             ArgumentException.ThrowIfNullOrEmpty(peerId);
             ArgumentException.ThrowIfNullOrEmpty(sessionId);
             if (_peers.TryGetValue(peerId, out ConcurrentDictionary<string, double>? sessions) &&
@@ -84,9 +117,16 @@ namespace Vector.NNTP.Session.Coordination
             return ValueTask.CompletedTask;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Purges stale peer sessions and returns the live count for metrics reconciliation.
+        /// </summary>
+        /// <param name="peerId">Stable peer identifier.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Live session count after a 300-second stale purge.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="peerId"/> is null or empty.</exception>
         public ValueTask<long> ReconcileCapacityAsync(string peerId, CancellationToken cancellationToken)
         {
+            _ = cancellationToken;
             ArgumentException.ThrowIfNullOrEmpty(peerId);
             if (!_peers.TryGetValue(peerId, out ConcurrentDictionary<string, double>? sessions))
             {

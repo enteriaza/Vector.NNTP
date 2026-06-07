@@ -12,12 +12,12 @@ namespace Vector.NNTP.Session.Coordination
     public sealed partial class NodeLocalRateAllocationCoordinator
     {
         /// <summary>
-        /// Log an information message when the account rate is rebalanced.
+        /// Logs a material fair-share cap update for an account.
         /// </summary>
-        /// <param name="accountKey">The account key.</param>
-        /// <param name="observedSessionCount">The observed session count.</param>
-        /// <param name="perSessionBytesPerSecond">The per session bytes per second.</param>
-        /// <param name="accountRateBytesPerSecond">The account rate bytes per second.</param>
+        /// <param name="accountKey">Normalized account key.</param>
+        /// <param name="observedSessionCount">Authenticated session count used as divisor.</param>
+        /// <param name="perSessionBytesPerSecond">New per-session send cap.</param>
+        /// <param name="accountRateBytesPerSecond">Aggregate account ceiling.</param>
         [LoggerMessage(
             EventName = "AccountRateRebalanced",
             Level = LogLevel.Information,
@@ -29,10 +29,10 @@ namespace Vector.NNTP.Session.Coordination
             long accountRateBytesPerSecond);
 
         /// <summary>
-        /// Log a debug message when the account rate rebalance is skipped.
+        /// Logs when refresh cadence suppresses a fair-share recompute.
         /// </summary>
-        /// <param name="accountKey">The account key.</param>
-        /// <param name="nextRefreshInMs">The next refresh in milliseconds.</param>
+        /// <param name="accountKey">Normalized account key.</param>
+        /// <param name="nextRefreshInMs">Milliseconds until the next allowed refresh.</param>
         [LoggerMessage(
             EventName = "AccountRateRebalanceSkipped",
             Level = LogLevel.Debug,

@@ -15,22 +15,22 @@ namespace Vector.NNTP.Session.Configuration
         public const string SectionName = "NntpRateAllocation";
 
         /// <summary>
-        /// Gets or sets how often per-account fair-share is recomputed (Option A — refresh cadence).
+        /// Gets or sets how often per-account fair-share is recomputed (Option A refresh cadence).
         /// </summary>
         public TimeSpan RateAllocationRefreshInterval { get; set; } = TimeSpan.FromSeconds(2);
 
         /// <summary>
-        /// Gets or sets session-count cache TTL for distributed reads (minimum anti-thrash; default 100 ms).
+        /// Gets or sets the session-count cache TTL for distributed reads (minimum anti-thrash; default 100 ms).
         /// </summary>
         public TimeSpan SessionCountCacheTtl { get; set; } = TimeSpan.FromMilliseconds(100);
 
         /// <summary>
-        /// Gets or sets optional hysteresis for session-count input (0 = disabled).
+        /// Gets or sets the optional hysteresis window for session-count input (<c>0</c> disables smoothing).
         /// </summary>
         public int SessionCountHysteresis { get; set; }
 
         /// <summary>
-        /// Gets or sets minimum relative change (0–1) before updating the shaper cap.
+        /// Gets or sets the minimum relative change (0–1) required before updating the transport shaper cap.
         /// </summary>
         public double MaterialRateChangeRatio { get; set; } = 0.05;
     }

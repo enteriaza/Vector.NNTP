@@ -31,19 +31,19 @@ namespace Vector.NNTP.Session.Coordination
             RemainingSessions = remainingSessions;
         }
 
-        /// <summary>Gets auth leases purged.</summary>
+        /// <summary>Gets the auth admission slots released during the purge.</summary>
         public long AuthLeasesPurged { get; }
 
-        /// <summary>Gets transit leases purged.</summary>
+        /// <summary>Gets the transit ZSET members released during the purge.</summary>
         public long TransitLeasesPurged { get; }
 
-        /// <summary>Gets purge duration in milliseconds.</summary>
+        /// <summary>Gets the wall-clock purge duration in milliseconds.</summary>
         public double DurationMs { get; }
 
-        /// <summary>Gets a value indicating whether the iteration safety limit was reached.</summary>
+        /// <summary>Gets a value indicating whether <see cref="INodeSessionRegistry.MaxPurgeIterations"/> stopped the loop early.</summary>
         public bool HitIterationLimit { get; }
 
-        /// <summary>Gets remaining indexed sessions when <see cref="HitIterationLimit"/> is true.</summary>
+        /// <summary>Gets the indexed sessions remaining when <see cref="HitIterationLimit"/> is true.</summary>
         public long RemainingSessions { get; }
     }
 }
