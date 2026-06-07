@@ -11,7 +11,7 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// <summary>
         /// Log a supervisor started message.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="poolSize">The size of the pool.</param>
         [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Redis multiplexer pool supervisor started PoolSize={PoolSize}.")]
         private static partial void LogSupervisorStarted(ILogger logger, int poolSize);

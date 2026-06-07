@@ -11,7 +11,7 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// <summary>
         /// Log a scaled up message.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="poolSize">The pool size.</param>
         [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Redis multiplexer pool scaled up PoolSize={PoolSize}.")]
         private static partial void LogScaledUp(ILogger logger, int poolSize);
@@ -19,7 +19,7 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// <summary>
         /// Log a scale error message.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="exception">The exception.</param>
         [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Redis multiplexer scale-up failed.")]
         private static partial void LogScaleError(ILogger logger, Exception exception);

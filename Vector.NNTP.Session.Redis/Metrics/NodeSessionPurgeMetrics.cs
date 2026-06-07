@@ -11,14 +11,26 @@ namespace Vector.NNTP.Session.Redis.Metrics
     /// </summary>
     public static class NodeSessionPurgeMetrics
     {
+        /// <summary>
+        /// OpenTelemetry meter for node purge instrumentation in the session assembly.
+        /// </summary>
         private static readonly Meter Meter = new("Vector.NNTP.Session", "1.0.0");
 
+        /// <summary>
+        /// Counter of authenticated session leases released during node purge.
+        /// </summary>
         private static readonly Counter<long> AuthLeasesPurgedCounter =
             Meter.CreateCounter<long>("nntp.node.purge.auth_leases");
 
+        /// <summary>
+        /// Counter of transit peer session leases released during node purge.
+        /// </summary>
         private static readonly Counter<long> TransitLeasesPurgedCounter =
             Meter.CreateCounter<long>("nntp.node.purge.transit_leases");
 
+        /// <summary>
+        /// Histogram of node purge wall-clock duration in milliseconds.
+        /// </summary>
         private static readonly Histogram<double> DurationMsHistogram =
             Meter.CreateHistogram<double>("nntp.node.purge.duration_ms");
 

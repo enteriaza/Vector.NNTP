@@ -11,17 +11,17 @@ namespace Vector.NNTP.Session.Redis.Connections
     public sealed partial class RedisMultiplexerPoolSupervisor : IHostedService
     {
         /// <summary>
-        /// Pool to start and dispose.
+        /// Multiplexer pool started at host boot and disposed on shutdown.
         /// </summary>
         private readonly RedisMultiplexerPool _pool;
 
         /// <summary>
-        /// Pool health aggregator.
+        /// Health aggregator updated after the pool reaches minimum connections.
         /// </summary>
         private readonly IRedisPoolHealth _health;
 
         /// <summary>
-        /// Logger.
+        /// Logger for supervisor startup events.
         /// </summary>
         private readonly ILogger<RedisMultiplexerPoolSupervisor> _logger;
 
@@ -42,10 +42,12 @@ namespace Vector.NNTP.Session.Redis.Connections
         }
 
         /// <summary>
-        /// Starts the pool and updates health.
+        /// Starts the multiplexer pool and publishes the initial health snapshot.
         /// </summary>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task that completes when the pool is started.</returns>
+        /// <param name="cancellationToken">Host startup cancellation token.</param>
+        /// <returns>A task that completes when minimum connections are established.</returns>
+        /// <exception cref="Exceptions.RedisUnavailableException">Thrown when the pool cannot reach minimum connections.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             await _pool.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -58,10 +60,10 @@ namespace Vector.NNTP.Session.Redis.Connections
         }
 
         /// <summary>
-        /// Disposes the pool.
+        /// Closes and disposes all pooled multiplexers during host shutdown.
         /// </summary>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task that completes when the pool is disposed.</returns>
+        /// <param name="cancellationToken">Host shutdown cancellation token.</param>
+        /// <returns>A task that completes when every pooled multiplexer is disposed.</returns>
         public async Task StopAsync(CancellationToken cancellationToken)
         {
             await _pool.DisposeAsync().ConfigureAwait(false);

@@ -8,6 +8,9 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// </summary>
     internal readonly struct RedisCoordinationKeys
     {
+        /// <summary>
+        /// Optional leading segment prepended to every coordination key (empty when unset).
+        /// </summary>
         private readonly string _prefix;
 
         /// <summary>

@@ -11,7 +11,7 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// <summary>
         /// Log a connecting message.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="hostCount">The host count.</param>
         /// <param name="port">The port.</param>
         /// <param name="retry">The retry.</param>
@@ -22,7 +22,7 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// <summary>
         /// Log a connected message.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="hostCount">The host count.</param>
         /// <param name="port">The port.</param>
         [LoggerMessage(EventId = 101, Level = LogLevel.Information, Message = "Redis multiplexer connected HostCount={HostCount} Port={Port}.")]

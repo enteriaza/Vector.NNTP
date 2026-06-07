@@ -7,12 +7,12 @@ namespace Vector.NNTP.Session.Redis.Coordination
     public sealed partial class RedisSessionLeaseRefresher
     {
         /// <summary>
-        /// Log a trace message when a Redis lease is refreshed.
+        /// Logs trace when a session lease heartbeat succeeds.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
-        /// <param name="sessionId">The ID of the session that was refreshed.</param>
-        /// <param name="accountKey">The account key of the session that was refreshed.</param>
-        /// <param name="ttlSeconds">The TTL of the session in seconds.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="sessionId">Session identifier whose lease was refreshed.</param>
+        /// <param name="accountKey">Normalized account key for the session.</param>
+        /// <param name="ttlSeconds">Lease TTL seconds applied by the heartbeat script.</param>
         [LoggerMessage(
             EventName = "RedisLeaseRefreshed",
             Level = LogLevel.Trace,
@@ -20,12 +20,12 @@ namespace Vector.NNTP.Session.Redis.Coordination
         private static partial void LogTraceRedisLeaseRefreshed(ILogger logger, string sessionId, string accountKey, int ttlSeconds);
 
         /// <summary>
-        /// Log a warning message when a Redis lease refresh fails.
+        /// Logs warning when a session lease heartbeat fails before the exception is rethrown.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
-        /// <param name="accountKey">The account key of the session that failed the refresh.</param>
-        /// <param name="sessionId">The ID of the session that failed the refresh.</param>
-        /// <param name="ex">The exception that occurred.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="ex">Exception raised by the heartbeat script or Redis call.</param>
+        /// <param name="accountKey">Normalized account key for the session.</param>
+        /// <param name="sessionId">Session identifier that failed refresh.</param>
         [LoggerMessage(
             EventName = "RedisLeaseExpired",
             Level = LogLevel.Warning,
@@ -33,11 +33,11 @@ namespace Vector.NNTP.Session.Redis.Coordination
         private static partial void LogWarningRedisLeaseRefreshFailed(ILogger logger, Exception ex, string accountKey, string sessionId);
 
         /// <summary>
-        /// Log a warning message when a Redis operation is slow.
+        /// Logs warning when a heartbeat Redis call exceeds the configured slow threshold.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
-        /// <param name="operation">The operation that was slow.</param>
-        /// <param name="elapsedMs">The elapsed time in milliseconds.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="operation">Logical operation name (for example <c>session-heartbeat</c>).</param>
+        /// <param name="elapsedMs">Measured elapsed time in milliseconds.</param>
         [LoggerMessage(
             EventName = "RedisOperationSlow",
             Level = LogLevel.Warning,

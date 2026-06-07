@@ -13,8 +13,7 @@ namespace Vector.NNTP.Session.Redis.Exceptions
     public sealed class RedisUnavailableException : Exception
     {
         /// <summary>
-        /// Initializes a new instance of the <see cref="RedisUnavailableException"/> class.
-        /// Initializes a new instance of the <see cref="RedisUnavailableException"/> class.
+        /// Initializes a new instance of the <see cref="RedisUnavailableException"/> class with the default pool-empty message.
         /// </summary>
         public RedisUnavailableException()
             : base("Redis coordination pool has no live multiplexers.")
@@ -22,21 +21,19 @@ namespace Vector.NNTP.Session.Redis.Exceptions
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="RedisUnavailableException"/> class.
-        /// Initializes a new instance of the <see cref="RedisUnavailableException"/> class.
+        /// Initializes a new instance of the <see cref="RedisUnavailableException"/> class with a custom message.
         /// </summary>
-        /// <param name="message">Exception message.</param>
+        /// <param name="message">Human-readable explanation of why no live multiplexer is available.</param>
         public RedisUnavailableException(string message)
             : base(message)
         {
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="RedisUnavailableException"/> class.
-        /// Initializes a new instance of the <see cref="RedisUnavailableException"/> class.
+        /// Initializes a new instance of the <see cref="RedisUnavailableException"/> class with a custom message and inner cause.
         /// </summary>
-        /// <param name="message">Exception message.</param>
-        /// <param name="innerException">Inner exception.</param>
+        /// <param name="message">Human-readable explanation of why no live multiplexer is available.</param>
+        /// <param name="innerException">Underlying connection or pool failure.</param>
         public RedisUnavailableException(string message, Exception innerException)
             : base(message, innerException)
         {

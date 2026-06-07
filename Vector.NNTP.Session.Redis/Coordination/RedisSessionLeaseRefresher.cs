@@ -12,17 +12,17 @@ namespace Vector.NNTP.Session.Redis.Coordination
     public sealed partial class RedisSessionLeaseRefresher : IRedisSessionLeaseRefresher
     {
         /// <summary>
-        /// Logger.
+        /// Logger for lease refresh trace, failures, and slow-call warnings.
         /// </summary>
         private readonly ILogger<RedisSessionLeaseRefresher> _logger;
 
         /// <summary>
-        /// Redis connection accessor.
+        /// Round-robin Redis accessor for heartbeat script evaluation.
         /// </summary>
         private readonly IRedisConnectionAccessor _redis;
 
         /// <summary>
-        /// Redis coordination keys.
+        /// Key builder for session anchors, IP sets, and node registry metadata.
         /// </summary>
         private readonly RedisCoordinationKeys _keys;
 
@@ -53,7 +53,20 @@ namespace Vector.NNTP.Session.Redis.Coordination
             _slowThresholdMs = Math.Max(0, options.Value.SlowRedisCallThresholdMs);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Extends lease TTL for a session anchor, its IP set, account counters, and node session registry metadata.
+        /// </summary>
+        /// <param name="accountKey">Normalized account key.</param>
+        /// <param name="sessionId">Session identifier.</param>
+        /// <param name="ipText">Client IP text.</param>
+        /// <param name="nodeName">Stable cluster node identity.</param>
+        /// <param name="ttlSeconds">Lease TTL seconds applied to anchor and related keys.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when the heartbeat script finishes.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="accountKey"/>, <paramref name="sessionId"/>, <paramref name="ipText"/>, or <paramref name="nodeName"/> is null or empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="ttlSeconds"/> is zero or negative.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
+        /// <exception cref="Exception">Propagated when the Redis heartbeat script fails after logging.</exception>
         public async Task HeartbeatAsync(
             string accountKey,
             string sessionId,

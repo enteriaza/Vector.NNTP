@@ -7,7 +7,8 @@ namespace Vector.NNTP.Session.Redis.HostedServices
     /// Periodic bounded reconciliation sweep for distinct accounts on this node.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="RedisSessionReconciliationHostedService"/> class.
+    /// Registered only when <see cref="NntpSessionCoordinationOptions.ReconciliationIntervalSeconds"/> is positive.
+    /// Each sweep reconciles every distinct account key present in the node-local session database.
     /// </remarks>
     /// <param name="reconciliationCoordinator">Reconciliation coordinator.</param>
     /// <param name="sessionDatabase">Session database for account keys.</param>
@@ -20,30 +21,30 @@ namespace Vector.NNTP.Session.Redis.HostedServices
         ILogger<RedisSessionReconciliationHostedService> logger) : BackgroundService
     {
         /// <summary>
-        /// Reconciliation coordinator.
+        /// Bounded reconciliation coordinator invoked once per distinct account key.
         /// </summary>
         private readonly IRedisSessionReconciliationCoordinator _reconciliationCoordinator = reconciliationCoordinator ?? throw new ArgumentNullException(nameof(reconciliationCoordinator));
 
         /// <summary>
-        /// Session database.
+        /// Node-local session database supplying distinct account keys for each sweep.
         /// </summary>
         private readonly ISessionDatabase _sessionDatabase = sessionDatabase ?? throw new ArgumentNullException(nameof(sessionDatabase));
 
         /// <summary>
-        /// Coordination options.
+        /// Monitored coordination options supplying the reconciliation interval.
         /// </summary>
         private readonly IOptionsMonitor<NntpSessionCoordinationOptions> _coordinationOptions = coordinationOptions ?? throw new ArgumentNullException(nameof(coordinationOptions));
 
         /// <summary>
-        /// Logger.
+        /// Logger for per-account reconciliation failures.
         /// </summary>
         private readonly ILogger<RedisSessionReconciliationHostedService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         /// <summary>
-        /// Execute the reconciliation hosted service.
+        /// Waits on the reconciliation interval and runs bounded orphan cleanup per account until shutdown.
         /// </summary>
-        /// <param name="stoppingToken">Token to stop the hosted service.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
+        /// <param name="stoppingToken">Token signaled when the host is stopping.</param>
+        /// <returns>A task that runs until <paramref name="stoppingToken"/> is canceled.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)

@@ -11,7 +11,7 @@ namespace Vector.NNTP.Session.Redis.Configuration
         /// <summary>
         /// Log a duplicate host warning.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="host">The host.</param>
         [LoggerMessage(
             EventId = 1,
@@ -22,7 +22,7 @@ namespace Vector.NNTP.Session.Redis.Configuration
         /// <summary>
         /// Log a validation success message.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="hostCount">The host count.</param>
         /// <param name="port">The port.</param>
         /// <param name="retry">The retry.</param>

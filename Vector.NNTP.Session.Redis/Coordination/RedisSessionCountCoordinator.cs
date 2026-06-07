@@ -12,17 +12,17 @@ namespace Vector.NNTP.Session.Redis.Coordination
     public sealed partial class RedisSessionCountCoordinator : INntpSessionCountCoordinator
     {
         /// <summary>
-        /// Redis connection accessor.
+        /// Round-robin Redis accessor for session counter reads.
         /// </summary>
         private readonly IRedisConnectionAccessor _redis;
 
         /// <summary>
-        /// Redis coordination keys.
+        /// Key builder for per-account session counter keys.
         /// </summary>
         private readonly RedisCoordinationKeys _keys;
 
         /// <summary>
-        /// Logger.
+        /// Logger for session count debug events.
         /// </summary>
         private readonly ILogger<RedisSessionCountCoordinator> _logger;
 
@@ -44,11 +44,14 @@ namespace Vector.NNTP.Session.Redis.Coordination
         }
 
         /// <summary>
-        /// Gets the session count for the given username.
+        /// Reads the cluster-wide authenticated session counter for the normalized account key derived from <paramref name="username"/>.
         /// </summary>
-        /// <param name="username">The username to get the session count for.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The session count.</returns>
+        /// <param name="username">NNTP username used to compute the account key.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Live session count from Redis, or zero when the counter key is absent or unparsable.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
+        /// <exception cref="Exceptions.RedisUnavailableException">Thrown when the pool has no live multiplexers.</exception>
         public async Task<long> GetSessionCountAsync(string username, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(username);

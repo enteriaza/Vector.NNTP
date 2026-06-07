@@ -4,10 +4,11 @@
 namespace Vector.NNTP.Session.Redis.HostedServices
 {
     /// <summary>
-    /// Periodically refreshes Redis leases for authenticated sessions on this node.
+    /// Periodically refreshes Redis leases for authenticated and transit peer sessions on this node.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="RedisSessionHeartbeatHostedService"/> class.
+    /// Runs on <see cref="NntpSessionCoordinationOptions.HeartbeatIntervalSeconds"/> and extends TTLs using
+    /// idle-timeout-derived lease sizing. Individual heartbeat failures are logged and do not stop the loop.
     /// </remarks>
     /// <param name="sessionDatabase">Node-local sessions.</param>
     /// <param name="leaseRefresher">Lease refresher.</param>
@@ -24,41 +25,41 @@ namespace Vector.NNTP.Session.Redis.HostedServices
         ILogger<RedisSessionHeartbeatHostedService> logger) : BackgroundService
     {
         /// <summary>
-        /// Session database.
+        /// Node-local session database supplying authenticated and transit peer snapshots each sweep.
         /// </summary>
         private readonly ISessionDatabase _sessionDatabase = sessionDatabase ?? throw new ArgumentNullException(nameof(sessionDatabase));
 
         /// <summary>
-        /// Lease refresher.
+        /// Redis lease refresher invoked for authenticated session anchors.
         /// </summary>
         private readonly IRedisSessionLeaseRefresher _leaseRefresher = leaseRefresher ?? throw new ArgumentNullException(nameof(leaseRefresher));
 
         /// <summary>
-        /// Transit peer coordinator.
+        /// Transit peer coordinator invoked to refresh ZSET scores for transit sessions.
         /// </summary>
         private readonly INntpTransitPeerCoordinator _transitPeerCoordinator =
             transitPeerCoordinator ?? throw new ArgumentNullException(nameof(transitPeerCoordinator));
 
         /// <summary>
-        /// Coordination options.
+        /// Monitored coordination options supplying heartbeat interval and TTL floors.
         /// </summary>
         private readonly IOptionsMonitor<NntpSessionCoordinationOptions> _coordinationOptions = coordinationOptions ?? throw new ArgumentNullException(nameof(coordinationOptions));
 
         /// <summary>
-        /// Idle options.
+        /// Monitored idle timeout options used to size lease TTL seconds.
         /// </summary>
         private readonly IOptionsMonitor<NntpSessionIdleOptions> _idleOptions = idleOptions ?? throw new ArgumentNullException(nameof(idleOptions));
 
         /// <summary>
-        /// Logger.
+        /// Logger for per-session heartbeat failures.
         /// </summary>
         private readonly ILogger<RedisSessionHeartbeatHostedService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         /// <summary>
-        /// Execute the heartbeat hosted service.
+        /// Delays on the configured heartbeat interval and refreshes leases for all live sessions until shutdown.
         /// </summary>
-        /// <param name="stoppingToken">Token to stop the hosted service.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
+        /// <param name="stoppingToken">Token signaled when the host is stopping.</param>
+        /// <returns>A task that runs until <paramref name="stoppingToken"/> is canceled.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)

@@ -7,22 +7,24 @@ namespace Vector.NNTP.Session.Redis.HostedServices
     public sealed partial class RedisSessionHeartbeatHostedService
     {
         /// <summary>
-        /// Log a warning when a heartbeat fails.
+        /// Logs warning when an authenticated session lease heartbeat fails; the loop continues for other sessions.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
-        /// <param name="sessionId">The ID of the session that failed the heartbeat.</param>
-        /// <param name="accountKey">The account key of the session that failed the heartbeat.</param>
-        /// <param name="ex">The exception that occurred.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="ex">Exception raised by the heartbeat script or Redis call.</param>
+        /// <param name="sessionId">Session identifier that failed refresh.</param>
+        /// <param name="accountKey">Normalized account key for the session.</param>
         [LoggerMessage(
             Level = LogLevel.Warning,
             Message = "Heartbeat failed SessionId={SessionId} AccountKey={AccountKey}")]
         private static partial void LogWarningHeartbeatFailed(ILogger logger, Exception ex, string sessionId, string accountKey);
 
-        /// <summary>Logs a failed transit peer lease refresh.</summary>
-        /// <param name="logger">Logger.</param>
-        /// <param name="ex">Exception.</param>
-        /// <param name="sessionId">Session id.</param>
-        /// <param name="peerId">Peer id.</param>
+        /// <summary>
+        /// Logs warning when a transit peer lease refresh fails; the loop continues for other sessions.
+        /// </summary>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="ex">Exception raised by the refresh coordinator or Redis call.</param>
+        /// <param name="sessionId">Session identifier that failed refresh.</param>
+        /// <param name="peerId">Transit peer identifier for the session.</param>
         [LoggerMessage(
             Level = LogLevel.Warning,
             Message = "Transit peer heartbeat failed SessionId={SessionId} PeerId={PeerId}")]

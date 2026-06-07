@@ -13,10 +13,29 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// </summary>
     public sealed partial class RedisNodeSessionRegistry : INodeSessionRegistry
     {
+        /// <summary>
+        /// Round-robin Redis accessor used for purge scans and metadata reads.
+        /// </summary>
         private readonly IRedisConnectionAccessor _redis;
+
+        /// <summary>
+        /// Key builder for node index and session metadata hashes.
+        /// </summary>
         private readonly RedisCoordinationKeys _keys;
+
+        /// <summary>
+        /// Auth admission coordinator invoked when purging authenticated sessions.
+        /// </summary>
         private readonly INntpSessionCoordinator _sessionCoordinator;
+
+        /// <summary>
+        /// Transit peer coordinator invoked when purging transit peer sessions.
+        /// </summary>
         private readonly INntpTransitPeerCoordinator _transitPeerCoordinator;
+
+        /// <summary>
+        /// Logger for purge progress and per-session release failures.
+        /// </summary>
         private readonly ILogger<RedisNodeSessionRegistry> _logger;
 
         /// <summary>
@@ -66,13 +85,24 @@ namespace Vector.NNTP.Session.Redis.Coordination
             PurgeBatchSize = purgeBatchSize;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the defensive upper bound on purge loop iterations to prevent unbounded Redis scans.
+        /// </summary>
         public int MaxPurgeIterations { get; }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Gets the number of session ids scanned per purge batch before the next iteration.
+        /// </summary>
         public int PurgeBatchSize { get; }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Releases all distributed leases indexed for <paramref name="nodeName"/> and deletes the node index.
+        /// </summary>
+        /// <param name="nodeName">Stable node identity whose <c>node:{node}:sessions</c> index is purged.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Purge statistics including auth/transit counts, duration, iteration limit flag, and remaining index size.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="nodeName"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public async ValueTask<NodeSessionPurgeResult> PurgeNodeAsync(string nodeName, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(nodeName);

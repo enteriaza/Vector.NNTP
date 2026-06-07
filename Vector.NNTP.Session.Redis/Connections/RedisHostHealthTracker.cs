@@ -10,17 +10,17 @@ namespace Vector.NNTP.Session.Redis.Connections
     public sealed class RedisHostHealthTracker
     {
         /// <summary>
-        /// Coordination options.
+        /// Bound coordination options supplying reconnect delay base and cap values.
         /// </summary>
         private readonly IOptions<NntpSessionCoordinationOptions> _options;
 
         /// <summary>
-        /// Attempt counts.
+        /// Per-host-index consecutive connect failure counts used for exponential backoff.
         /// </summary>
         private readonly Dictionary<int, int> _attemptCounts = [];
 
         /// <summary>
-        /// Suppressed until.
+        /// Per-host-index UTC instant after which reconnect attempts may resume.
         /// </summary>
         private readonly Dictionary<int, DateTimeOffset?> _suppressedUntil = [];
 

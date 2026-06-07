@@ -12,22 +12,22 @@ namespace Vector.NNTP.Session.Redis.Coordination
     public sealed partial class RedisSessionCoordinator : INntpSessionCoordinator
     {
         /// <summary>
-        /// Redis connection accessor.
+        /// Round-robin Redis accessor for acquire and release script evaluation.
         /// </summary>
         private readonly IRedisConnectionAccessor _redis;
 
         /// <summary>
-        /// Redis coordination keys.
+        /// Key builder for session anchors, counters, and node registry metadata.
         /// </summary>
         private readonly RedisCoordinationKeys _keys;
 
         /// <summary>
-        /// Reconciliation coordinator.
+        /// Bounded reconciliation coordinator invoked on counter mismatch during acquire.
         /// </summary>
         private readonly IRedisSessionReconciliationCoordinator _reconciliation;
 
         /// <summary>
-        /// Logger.
+        /// Logger for admission outcomes, reconciliation failures, and slow Redis calls.
         /// </summary>
         private readonly ILogger<RedisSessionCoordinator> _logger;
 
@@ -61,15 +61,20 @@ namespace Vector.NNTP.Session.Redis.Coordination
         }
 
         /// <summary>
-        /// Tries to admit a session.
+        /// Attempts cluster-wide admission for rate-limited accounts using the acquire Lua script.
         /// </summary>
-        /// <param name="policy">The session policy.</param>
-        /// <param name="sessionId">The session ID.</param>
-        /// <param name="clientIpText">The client IP text.</param>
-        /// <param name="nodeName">Stable cluster node identity.</param>
-        /// <param name="ttlSeconds">The TTL seconds.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The admission result.</returns>
+        /// <param name="policy">Session policy supplying limits, account key, and admission requirements.</param>
+        /// <param name="sessionId">Globally unique session identifier.</param>
+        /// <param name="clientIpText">Client IP text used for per-IP limits.</param>
+        /// <param name="nodeName">Stable cluster node identity accepting the connection.</param>
+        /// <param name="ttlSeconds">Lease TTL seconds applied to anchor and related keys.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>
+        /// Admission outcome; returns <see cref="NntpSessionAdmissionResult.Success"/> immediately when distributed admission is not required.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="policy"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="sessionId"/>, <paramref name="clientIpText"/>, or <paramref name="nodeName"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public async ValueTask<NntpSessionAdmissionResult> TryAdmitAsync(
             NntpSessionPolicy policy,
             string sessionId,
@@ -145,14 +150,17 @@ namespace Vector.NNTP.Session.Redis.Coordination
         }
 
         /// <summary>
-        /// Releases a session.
+        /// Releases distributed admission state for a session when policy requires Redis coordination.
         /// </summary>
-        /// <param name="policy">The session policy.</param>
-        /// <param name="sessionId">The session ID.</param>
-        /// <param name="clientIpText">The client IP text.</param>
-        /// <param name="nodeName">Stable cluster node identity.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The admission result.</returns>
+        /// <param name="policy">Session policy supplying the normalized account key and admission requirements.</param>
+        /// <param name="sessionId">Session identifier used at acquire time.</param>
+        /// <param name="clientIpText">Client IP text used at acquire time.</param>
+        /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when release is attempted or skipped for non-distributed policies.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="policy"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="sessionId"/>, <paramref name="clientIpText"/>, or <paramref name="nodeName"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public async ValueTask ReleaseAsync(
             NntpSessionPolicy policy,
             string sessionId,

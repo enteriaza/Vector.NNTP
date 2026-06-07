@@ -19,8 +19,9 @@ namespace Vector.NNTP.Session.Redis.Coordination
         public IDatabase GetDatabase();
 
         /// <summary>
-        /// Signals the pool to scale up when an operation exceeded the slow-call threshold.
+        /// Signals the pool background scaler to add another multiplexer after a slow coordination call.
         /// </summary>
+        /// <remarks>Safe to call from hot paths; the signal is coalesced when the scaler is already busy.</remarks>
         public void SignalScaleUp();
     }
 }

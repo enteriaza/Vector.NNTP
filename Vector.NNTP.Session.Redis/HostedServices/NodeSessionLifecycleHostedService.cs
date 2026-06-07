@@ -19,11 +19,34 @@ namespace Vector.NNTP.Session.Redis.HostedServices
     /// </remarks>
     internal sealed partial class NodeSessionLifecycleHostedService : IHostedService
     {
+        /// <summary>
+        /// Redis-backed registry used to purge orphaned leases for this node.
+        /// </summary>
         private readonly INodeSessionRegistry _nodeRegistry;
+
+        /// <summary>
+        /// Node-local session database scanned during shutdown survivor release.
+        /// </summary>
         private readonly ISessionDatabase _sessionDatabase;
+
+        /// <summary>
+        /// Auth admission coordinator for releasing survivor authenticated sessions.
+        /// </summary>
         private readonly INntpSessionCoordinator _sessionCoordinator;
+
+        /// <summary>
+        /// Transit peer coordinator for releasing survivor transit sessions.
+        /// </summary>
         private readonly INntpTransitPeerCoordinator _transitPeerCoordinator;
+
+        /// <summary>
+        /// Bound node identity supplying <see cref="NntpNodeIdentityOptions.NodeName"/>.
+        /// </summary>
         private readonly IOptions<NntpNodeIdentityOptions> _nodeOptions;
+
+        /// <summary>
+        /// Logger for startup/shutdown purge completion and survivor release failures.
+        /// </summary>
         private readonly ILogger<NodeSessionLifecycleHostedService> _logger;
 
         /// <summary>
@@ -51,7 +74,12 @@ namespace Vector.NNTP.Session.Redis.HostedServices
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Purges orphaned Redis leases indexed for this node before other coordination hosted services start.
+        /// </summary>
+        /// <param name="cancellationToken">Host startup cancellation token.</param>
+        /// <returns>A task that completes when the startup purge finishes.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             string nodeName = _nodeOptions.Value.NodeName;
@@ -64,7 +92,12 @@ namespace Vector.NNTP.Session.Redis.HostedServices
                 result.DurationMs);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Releases distributed leases for node-local survivors, then purges the node index after connection drain.
+        /// </summary>
+        /// <param name="cancellationToken">Host shutdown cancellation token.</param>
+        /// <returns>A task that completes when survivor release and shutdown purge finish.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public async Task StopAsync(CancellationToken cancellationToken)
         {
             string nodeName = _nodeOptions.Value.NodeName;

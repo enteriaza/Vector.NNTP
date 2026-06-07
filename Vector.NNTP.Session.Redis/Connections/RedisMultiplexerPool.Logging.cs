@@ -11,7 +11,7 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// <summary>
         /// Log a multiplexer added message.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="connectionId">The connection ID.</param>
         /// <param name="poolSize">The pool size.</param>
         [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Redis multiplexer added ConnectionId={ConnectionId} PoolSize={PoolSize}.")]
@@ -20,7 +20,7 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// <summary>
         /// Log a multiplexer connect failed message.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="hostIndex">The host index.</param>
         /// <param name="exception">The exception.</param>
         [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Redis multiplexer connect failed HostIndex={HostIndex}.")]

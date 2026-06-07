@@ -7,7 +7,8 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// Fair-share allocation using cluster-wide Redis session counts.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="RedisRateAllocationCoordinator"/> class.
+    /// Per-account refresh cadence is driven by <see cref="NntpRateAllocationOptions"/> and cached to avoid
+    /// redundant Redis reads when the observed session count has not changed.
     /// </remarks>
     /// <param name="sessionCountCoordinator">Cluster session count source.</param>
     /// <param name="rateOptions">Refresh cadence options.</param>
@@ -28,7 +29,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
         private readonly IOptionsMonitor<NntpRateAllocationOptions> _rateOptions = rateOptions ?? throw new ArgumentNullException(nameof(rateOptions));
 
         /// <summary>
-        /// Logger.
+        /// Logger for fair-share rebalance information events.
         /// </summary>
         private readonly ILogger<RedisRateAllocationCoordinator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 

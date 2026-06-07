@@ -44,7 +44,10 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// <summary>Gets UTC instant when the multiplexer was added to the pool.</summary>
         public DateTimeOffset ConnectedAtUtc { get; }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Closes and disposes the underlying multiplexer, clearing the entry for subsequent access attempts.
+        /// </summary>
+        /// <returns>A task that completes when the multiplexer close and dispose finish.</returns>
         public async ValueTask DisposeAsync()
         {
             IConnectionMultiplexer? multiplexer = Interlocked.Exchange(ref _multiplexer, null);

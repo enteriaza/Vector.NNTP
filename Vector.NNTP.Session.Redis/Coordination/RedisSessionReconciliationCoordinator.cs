@@ -12,27 +12,27 @@ namespace Vector.NNTP.Session.Redis.Coordination
     public sealed partial class RedisSessionReconciliationCoordinator : IRedisSessionReconciliationCoordinator
     {
         /// <summary>
-        /// Redis connection accessor.
+        /// Round-robin Redis accessor for bounded SCAN and reconciliation scripts.
         /// </summary>
         private readonly IRedisConnectionAccessor _redis;
 
         /// <summary>
-        /// Session database.
+        /// Node-local session database used to identify live anchors on this node.
         /// </summary>
         private readonly ISessionDatabase _sessionDatabase;
 
         /// <summary>
-        /// Redis coordination keys.
+        /// Key builder for session anchors, counters, and ephemeral live sets.
         /// </summary>
         private readonly RedisCoordinationKeys _keys;
 
         /// <summary>
-        /// Coordination options.
+        /// Snapshot of coordination options captured at construction for SCAN bounds.
         /// </summary>
         private readonly NntpSessionCoordinationOptions _options;
 
         /// <summary>
-        /// Logger.
+        /// Logger for reconciliation lifecycle and orphan purge events.
         /// </summary>
         private readonly ILogger<RedisSessionReconciliationCoordinator> _logger;
 
@@ -58,11 +58,14 @@ namespace Vector.NNTP.Session.Redis.Coordination
         }
 
         /// <summary>
-        /// Reconciles the session and IP counters for the given account key.
+        /// Runs a bounded reconciliation pass that purges orphan anchors and rebuilds session and IP counters.
         /// </summary>
-        /// <param name="accountKey">The account key to reconcile.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The number of sessions after the reconciliation.</returns>
+        /// <param name="accountKey">Normalized account key to reconcile.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Session counter value recorded in Redis after the pass completes.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="accountKey"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
+        /// <exception cref="Exception">Propagated when reconciliation scripts fail after logging.</exception>
         public async Task<long> ReconcileAsync(string accountKey, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountKey);

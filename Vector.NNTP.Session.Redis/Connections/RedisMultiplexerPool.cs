@@ -12,32 +12,32 @@ namespace Vector.NNTP.Session.Redis.Connections
     public sealed partial class RedisMultiplexerPool : IAsyncDisposable
     {
         /// <summary>
-        /// Multiplexer factory.
+        /// Factory that opens StackExchange.Redis multiplexers from validated coordination options.
         /// </summary>
         private readonly RedisMultiplexerFactory _factory;
 
         /// <summary>
-        /// Coordination options.
+        /// Bound coordination options supplying connection bounds and host endpoints.
         /// </summary>
         private readonly IOptions<NntpSessionCoordinationOptions> _options;
 
         /// <summary>
-        /// Per-host backoff tracker.
+        /// Per-host connect backoff tracker used when opening new multiplexers.
         /// </summary>
         private readonly RedisHostHealthTracker _hostHealth;
 
         /// <summary>
-        /// Logger.
+        /// Logger for multiplexer add, connect failure, and disposal events.
         /// </summary>
         private readonly ILogger<RedisMultiplexerPool> _logger;
 
         /// <summary>
-        /// Snapshot lock.
+        /// Lock protecting copy-on-write updates to <see cref="_snapshot"/>.
         /// </summary>
         private readonly object _snapshotLock = new();
 
         /// <summary>
-        /// Scale-up signal channel.
+        /// Coalesced scale-up signal channel read by <see cref="RedisMultiplexerBackgroundScaler"/>.
         /// </summary>
         private readonly Channel<bool> _scaleUpSignal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
         {
@@ -47,17 +47,17 @@ namespace Vector.NNTP.Session.Redis.Connections
         });
 
         /// <summary>
-        /// Snapshot of pooled multiplexers.
+        /// Copy-on-write snapshot of live pooled multiplexers used for round-robin selection.
         /// </summary>
         private PooledMultiplexer[] _snapshot = [];
 
         /// <summary>
-        /// Round-robin index.
+        /// Monotonic round-robin index advanced on each <see cref="GetMultiplexer"/> call.
         /// </summary>
         private int _roundRobinIndex;
 
         /// <summary>
-        /// Disposed flag.
+        /// Indicates whether <see cref="IAsyncDisposable.DisposeAsync"/> has been invoked.
         /// </summary>
         private bool _disposed;
 
@@ -94,7 +94,10 @@ namespace Vector.NNTP.Session.Redis.Connections
         /// Opens <see cref="NntpSessionCoordinationOptions.MinConnections"/> multiplexers.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task representing the asynchronous start operation.</returns>
+        /// <returns>A task that completes when at least <see cref="NntpSessionCoordinationOptions.MinConnections"/> multiplexers are connected.</returns>
+        /// <exception cref="ObjectDisposedException">Thrown when the pool has been disposed.</exception>
+        /// <exception cref="RedisUnavailableException">Thrown when minimum connections cannot be established.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);

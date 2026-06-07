@@ -12,10 +12,29 @@ namespace Vector.NNTP.Session.Redis.Coordination
     /// </summary>
     public sealed partial class RedisTransitPeerCoordinator : INntpTransitPeerCoordinator
     {
+        /// <summary>
+        /// Round-robin Redis accessor for ZSET coordination scripts.
+        /// </summary>
         private readonly IRedisConnectionAccessor _redis;
+
+        /// <summary>
+        /// Key builder for transit peer ZSETs and session metadata.
+        /// </summary>
         private readonly RedisCoordinationKeys _keys;
+
+        /// <summary>
+        /// Elapsed milliseconds at or above which acquire is logged as slow and may signal pool scale-up.
+        /// </summary>
         private readonly int _slowThresholdMs;
+
+        /// <summary>
+        /// Default stale-score cutoff derived from heartbeat interval and minimum TTL options.
+        /// </summary>
         private readonly int _transitPeerLeaseSeconds;
+
+        /// <summary>
+        /// Logger for acquire, release, refresh failures, and slow Redis calls.
+        /// </summary>
         private readonly ILogger<RedisTransitPeerCoordinator> _logger;
 
         /// <summary>
@@ -40,7 +59,23 @@ namespace Vector.NNTP.Session.Redis.Coordination
                 coordination.TtlMinimumSeconds);
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Attempts to acquire a peer session slot in the cluster ZSET after purging stale members.
+        /// </summary>
+        /// <param name="peerId">Stable peer identifier.</param>
+        /// <param name="sessionId">Globally unique session identifier.</param>
+        /// <param name="maxConnections">Configured cap (0 = unlimited).</param>
+        /// <param name="leaseSeconds">Stale score cutoff and lease extension window.</param>
+        /// <param name="nodeName">Stable cluster node identity accepting the connection.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>
+        /// <see cref="NntpTransitPeerAdmissionResult.Success"/> when a slot is acquired,
+        /// <see cref="NntpTransitPeerAdmissionResult.AtCapacity"/> when the cap is reached, or
+        /// <see cref="NntpTransitPeerAdmissionResult.BackendFailure"/> when Redis is unavailable.
+        /// </returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="peerId"/>, <paramref name="sessionId"/>, or <paramref name="nodeName"/> is null or empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="leaseSeconds"/> is zero or negative.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public async ValueTask<NntpTransitPeerAdmissionResult> TryAcquireAsync(
             string peerId,
             string sessionId,
@@ -81,7 +116,17 @@ namespace Vector.NNTP.Session.Redis.Coordination
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Releases a previously acquired peer session slot and removes related metadata (idempotent).
+        /// </summary>
+        /// <param name="peerId">Stable peer identifier.</param>
+        /// <param name="sessionId">Session identifier used at acquire time.</param>
+        /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when the release script finishes.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="peerId"/>, <paramref name="sessionId"/>, or <paramref name="nodeName"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
+        /// <exception cref="Exception">Propagated when the Redis release script fails after logging.</exception>
         public async ValueTask ReleaseAsync(
             string peerId,
             string sessionId,
@@ -118,7 +163,19 @@ namespace Vector.NNTP.Session.Redis.Coordination
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Refreshes the ZSET score and metadata TTL for a live transit peer session lease.
+        /// </summary>
+        /// <param name="peerId">Stable peer identifier.</param>
+        /// <param name="sessionId">Session identifier.</param>
+        /// <param name="nodeName">Stable cluster node identity that accepted the connection.</param>
+        /// <param name="leaseSeconds">Lease window in seconds used for score recency and metadata TTL.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when the refresh script finishes.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="peerId"/>, <paramref name="sessionId"/>, or <paramref name="nodeName"/> is null or empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="leaseSeconds"/> is zero or negative.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
+        /// <exception cref="Exception">Propagated when the Redis refresh script fails after logging.</exception>
         public async ValueTask RefreshLeaseAsync(
             string peerId,
             string sessionId,
@@ -157,7 +214,14 @@ namespace Vector.NNTP.Session.Redis.Coordination
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Purges stale ZSET members and returns the current live session count for metrics reconciliation.
+        /// </summary>
+        /// <param name="peerId">Stable peer identifier.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Live session count after purge.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="peerId"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         public async ValueTask<long> ReconcileCapacityAsync(string peerId, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(peerId);

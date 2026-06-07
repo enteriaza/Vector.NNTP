@@ -10,11 +10,15 @@ namespace Vector.NNTP.Session.Redis.Connections
     /// Factory that connects a <see cref="IConnectionMultiplexer"/> with all configured Redis endpoints.
     /// </summary>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="RedisMultiplexerFactory"/> class.
+    /// Builds StackExchange.Redis <see cref="ConfigurationOptions"/> from validated
+    /// <see cref="NntpSessionCoordinationOptions"/> and fails fast when the multiplexer reports disconnected.
     /// </remarks>
-    /// <param name="logger">Logger for connect events.</param>
+    /// <param name="logger">Logger for connect start and success events.</param>
     public sealed partial class RedisMultiplexerFactory(ILogger<RedisMultiplexerFactory> logger)
     {
+        /// <summary>
+        /// Logger for multiplexer connect lifecycle events.
+        /// </summary>
         private readonly ILogger<RedisMultiplexerFactory> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         /// <summary>

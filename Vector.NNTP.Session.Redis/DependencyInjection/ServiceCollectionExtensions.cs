@@ -29,8 +29,9 @@ namespace Vector.NNTP.Session.Redis.DependencyInjection
         /// and starts a multiplexer pool with at least one live connection at host startup.
         /// </remarks>
         /// <param name="services">Service collection.</param>
-        /// <param name="configuration">Host configuration root.</param>
+        /// <param name="configuration">Host configuration root containing the <c>Redis</c> section.</param>
         /// <returns>The service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> or <paramref name="configuration"/> is null.</exception>
         public static IServiceCollection AddNntpSessionRedis(
             this IServiceCollection services,
             IConfiguration configuration)

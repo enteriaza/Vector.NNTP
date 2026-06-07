@@ -9,6 +9,14 @@ namespace Vector.NNTP.Session.Redis.HostedServices
     /// </summary>
     internal sealed partial class NodeSessionLifecycleHostedService
     {
+        /// <summary>
+        /// Logs information when startup purge completes for this node.
+        /// </summary>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="node">Stable node identity purged.</param>
+        /// <param name="auth">Authenticated leases released during purge.</param>
+        /// <param name="transit">Transit peer leases released during purge.</param>
+        /// <param name="ms">Purge wall-clock duration in milliseconds.</param>
         [LoggerMessage(
             EventId = 1,
             Level = LogLevel.Information,
@@ -20,6 +28,14 @@ namespace Vector.NNTP.Session.Redis.HostedServices
             long transit,
             double ms);
 
+        /// <summary>
+        /// Logs information when shutdown purge completes after survivor release.
+        /// </summary>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="node">Stable node identity purged.</param>
+        /// <param name="auth">Authenticated leases released during purge.</param>
+        /// <param name="transit">Transit peer leases released during purge.</param>
+        /// <param name="ms">Purge wall-clock duration in milliseconds.</param>
         [LoggerMessage(
             EventId = 2,
             Level = LogLevel.Information,
@@ -31,6 +47,13 @@ namespace Vector.NNTP.Session.Redis.HostedServices
             long transit,
             double ms);
 
+        /// <summary>
+        /// Logs warning when releasing a survivor authenticated session fails during shutdown.
+        /// </summary>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="exception">Exception raised by the auth release coordinator.</param>
+        /// <param name="sessionId">Survivor session identifier.</param>
+        /// <param name="accountKey">Normalized account key for the survivor session.</param>
         [LoggerMessage(
             EventId = 3,
             Level = LogLevel.Warning,
@@ -41,6 +64,13 @@ namespace Vector.NNTP.Session.Redis.HostedServices
             string sessionId,
             string accountKey);
 
+        /// <summary>
+        /// Logs warning when releasing a survivor transit session fails during shutdown.
+        /// </summary>
+        /// <param name="logger">Target logger for the structured event.</param>
+        /// <param name="exception">Exception raised by the transit release coordinator.</param>
+        /// <param name="sessionId">Survivor session identifier.</param>
+        /// <param name="peerId">Transit peer identifier for the survivor session.</param>
         [LoggerMessage(
             EventId = 4,
             Level = LogLevel.Warning,

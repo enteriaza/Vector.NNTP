@@ -11,17 +11,17 @@ namespace Vector.NNTP.Session.Redis.Coordination
     public sealed partial class RedisBlockQuotaCoordinator : INntpBlockQuotaCoordinator
     {
         /// <summary>
-        /// Redis connection accessor.
+        /// Round-robin Redis accessor for quota initialize and decrement scripts.
         /// </summary>
         private readonly IRedisConnectionAccessor _redis;
 
         /// <summary>
-        /// Redis coordination keys.
+        /// Key builder for per-account byte quota keys.
         /// </summary>
         private readonly RedisCoordinationKeys _keys;
 
         /// <summary>
-        /// Logger.
+        /// Logger for quota decrement debug events.
         /// </summary>
         private readonly ILogger<RedisBlockQuotaCoordinator> _logger;
 
@@ -43,12 +43,15 @@ namespace Vector.NNTP.Session.Redis.Coordination
         }
 
         /// <summary>
-        /// Ensures the account quota key exists (idempotent initialize).
+        /// Ensures the account quota key exists without overwriting an existing value.
         /// </summary>
         /// <param name="accountKey">Normalized account key.</param>
-        /// <param name="byteLimit">Initial quota bytes.</param>
+        /// <param name="byteLimit">Initial quota bytes to store when the key is absent.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns><see langword="true"/> when the key was created or lowered to policy.</returns>
+        /// <returns><see langword="true"/> when the key was created; <see langword="false"/> when it already exists or <paramref name="byteLimit"/> is not positive.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="accountKey"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
+        /// <exception cref="Exceptions.RedisUnavailableException">Thrown when the pool has no live multiplexers.</exception>
         public async ValueTask<bool> TryInitializeQuotaAsync(string accountKey, long byteLimit, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountKey);
@@ -64,12 +67,15 @@ namespace Vector.NNTP.Session.Redis.Coordination
         }
 
         /// <summary>
-        /// Decrements remaining quota by command bytes.
+        /// Atomically decrements remaining byte quota for an account using a Lua script.
         /// </summary>
         /// <param name="accountKey">Normalized account key.</param>
-        /// <param name="commandBytes">Bytes to decrement.</param>
+        /// <param name="commandBytes">Bytes to subtract from the remaining quota.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Remaining bytes after decrement.</returns>
+        /// <returns>Remaining bytes after decrement, or <see cref="long.MaxValue"/> when <paramref name="commandBytes"/> is not positive.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="accountKey"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
+        /// <exception cref="Exceptions.RedisUnavailableException">Thrown when the pool has no live multiplexers.</exception>
         public async ValueTask<long> DecrementAsync(string accountKey, long commandBytes, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(accountKey);

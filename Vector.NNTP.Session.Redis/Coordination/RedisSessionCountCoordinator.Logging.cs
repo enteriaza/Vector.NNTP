@@ -9,7 +9,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <summary>
         /// Log a debug message when the session count changes.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="accountKey">The account key of the session.</param>
         /// <param name="newCount">The new session count.</param>
         [LoggerMessage(

@@ -9,7 +9,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <summary>
         /// Log an information message when a session admission is granted.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="username">The username of the session.</param>
         /// <param name="clientIp">The client IP of the session.</param>
         [LoggerMessage(
@@ -21,7 +21,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <summary>
         /// Log an information message when a session admission is denied.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="username">The username of the session.</param>
         /// <param name="clientIp">The client IP of the session.</param>
         /// <param name="outcome">The outcome of the session admission.</param>
@@ -34,7 +34,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <summary>
         /// Log a warning message when a session admission backend failure occurs.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="ex">The exception that occurred.</param>
         /// <param name="username">The username of the session.</param>
         [LoggerMessage(
@@ -46,7 +46,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <summary>
         /// Log a warning message when a Redis reconciliation fails.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="ex">The exception that occurred.</param>
         /// <param name="accountKey">The account key of the session.</param>
         [LoggerMessage(
@@ -58,7 +58,7 @@ namespace Vector.NNTP.Session.Redis.Coordination
         /// <summary>
         /// Log a warning message when a Redis operation is slow.
         /// </summary>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="logger">Target logger for the structured event.</param>
         /// <param name="operation">The operation that was slow.</param>
         /// <param name="elapsedMs">The elapsed time in milliseconds.</param>
         [LoggerMessage(
