@@ -31,17 +31,17 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         ILogger<HistoryRocksStatsLogHostedService> logger) : BackgroundService
     {
         /// <summary>
-        /// The history database service.
+        /// Operational gate; stats mirroring runs only after history startup completes.
         /// </summary>
         private readonly HistoryDatabaseService _history = null!;
 
         /// <summary>
-        /// The rocks history store.
+        /// RocksDB store supplying native statistics text for host logger mirroring.
         /// </summary>
         private readonly RocksHistoryStore _rocks = null!;
 
         /// <summary>
-        /// The history database options.
+        /// Bound history options controlling mirror interval and Rocks statistics flags.
         /// </summary>
         private readonly HistoryDbOptions _options = null!;
 
@@ -65,11 +65,11 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         }
 
         /// <summary>
-        /// Executes the hosted service.
+        /// Periodically logs RocksDB statistics to the host logger when mirroring is enabled.
         /// </summary>
-        /// <param name="stoppingToken">The stopping token.</param>
-        /// <returns>A task that completes when the hosted service is executed.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when the stopping token is canceled.</exception>
+        /// <param name="stoppingToken">Host shutdown token; cancels the wait between mirror cycles.</param>
+        /// <returns>A task that exits immediately when mirroring is disabled, otherwise runs until shutdown.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="stoppingToken"/> is canceled during timer wait.</exception>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             HistoryRocksDbOptions rocks = _options.RocksDb;

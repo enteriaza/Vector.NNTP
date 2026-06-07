@@ -39,7 +39,7 @@ namespace Vector.NNTP.HistoryDB.Memory
         internal const int LogicalBytesPerEntry = HistoryKeyEncoder.DigestLength + 8;
 
         /// <summary>
-        /// The metrics recorder.
+        /// OpenTelemetry recorder for memory hit/miss counters and gauge deltas.
         /// </summary>
         private readonly HistoryMetrics _metrics;
 

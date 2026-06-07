@@ -16,12 +16,12 @@ namespace Vector.NNTP.HistoryDB.Services
         ILogger<HistoryGenerationStore> logger)
     {
         /// <summary>
-        /// The path to the generation file.
+        /// Absolute path to <c>history.generation</c> under the configured database directory.
         /// </summary>
         private readonly string _generationPath = null!;
 
         /// <summary>
-        /// The metrics.
+        /// Metrics recorder for rebuild generation allocation and resume events.
         /// </summary>
         private readonly HistoryMetrics _metrics = null!;
 
@@ -44,7 +44,7 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <summary>
         /// Allocates a new generation stamp for a fresh rebuild.
         /// </summary>
-        /// <returns>Generation value.</returns>
+        /// <returns>Monotonic UTC-based generation stamp persisted to <c>history.generation</c>.</returns>
         /// <exception cref="IOException">Thrown when generation file I/O fails.</exception>
         /// <exception cref="UnauthorizedAccessException">Thrown when generation file access is denied.</exception>
         internal ulong AllocateGeneration()
@@ -80,7 +80,7 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <summary>
         /// Reads the persisted generation if present.
         /// </summary>
-        /// <returns>Generation or null when missing or unreadable.</returns>
+        /// <returns>Persisted generation stamp, or <see langword="null"/> when the file is missing or unreadable.</returns>
         internal ulong? TryReadGeneration()
         {
             if (!File.Exists(_generationPath))

@@ -10,29 +10,30 @@ namespace Vector.NNTP.HistoryDB.Encoding
     internal readonly struct DigestKey : IEquatable<DigestKey>
     {
         /// <summary>
-        /// The first 8 bytes of the digest.
+        /// Little-endian digest words 0–7 stored as a <see cref="ulong"/> for equality and sharding.
         /// </summary>
         private readonly ulong _w0;
 
         /// <summary>
-        /// The second 8 bytes of the digest.
+        /// Little-endian digest words 8–15 stored as a <see cref="ulong"/>.
         /// </summary>
         private readonly ulong _w1;
 
         /// <summary>
-        /// The third 8 bytes of the digest.
+        /// Little-endian digest words 16–23 stored as a <see cref="ulong"/>.
         /// </summary>
         private readonly ulong _w2;
 
         /// <summary>
-        /// The fourth 8 bytes of the digest.
+        /// Little-endian digest words 24–31 stored as a <see cref="ulong"/>.
         /// </summary>
         private readonly ulong _w3;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="DigestKey"/> struct.
+        /// Initializes a new instance of the <see cref="DigestKey"/> struct from a 32-byte BLAKE3 digest.
         /// </summary>
-        /// <param name="digest">BLAKE3 digest bytes.</param>
+        /// <param name="digest">Exactly <see cref="HistoryKeyEncoder.DigestLength"/> BLAKE3 digest bytes.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="digest"/> length is not 32.</exception>
         internal DigestKey(ReadOnlySpan<byte> digest)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(digest.Length, HistoryKeyEncoder.DigestLength);
@@ -68,7 +69,7 @@ namespace Vector.NNTP.HistoryDB.Encoding
         /// <summary>
         /// Gets the hash code for the current instance.
         /// </summary>
-        /// <returns>The hash code for the current instance.</returns>
+        /// <returns>Combined hash of the four little-endian digest words.</returns>
         public override int GetHashCode()
         {
             return HashCode.Combine(_w0, _w1, _w2, _w3);
@@ -85,9 +86,10 @@ namespace Vector.NNTP.HistoryDB.Encoding
         }
 
         /// <summary>
-        /// Copies digest bytes into <paramref name="destination"/>.
+        /// Copies the 32-byte digest into <paramref name="destination"/> in little-endian word order.
         /// </summary>
-        /// <param name="destination">32-byte span.</param>
+        /// <param name="destination">Exactly <see cref="HistoryKeyEncoder.DigestLength"/> bytes.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="destination"/> length is not 32.</exception>
         public void CopyTo(Span<byte> destination)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(destination.Length, HistoryKeyEncoder.DigestLength);

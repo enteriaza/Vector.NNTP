@@ -18,12 +18,12 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         ILogger<HistoryBackgroundWorkerHostedService> logger) : BackgroundService
     {
         /// <summary>
-        /// The history service.
+        /// Operational gate and queue depth source for the expiry sweep loop.
         /// </summary>
         private readonly HistoryDatabaseService _history = null!;
 
         /// <summary>
-        /// The Rocks store.
+        /// RocksDB store receiving periodic expiration-key purge from this worker.
         /// </summary>
         private readonly RocksHistoryStore _rocks = null!;
 
@@ -44,11 +44,11 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         }
 
         /// <summary>
-        /// Executes the background worker.
+        /// Runs a five-minute periodic timer that sweeps expired Rocks keys when history is operational.
         /// </summary>
-        /// <param name="stoppingToken">Stopping token.</param>
-        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when the stopping token is canceled.</exception>
+        /// <param name="stoppingToken">Host shutdown token; cancels the timer wait between sweeps.</param>
+        /// <returns>A task that runs until <paramref name="stoppingToken"/> is canceled.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="stoppingToken"/> is canceled during timer wait.</exception>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             using PeriodicTimer timer = new(TimeSpan.FromMinutes(5));

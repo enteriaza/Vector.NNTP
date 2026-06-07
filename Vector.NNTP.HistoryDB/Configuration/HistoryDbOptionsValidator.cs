@@ -12,11 +12,19 @@ namespace Vector.NNTP.HistoryDB.Configuration
     internal sealed class HistoryDbOptionsValidator : IValidateOptions<HistoryDbOptions>
     {
         /// <summary>
-        /// Validates the options.
+        /// Validates history database paths, shard geometry, and RocksDB tuning coupling at startup.
         /// </summary>
-        /// <param name="name">The name of the options.</param>
-        /// <param name="options">The options to validate.</param>
-        /// <returns>The result of the validation.</returns>
+        /// <param name="name">Options name (unused).</param>
+        /// <param name="options">Bound options instance to validate.</param>
+        /// <returns>
+        /// <see cref="ValidateOptionsResult.Success"/> when all constraints pass; otherwise
+        /// <see cref="ValidateOptionsResult.Fail(IEnumerable{string})"/> with option-specific messages.
+        /// </returns>
+        /// <remarks>
+        /// Enforces power-of-two <see cref="HistoryDbOptions.MemoryShardCount"/>, non-negative block caches, Bloom and
+        /// block-size ranges, and that stats mirroring requires statistics collection with a non-zero dump period.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
         public ValidateOptionsResult Validate(string? name, HistoryDbOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);

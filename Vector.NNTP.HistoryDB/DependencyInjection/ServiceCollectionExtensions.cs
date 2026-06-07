@@ -31,6 +31,9 @@ namespace Vector.NNTP.HistoryDB.DependencyInjection
         /// <param name="services">Service collection.</param>
         /// <param name="configuration">Host configuration.</param>
         /// <returns>The service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="services"/> or <paramref name="configuration"/> is <see langword="null"/>.
+        /// </exception>
         public static IServiceCollection AddNntpHistoryDatabase(
             this IServiceCollection services,
             IConfiguration configuration)

@@ -10,6 +10,9 @@ namespace Vector.NNTP.HistoryDB.Services
     /// <summary>
     /// Source-generated <see cref="LoggerMessageAttribute"/> partial methods for <see cref="HistoryDatabaseService"/>.
     /// </summary>
+    /// <remarks>
+    /// Event IDs 100–119; methods bind to the primary-constructor <c>logger</c> parameter.
+    /// </remarks>
     internal sealed partial class HistoryDatabaseService
     {
         /// <summary>Logs CHECK path when HistoryDB is not yet operational.</summary>

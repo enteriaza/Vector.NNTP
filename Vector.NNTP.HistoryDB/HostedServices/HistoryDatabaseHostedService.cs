@@ -25,37 +25,37 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         ILogger<HistoryDatabaseHostedService> logger) : IHostedService
     {
         /// <summary>
-        /// The history service.
+        /// Transit history service marked operational after rebuild completes.
         /// </summary>
         private readonly HistoryDatabaseService _history = null!;
 
         /// <summary>
-        /// The Rocks store.
+        /// RocksDB source scanned during forward rebuild.
         /// </summary>
         private readonly RocksHistoryStore _rocks = null!;
 
         /// <summary>
-        /// The Redis store.
+        /// Redis destination for rebuild pipelining and metadata writes.
         /// </summary>
         private readonly HistoryRedisStore _redis = null!;
 
         /// <summary>
-        /// The memory cache.
+        /// Memory cache optionally preloaded after rebuild.
         /// </summary>
         private readonly HistoryMemoryCache _memory = null!;
 
         /// <summary>
-        /// The options.
+        /// Bound history options including rebuild checkpoint and batch sizes.
         /// </summary>
         private readonly HistoryDbOptions _options = null!;
 
         /// <summary>
-        /// The metrics.
+        /// Metrics recorder for rebuild duration and key counts.
         /// </summary>
         private readonly HistoryMetrics _metrics = null!;
 
         /// <summary>
-        /// The generation store.
+        /// Monotonic rebuild generation persisted under <c>DbDir</c>.
         /// </summary>
         private readonly HistoryGenerationStore _generations = null!;
 
@@ -91,11 +91,11 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         }
 
         /// <summary>
-        /// Starts the history database hosted service.
+        /// Rebuilds Redis from Rocks, optionally preloads memory, then marks history operational.
         /// </summary>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when startup is canceled.</exception>
+        /// <param name="cancellationToken">Host startup token; cancels rebuild checkpoints and Redis/Rocks I/O.</param>
+        /// <returns>A task that completes when rebuild finishes and <see cref="HistoryDatabaseService.SetOperational"/> runs.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during rebuild.</exception>
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             ulong generation = await ResolveGenerationAsync(cancellationToken).ConfigureAwait(false);
@@ -185,10 +185,10 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         }
 
         /// <summary>
-        /// Stops the history database hosted service.
+        /// No-op stop hook; rebuild and persist pumps do not require teardown here.
         /// </summary>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        /// <param name="cancellationToken">Host shutdown token (unused).</param>
+        /// <returns>A completed task.</returns>
         public Task StopAsync(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
@@ -199,7 +199,7 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         /// </summary>
         /// <param name="entries">Hash entries.</param>
         /// <param name="name">Field name.</param>
-        /// <returns>Field value or empty string.</returns>
+        /// <returns>String value of the named field, or <see cref="string.Empty"/> when absent.</returns>
         private static string GetField(HashEntry[] entries, string name)
         {
             foreach (HashEntry entry in entries)
@@ -230,11 +230,17 @@ namespace Vector.NNTP.HistoryDB.HostedServices
         }
 
         /// <summary>
-        /// Reads resume cursor from Redis rebuild state when applicable.
+        /// Reads resume cursor from Redis rebuild state when an in-progress generation matches.
         /// </summary>
-        /// <param name="generation">Expected generation.</param>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Last expiration key bytes or null.</returns>
+        /// <param name="generation">Expected rebuild generation stamp.</param>
+        /// <param name="cancellationToken">Startup token passed to Redis hash reads.</param>
+        /// <returns>
+        /// 40-byte <c>by_expiration</c> key to resume after, or <see langword="null"/> when rebuild is fresh or state is invalid.
+        /// </returns>
+        /// <remarks>
+        /// The <c>lastExpirationKey</c> hash field is normally hex-encoded; legacy base64 checkpoints are accepted after a
+        /// <see cref="FormatException"/> from <see cref="Convert.FromHexString(string)"/>.
+        /// </remarks>
         private async Task<byte[]?> TryGetResumeKeyAsync(ulong generation, CancellationToken cancellationToken)
         {
             HashEntry[] state = await _redis.GetRebuildStateAsync(cancellationToken).ConfigureAwait(false);

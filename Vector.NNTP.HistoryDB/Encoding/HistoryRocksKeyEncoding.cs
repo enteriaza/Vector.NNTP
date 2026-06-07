@@ -26,7 +26,8 @@ namespace Vector.NNTP.HistoryDB.Encoding
         /// </summary>
         /// <param name="expirationEpochSeconds">Expiration epoch (UTC seconds).</param>
         /// <param name="digest">32-byte digest.</param>
-        /// <param name="destination">40-byte destination.</param>
+        /// <param name="destination">Exactly <see cref="ExpirationKeyLength"/> bytes.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="digest"/> or <paramref name="destination"/> length is invalid.</exception>
         public static void EncodeExpirationKey(ulong expirationEpochSeconds, ReadOnlySpan<byte> digest, Span<byte> destination)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(digest.Length, HistoryKeyEncoder.DigestLength);
@@ -66,7 +67,8 @@ namespace Vector.NNTP.HistoryDB.Encoding
         /// Encodes <c>by_digest</c> value as little-endian expiration epoch.
         /// </summary>
         /// <param name="expirationEpochSeconds">Expiration epoch.</param>
-        /// <param name="destination">8-byte destination.</param>
+        /// <param name="destination">Exactly <see cref="DigestValueLength"/> bytes.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="destination"/> length is not 8.</exception>
         public static void EncodeDigestValue(ulong expirationEpochSeconds, Span<byte> destination)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(destination.Length, DigestValueLength);
@@ -77,7 +79,8 @@ namespace Vector.NNTP.HistoryDB.Encoding
         /// Decodes <c>by_digest</c> value.
         /// </summary>
         /// <param name="value">8-byte value.</param>
-        /// <returns>Expiration epoch seconds.</returns>
+        /// <returns>Little-endian expiration epoch seconds.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="value"/> length is not 8.</exception>
         public static ulong DecodeDigestValue(ReadOnlySpan<byte> value)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(value.Length, DigestValueLength);

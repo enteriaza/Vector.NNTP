@@ -29,17 +29,17 @@ namespace Vector.NNTP.HistoryDB.Rocks
         internal const string CfByExpiration = "by_expiration";
 
         /// <summary>
-        /// The tombstone value.
+        /// Single-byte tombstone value written to <c>by_expiration</c> when digest rows are swept.
         /// </summary>
         private static readonly byte[] TombstoneValue = [1];
 
         /// <summary>
-        /// The options.
+        /// Bound <see cref="HistoryDbOptions"/> including database path and Rocks tuning.
         /// </summary>
         private readonly HistoryDbOptions _options = null!;
 
         /// <summary>
-        /// The metrics.
+        /// HistoryDB metrics recorder for rebuild, sweep, and stats snapshot timing.
         /// </summary>
         private readonly HistoryMetrics _metrics = null!;
 
@@ -54,17 +54,17 @@ namespace Vector.NNTP.HistoryDB.Rocks
         private readonly string _dbPath = null!;
 
         /// <summary>
-        /// The RocksDB database.
+        /// Open RocksDB database handle for digest and expiration column families.
         /// </summary>
         private readonly RocksDb _db = null!;
 
         /// <summary>
-        /// The digest column family handle.
+        /// Column family handle for fixed-width digest keys (<c>by_digest</c>).
         /// </summary>
         private readonly ColumnFamilyHandle _digestCf = null!;
 
         /// <summary>
-        /// The expiration column family handle.
+        /// Column family handle for expiration-ordered keys (<c>by_expiration</c>).
         /// </summary>
         private readonly ColumnFamilyHandle _expirationCf = null!;
 
@@ -74,17 +74,17 @@ namespace Vector.NNTP.HistoryDB.Rocks
         private readonly RocksHistoryBloomFilterConfigurator _bloomConfigurator = null!;
 
         /// <summary>
-        /// The expiration key scratch buffer.
+        /// Reusable buffer for encoded <c>by_expiration</c> keys to avoid per-write allocations.
         /// </summary>
         private readonly byte[] _expKeyScratch = new byte[HistoryRocksKeyEncoding.ExpirationKeyLength];
 
         /// <summary>
-        /// The digest value scratch buffer.
+        /// Reusable buffer for encoded digest values stored under <c>by_digest</c>.
         /// </summary>
         private readonly byte[] _digestValueScratch = new byte[HistoryRocksKeyEncoding.DigestValueLength];
 
         /// <summary>
-        /// The digest key scratch buffer.
+        /// Reusable buffer for raw 32-byte digest keys written to <c>by_digest</c>.
         /// </summary>
         private readonly byte[] _digestKeyScratch = new byte[HistoryKeyEncoder.DigestLength];
 
@@ -161,10 +161,11 @@ namespace Vector.NNTP.HistoryDB.Rocks
         }
 
         /// <summary>
-        /// Persists digest and expiration index atomically.
+        /// Persists digest and expiration index atomically when the new expiration is newer than any existing row.
         /// </summary>
         /// <param name="digest">32-byte digest.</param>
         /// <param name="expirationEpochSeconds">New expiration epoch.</param>
+        /// <exception cref="ObjectDisposedException">Thrown when the store has been disposed.</exception>
         internal void PutReservation(ReadOnlySpan<byte> digest, ulong expirationEpochSeconds)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -201,7 +202,8 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// </summary>
         /// <param name="nowEpochSeconds">Current UTC epoch.</param>
         /// <param name="maxDeletes">Maximum deletes per sweep pass.</param>
-        /// <returns>Number of keys deleted.</returns>
+        /// <returns>Count of expiration and digest rows deleted in this sweep pass (capped by <paramref name="maxDeletes"/>).</returns>
+        /// <exception cref="ObjectDisposedException">Thrown when the store has been disposed.</exception>
         internal int SweepExpired(ulong nowEpochSeconds, int maxDeletes)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -247,7 +249,9 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <param name="resumeKey">Optional resume key (40 bytes).</param>
         /// <param name="processBatch">Batch processor.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Total keys processed in this run.</returns>
+        /// <returns>Total unexpired expiration keys scanned and passed to <paramref name="processBatch"/>.</returns>
+        /// <exception cref="ObjectDisposedException">Thrown when the store has been disposed.</exception>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         internal async Task<long> RebuildForwardAsync(
             ulong nowEpochSeconds,
             byte[]? resumeKey,
@@ -311,7 +315,8 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <param name="nowEpochSeconds">Current epoch.</param>
         /// <param name="insert">Insert callback.</param>
         /// <param name="byteBudget">Maximum bytes to load.</param>
-        /// <returns>Entries loaded.</returns>
+        /// <returns>Number of digest rows inserted via <paramref name="insert"/> before <paramref name="byteBudget"/> is reached.</returns>
+        /// <exception cref="ObjectDisposedException">Thrown when the store has been disposed.</exception>
         internal int PreloadReverse(ulong nowEpochSeconds, Action<byte[], ulong> insert, long byteBudget)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -344,8 +349,9 @@ namespace Vector.NNTP.HistoryDB.Rocks
         }
 
         /// <summary>
-        /// Disposes the store.
+        /// Releases the native RocksDB handle; subsequent calls throw <see cref="ObjectDisposedException"/>.
         /// </summary>
+        /// <remarks>Idempotent; safe to call multiple times.</remarks>
         public void Dispose()
         {
             if (_disposed)
@@ -390,6 +396,7 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// </summary>
         /// <param name="digest">32-byte digest.</param>
         /// <returns>Expiration epoch when present; otherwise <see langword="null"/>.</returns>
+        /// <exception cref="ObjectDisposedException">Thrown when the store has been disposed.</exception>
         internal ulong? GetDigestExpiration(ReadOnlySpan<byte> digest)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -403,7 +410,8 @@ namespace Vector.NNTP.HistoryDB.Rocks
         /// <summary>
         /// Counts keys in the expiration column family (tests).
         /// </summary>
-        /// <returns>Key count from iterator.</returns>
+        /// <returns>Total keys in <c>by_expiration</c> via full iterator scan (test helper).</returns>
+        /// <exception cref="ObjectDisposedException">Thrown when the store has been disposed.</exception>
         internal int CountExpirationKeys()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);

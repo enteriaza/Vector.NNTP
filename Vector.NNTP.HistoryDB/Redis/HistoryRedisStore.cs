@@ -20,17 +20,17 @@ namespace Vector.NNTP.HistoryDB.Redis
         ILogger<HistoryRedisStore> logger)
     {
         /// <summary>
-        /// The options.
+        /// Bound <see cref="HistoryDbOptions"/> including key prefix and rebuild batch sizing.
         /// </summary>
         private readonly HistoryDbOptions _options = null!;
 
         /// <summary>
-        /// The Redis accessor.
+        /// Session Redis accessor for Lua script evaluation and pipelined rebuild writes.
         /// </summary>
         private readonly IRedisConnectionAccessor _redis = null!;
 
         /// <summary>
-        /// The metrics.
+        /// HistoryDB metrics recorder for slow Redis operations and rebuild counters.
         /// </summary>
         private readonly HistoryMetrics _metrics = null!;
 
@@ -57,7 +57,8 @@ namespace Vector.NNTP.HistoryDB.Redis
         /// Builds the Redis key for a digest.
         /// </summary>
         /// <param name="digest">32-byte digest.</param>
-        /// <returns>Redis key.</returns>
+        /// <returns>Prefixed Redis key in the form <c>{KeyPrefix}history:{digest}</c>.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="digest"/> length is not 32 bytes.</exception>
         internal RedisKey BuildHistoryKey(byte[] digest)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(digest.Length, HistoryKeyEncoder.DigestLength);
@@ -81,6 +82,10 @@ namespace Vector.NNTP.HistoryDB.Redis
         /// <param name="nowEpoch">Now epoch seconds.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Lua result code (0 wanted, 1 duplicate).</returns>
+        /// <remarks>
+        /// <paramref name="cancellationToken"/> is not passed to StackExchange.Redis today; cancellation applies only
+        /// before the call is made.
+        /// </remarks>
         internal async ValueTask<int> CheckProbeAsync(
             byte[] digest,
             ulong nowEpoch,
@@ -107,7 +112,11 @@ namespace Vector.NNTP.HistoryDB.Redis
         /// <param name="newExpiration">New expiration epoch.</param>
         /// <param name="ttlSeconds">TTL seconds.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Lua result code (0 recorded, 1 duplicate).</returns>
+        /// <returns>Lua result code (0 recorded, 1 duplicate, 2 try-again).</returns>
+        /// <remarks>
+        /// <paramref name="cancellationToken"/> is not passed to StackExchange.Redis today; cancellation applies only
+        /// before the call is made.
+        /// </remarks>
         internal async ValueTask<int> TryRecordAsync(
             byte[] digest,
             ulong nowEpoch,
@@ -139,7 +148,8 @@ namespace Vector.NNTP.HistoryDB.Redis
         /// <param name="items">Batch items.</param>
         /// <param name="nowEpoch">Now epoch.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        /// <returns>A task that completes when all pipelined <c>SET</c> operations finish.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled during batch wait.</exception>
         internal async Task PipelineSetBatchAsync(
             IReadOnlyList<(byte[] ExpirationKey, ulong Expiration, byte[] Digest)> items,
             ulong nowEpoch,
@@ -164,7 +174,8 @@ namespace Vector.NNTP.HistoryDB.Redis
         /// Gets rebuild state hash.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Hash entries or empty.</returns>
+        /// <returns>All fields from the <c>rebuild_state</c> meta hash, or an empty array when the key is absent.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         internal async Task<HashEntry[]> GetRebuildStateAsync(CancellationToken cancellationToken)
         {
             IDatabase db = _redis.GetDatabase();
@@ -176,7 +187,8 @@ namespace Vector.NNTP.HistoryDB.Redis
         /// </summary>
         /// <param name="fields">Hash fields.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        /// <returns>A task that completes when the rebuild state hash is written.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         internal async Task SetRebuildStateAsync(HashEntry[] fields, CancellationToken cancellationToken)
         {
             IDatabase db = _redis.GetDatabase();
@@ -188,7 +200,8 @@ namespace Vector.NNTP.HistoryDB.Redis
         /// </summary>
         /// <param name="generation">Generation stamp.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        /// <returns>A task that completes when generation and schema version metadata are written.</returns>
+        /// <exception cref="OperationCanceledException">Propagated when <paramref name="cancellationToken"/> is canceled.</exception>
         internal async Task SetMetaAsync(ulong generation, CancellationToken cancellationToken)
         {
             IDatabase db = _redis.GetDatabase();

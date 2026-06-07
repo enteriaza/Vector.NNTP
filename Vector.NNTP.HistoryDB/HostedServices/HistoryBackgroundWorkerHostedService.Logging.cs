@@ -8,6 +8,7 @@ namespace Vector.NNTP.HistoryDB.HostedServices
     /// <summary>
     /// Source-generated logging for <see cref="HistoryBackgroundWorkerHostedService"/>.
     /// </summary>
+    /// <remarks>Event IDs 160–179 for Rocks expiration sweep diagnostics.</remarks>
     internal sealed partial class HistoryBackgroundWorkerHostedService
     {
         /// <summary>Logs sweep completion with deleted count.</summary>

@@ -49,17 +49,14 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// Initializes a new instance of the <see cref="HistoryMemoryCacheShard"/> class.
         /// </summary>
         /// <param name="limitBytes">Maximum tracked logical bytes for this shard.</param>
-        /// <exception cref="OverflowException">Thrown when the tracked bytes exceed the limit.</exception>
         internal HistoryMemoryCacheShard(long limitBytes)
         {
             _limitBytes = limitBytes;
         }
 
         /// <summary>
-        /// Gets tracked entry count for this shard (test and diagnostics).
+        /// Authoritative dictionary entry count for this shard (test and diagnostics).
         /// </summary>
-        /// <exception cref="OverflowException">Thrown when the tracked bytes exceed the limit.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when the eviction heap is empty.</exception>
         internal int Count
         {
             get
@@ -91,8 +88,6 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <param name="digestKey">Digest key.</param>
         /// <param name="nowEpochSeconds">Current UTC epoch seconds.</param>
         /// <returns><see langword="true"/> when an unexpired entry exists.</returns>
-        /// <exception cref="OverflowException">Thrown when the tracked bytes exceed the limit.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when the eviction heap is empty.</exception>
         internal bool TryGetDuplicate(in DigestKey digestKey, ulong nowEpochSeconds)
         {
             lock (_syncRoot)
@@ -107,8 +102,10 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// <param name="digestKey">Digest key.</param>
         /// <param name="expirationEpochSeconds">Expiration epoch.</param>
         /// <returns>Aggregate deltas for facade metrics.</returns>
-        /// <exception cref="OverflowException">Thrown when the tracked bytes exceed the limit.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when the eviction heap is empty.</exception>
+        /// <remarks>
+        /// Eviction invariant violations inside <see cref="EvictIfNeeded"/> indicate a bug and may throw
+        /// <see cref="OverflowException"/> or <see cref="InvalidOperationException"/>.
+        /// </remarks>
         internal HistoryMemoryCacheShardWriteResult InsertOrUpdate(in DigestKey digestKey, ulong expirationEpochSeconds)
         {
             lock (_syncRoot)
@@ -147,8 +144,6 @@ namespace Vector.NNTP.HistoryDB.Memory
         /// Clears all entries in this shard.
         /// </summary>
         /// <returns>Deltas negating prior shard state for facade aggregates.</returns>
-        /// <exception cref="OverflowException">Thrown when the tracked bytes exceed the limit.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when the eviction heap is empty.</exception>
         internal HistoryMemoryCacheShardWriteResult Clear()
         {
             lock (_syncRoot)

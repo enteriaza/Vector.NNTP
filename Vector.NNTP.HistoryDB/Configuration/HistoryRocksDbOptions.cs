@@ -29,7 +29,7 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public const long DefaultExpirationBlockCacheBytes = 8 * 1024 * 1024;
 
         /// <summary>
-        /// Gets or sets the <c>by_digest</c> block cache size in bytes (0 = RocksDB default).
+        /// <c>by_digest</c> LRU block cache size in bytes (0 = RocksDB default).
         /// </summary>
         /// <remarks>
         /// JSON key <c>BlockCacheBytes</c> is accepted for backward compatibility via
@@ -39,22 +39,23 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public long DigestBlockCacheBytes { get; set; }
 
         /// <summary>
-        /// Gets or sets the <c>by_expiration</c> block cache size in bytes (0 = RocksDB default).
+        /// <c>by_expiration</c> LRU block cache size in bytes (0 = RocksDB default).
         /// </summary>
+        /// <remarks>Sweep and rebuild iterate this column family; default 8 MB keeps maintenance I/O bounded.</remarks>
         public long ExpirationBlockCacheBytes { get; set; } = DefaultExpirationBlockCacheBytes;
 
         /// <summary>
-        /// Gets or sets the memtable write buffer size in bytes (0 = use implementation default).
+        /// Memtable write buffer size in bytes per column family (0 = implementation default).
         /// </summary>
         public long WriteBufferBytes { get; set; }
 
         /// <summary>
-        /// Gets or sets the maximum number of write buffers (0 = use implementation default).
+        /// Maximum number of memtable write buffers (0 = implementation default).
         /// </summary>
         public int MaxWriteBufferNumber { get; set; }
 
         /// <summary>
-        /// Gets or sets the target background compaction thread count (0 = RocksDB default).
+        /// Target background compaction thread count (0 = RocksDB default).
         /// </summary>
         /// <remarks>
         /// Passed to <c>SetMaxBackgroundCompactions</c> on open. The RocksDB 10.4.x C# bindings do not yet expose
@@ -63,7 +64,7 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public int MaxBackgroundJobs { get; set; }
 
         /// <summary>
-        /// Gets or sets Bloom filter bits per key for the <c>by_digest</c> column family (0 disables block Bloom).
+        /// Bloom filter bits per key for <c>by_digest</c> (0 disables block Bloom).
         /// </summary>
         /// <remarks>
         /// Fixed 32-byte digest keys use whole-key Bloom checks. Ten bits per key is the RocksDB default trade-off
@@ -72,7 +73,7 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public int DigestBloomBitsPerKey { get; set; } = DefaultDigestBloomBitsPerKey;
 
         /// <summary>
-        /// Gets or sets Bloom filter bits per key for the <c>by_expiration</c> column family (0 disables block Bloom).
+        /// Bloom filter bits per key for <c>by_expiration</c> (0 disables block Bloom).
         /// </summary>
         /// <remarks>
         /// Sweep and rebuild are iterator-heavy; expiration Bloom is optional and off by default.
@@ -80,28 +81,27 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public int ExpirationBloomBitsPerKey { get; set; }
 
         /// <summary>
-        /// Gets or sets the SST block size in bytes (0 = RocksDB default, typically 4096).
+        /// SST data block size in bytes (0 = RocksDB default, typically 4096).
         /// </summary>
         public int BlockSizeBytes { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether index and filter blocks are stored in the block cache.
+        /// When true, index and filter blocks are cached alongside data blocks.
         /// </summary>
         public bool CacheIndexAndFilterBlocks { get; set; } = true;
 
         /// <summary>
-        /// Gets or sets a value indicating whether level-0 filter and index blocks are pinned in cache.
+        /// When true, level-0 filter and index blocks stay pinned in the block cache.
         /// </summary>
         public bool PinL0FilterAndIndexBlocksInCache { get; set; } = true;
 
         /// <summary>
-        /// Gets or sets a value indicating whether RocksDB should optimize Bloom filters for hit-heavy workloads on
-        /// <c>by_digest</c>.
+        /// When true, RocksDB optimizes <c>by_digest</c> Bloom filters for hit-heavy point lookups.
         /// </summary>
         public bool OptimizeDigestFiltersForHits { get; set; } = true;
 
         /// <summary>
-        /// Gets or sets the memtable prefix Bloom ratio for <c>by_expiration</c> (0 disables).
+        /// Memtable prefix Bloom ratio for <c>by_expiration</c> (0 disables).
         /// </summary>
         /// <remarks>
         /// Values above 0.25 are rarely beneficial; RocksDB clamps internally. Useful when expiration-prefix probes
@@ -110,7 +110,7 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public double ExpirationMemtablePrefixBloomRatio { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether RocksDB collects internal statistics (required for periodic LOG dumps).
+        /// When true, RocksDB collects internal statistics required for periodic LOG dumps.
         /// </summary>
         /// <remarks>
         /// When <see langword="false"/>, <c>Options.statistics</c> stays null and periodic
@@ -120,7 +120,7 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public bool EnableStatistics { get; set; } = true;
 
         /// <summary>
-        /// Gets or sets the interval in seconds for RocksDB stats snapshots (0 disables).
+        /// Interval in seconds for RocksDB stats snapshots written to <c>DbDir/LOG</c> (0 disables).
         /// </summary>
         /// <remarks>
         /// <para>Default 600 (10 minutes). Passed to RocksDB as <c>stats_dump_period_sec</c>. On RocksDB 10.x with
@@ -134,7 +134,7 @@ namespace Vector.NNTP.HistoryDB.Configuration
         public uint StatsDumpPeriodSec { get; set; } = 600;
 
         /// <summary>
-        /// Gets or sets a value indicating whether RocksDB statistics are mirrored into the NNTPD host logger.
+        /// When true, periodic RocksDB statistics are mirrored into the NNTPD host logger.
         /// </summary>
         /// <remarks>
         /// <para>Default <see langword="false"/>. RocksDB 10.x already persists periodic statistics to <c>DbDir/LOG</c>

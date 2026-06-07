@@ -12,8 +12,9 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <summary>
         /// Initializes a new instance of the <see cref="HistoryPersistItem"/> struct.
         /// </summary>
-        /// <param name="digest">32-byte digest.</param>
-        /// <param name="expirationEpochSeconds">Expiration epoch.</param>
+        /// <param name="digest">32-byte BLAKE3 digest key copied to the Rocks persist queue.</param>
+        /// <param name="expirationEpochSeconds">UTC epoch seconds stored in the Rocks <c>by_expiration</c> index.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="digest"/> length is not 32 bytes.</exception>
         internal HistoryPersistItem(byte[] digest, ulong expirationEpochSeconds)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(digest.Length, 32);
@@ -22,12 +23,12 @@ namespace Vector.NNTP.HistoryDB.Services
         }
 
         /// <summary>
-        /// Gets the digest bytes.
+        /// 32-byte BLAKE3 digest used as the Rocks <c>by_digest</c> key.
         /// </summary>
         public byte[] Digest { get; }
 
         /// <summary>
-        /// Gets the expiration epoch seconds.
+        /// UTC expiration epoch seconds paired with <see cref="Digest"/> in Rocks column families.
         /// </summary>
         public ulong ExpirationEpochSeconds { get; }
     }

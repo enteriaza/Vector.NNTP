@@ -31,17 +31,17 @@ namespace Vector.NNTP.HistoryDB.Services
         private const long PersistMilestoneInterval = 10_000;
 
         /// <summary>
-        /// The RocksDB store.
+        /// RocksDB store receiving <see cref="HistoryPersistItem"/> reservations from the queue.
         /// </summary>
         private readonly RocksHistoryStore _rocks = null!;
 
         /// <summary>
-        /// The metrics.
+        /// Metrics recorder for persist throughput and slow-milestone logging.
         /// </summary>
         private readonly HistoryMetrics _metrics = null!;
 
         /// <summary>
-        /// The options.
+        /// Bound history options supplying database path for startup logging.
         /// </summary>
         private readonly HistoryDbOptions _options = null!;
 
@@ -70,7 +70,7 @@ namespace Vector.NNTP.HistoryDB.Services
         private int _started;
 
         /// <summary>
-        /// The total number of persisted items.
+        /// Cumulative persist count used for milestone slow-log sampling.
         /// </summary>
         private long _totalPersisted;
 
@@ -104,7 +104,11 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <param name="reader">Persist queue reader.</param>
         /// <param name="history">History service for queue depth updates.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        /// <returns>A task that completes when the queue is completed or <paramref name="cancellationToken"/> is canceled.</returns>
+        /// <remarks>
+        /// Host shutdown cancellation is logged via <c>LogPumpStopped</c> and not rethrown. Unexpected faults are logged
+        /// and rethrown after <c>LogPumpFatal</c>.
+        /// </remarks>
         private async Task RunPersistLoopAsync(
             ChannelReader<HistoryPersistItem> reader,
             HistoryDatabaseService history,

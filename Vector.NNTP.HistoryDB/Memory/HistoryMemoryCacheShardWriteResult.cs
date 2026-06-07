@@ -11,27 +11,27 @@ namespace Vector.NNTP.HistoryDB.Memory
     internal readonly struct HistoryMemoryCacheShardWriteResult
     {
         /// <summary>
-        /// Gets the net change in authoritative dictionary entries.
+        /// Net change in authoritative dictionary entries (negative when evictions or clear dominate).
         /// </summary>
         internal int EntryDelta { get; init; }
 
         /// <summary>
-        /// Gets the net change in tracked logical bytes.
+        /// Net change in tracked logical bytes under the shard budget.
         /// </summary>
         internal long ByteDelta { get; init; }
 
         /// <summary>
-        /// Gets the net change in eviction heap size (includes tombstone pops).
+        /// Net change in eviction heap size, including lazy tombstone pops during eviction.
         /// </summary>
         internal int HeapDelta { get; init; }
 
         /// <summary>
-        /// Gets the number of dictionary entries removed by eviction.
+        /// Dictionary entries removed by byte-budget eviction during the operation.
         /// </summary>
         internal int EvictionCount { get; init; }
 
         /// <summary>
-        /// Gets a value indicating whether the shard mutated state (false on no-op insert).
+        /// Whether the shard mutated state; <see langword="false"/> on no-op insert with unchanged expiration.
         /// </summary>
         internal bool Changed { get; init; }
     }

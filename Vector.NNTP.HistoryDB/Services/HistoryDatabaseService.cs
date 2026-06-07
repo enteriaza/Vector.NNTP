@@ -23,37 +23,37 @@ namespace Vector.NNTP.HistoryDB.Services
     internal sealed partial class HistoryDatabaseService(ILogger<HistoryDatabaseService> logger) : IHistoryDatabase
     {
         /// <summary>
-        /// The options.
+        /// Bound <see cref="HistoryDbOptions"/> including retention, queue capacity, and Redis key prefix.
         /// </summary>
         private readonly HistoryDbOptions _options = null!;
 
         /// <summary>
-        /// The memory cache.
+        /// Sharded in-memory hot cache consulted before Redis on CHECK and record paths.
         /// </summary>
         private readonly HistoryMemoryCache _memory = null!;
 
         /// <summary>
-        /// The Redis store.
+        /// Redis Lua tier for CHECK probes and atomic TAKETHIS/IHAVE reserves.
         /// </summary>
         private readonly HistoryRedisStore _redis = null!;
 
         /// <summary>
-        /// The metrics.
+        /// OpenTelemetry-style metrics recorder for CHECK/record outcomes and queue depth.
         /// </summary>
         private readonly HistoryMetrics _metrics = null!;
 
         /// <summary>
-        /// The persist pump.
+        /// Background pump that drains the persist queue into RocksDB.
         /// </summary>
         private readonly HistoryRocksPersistPump _persistPump = null!;
 
         /// <summary>
-        /// The persist queue.
+        /// Bounded channel queueing Rocks backfill items after successful Redis reserve.
         /// </summary>
         private readonly Channel<HistoryPersistItem> _queue = null!;
 
         /// <summary>
-        /// The host lifetime.
+        /// Host lifetime used to complete the persist queue writer on shutdown.
         /// </summary>
         private readonly IHostApplicationLifetime _lifetime = null!;
 
@@ -76,7 +76,7 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <param name="metrics">Metrics.</param>
         /// <param name="persistPump">Rocks persist pump.</param>
         /// <param name="lifetime">Host lifetime for queue completion on shutdown.</param>
-        /// <param name="logger">Logger.</param>
+        /// <param name="logger">Logger for source-generated CHECK and record diagnostics.</param>
         public HistoryDatabaseService(
             IOptions<HistoryDbOptions> options,
             HistoryMemoryCache memory,
@@ -111,7 +111,7 @@ namespace Vector.NNTP.HistoryDB.Services
         internal bool IsOperational => _operational;
 
         /// <summary>
-        /// Gets the persist queue for the background worker.
+        /// Bounded persist queue reader consumed by <see cref="HistoryRocksPersistPump"/>.
         /// </summary>
         internal ChannelReader<HistoryPersistItem> PersistReader => _queue.Reader;
 
@@ -141,11 +141,16 @@ namespace Vector.NNTP.HistoryDB.Services
         }
 
         /// <summary>
-        /// Checks if the message ID is a duplicate.
+        /// Probes memory and Redis for a duplicate message-id without writing history state.
         /// </summary>
-        /// <param name="messageId">The message ID to check.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The check result.</returns>
+        /// <param name="messageId">RFC 3977 message-id to hash and probe.</param>
+        /// <param name="cancellationToken">Cancellation token for Redis probe I/O.</param>
+        /// <returns>
+        /// <see cref="HistoryCheckResult.Duplicate"/> (438), <see cref="HistoryCheckResult.Wanted"/> (238),
+        /// <see cref="HistoryCheckResult.TryAgainLater"/> (431), or <see cref="HistoryCheckResult.Unavailable"/> (503).
+        /// </returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="messageId"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is signalled during Redis I/O.</exception>
         public ValueTask<HistoryCheckResult> CheckAsync(string messageId, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(messageId);
@@ -175,11 +180,17 @@ namespace Vector.NNTP.HistoryDB.Services
         }
 
         /// <summary>
-        /// Tries to record the message ID as a TAKETHIS/IHAVE record.
+        /// Atomically reserves a message-id in Redis and enqueues Rocks backfill for TAKETHIS/IHAVE acceptance.
         /// </summary>
-        /// <param name="messageId">The message ID to record.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>The record result.</returns>
+        /// <param name="messageId">RFC 3977 message-id to hash and record.</param>
+        /// <param name="cancellationToken">Cancellation token for Redis reserve I/O.</param>
+        /// <returns>
+        /// <see cref="HistoryRecordResult.Recorded"/> on first reserve, <see cref="HistoryRecordResult.Duplicate"/> when
+        /// already present, <see cref="HistoryRecordResult.TryAgainLater"/> on transient Redis failure, or
+        /// <see cref="HistoryRecordResult.Unavailable"/> when startup rebuild has not completed.
+        /// </returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="messageId"/> is null or empty.</exception>
+        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is signalled during Redis I/O.</exception>
         public ValueTask<HistoryRecordResult> TryRecordAsync(string messageId, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(messageId);
@@ -239,7 +250,10 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <param name="digestKey">Digest key.</param>
         /// <param name="now">Current UTC epoch seconds.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>CHECK result.</returns>
+        /// <returns>
+        /// Mapped <see cref="HistoryCheckResult"/> from Lua probe code, or <see cref="HistoryCheckResult.TryAgainLater"/>
+        /// when Redis is unavailable or times out.
+        /// </returns>
         private async ValueTask<HistoryCheckResult> CheckRedisProbeAsync(
             DigestKey digestKey,
             ulong now,
@@ -282,7 +296,7 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <param name="digestKey">Digest key for memory insert on record.</param>
         /// <param name="now">Current UTC epoch seconds.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Record result.</returns>
+        /// <returns><see cref="HistoryRecordResult"/> after Lua reserve and optional memory/queue updates.</returns>
         private async ValueTask<HistoryRecordResult> RecordRedisAsync(
             DigestKey digestKey,
             ulong now,
@@ -324,7 +338,7 @@ namespace Vector.NNTP.HistoryDB.Services
         /// Maps CHECK probe Lua code to <see cref="HistoryCheckResult"/>.
         /// </summary>
         /// <param name="code">Lua return code.</param>
-        /// <returns>Mapped result.</returns>
+        /// <returns><see cref="HistoryCheckResult.Wanted"/> for code 0; <see cref="HistoryCheckResult.Duplicate"/> for code 1.</returns>
         private HistoryCheckResult MapCheckProbeResult(int code)
         {
             switch (code)
@@ -350,7 +364,10 @@ namespace Vector.NNTP.HistoryDB.Services
         /// <param name="digest">Digest bytes.</param>
         /// <param name="expiration">Expiration epoch.</param>
         /// <param name="digestKey">Digest key for memory insert.</param>
-        /// <returns>Mapped result.</returns>
+        /// <returns>
+        /// <see cref="HistoryRecordResult.Recorded"/> for code 0 after memory insert and queue enqueue;
+        /// <see cref="HistoryRecordResult.Duplicate"/> for code 1; <see cref="HistoryRecordResult.TryAgainLater"/> for code 2.
+        /// </returns>
         private HistoryRecordResult MapRecordResult(
             int code,
             byte[] digest,
