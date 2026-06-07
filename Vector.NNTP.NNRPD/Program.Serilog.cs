@@ -21,9 +21,6 @@ namespace Vector.NNTP.NNRPD
         /// <summary>Serilog rolling file name prefix (day suffix appended by the sink).</summary>
         private const string LogFileName = "NNRPD-.log";
 
-        /// <summary>Default directory for rolling log files under the content root.</summary>
-        private static readonly string DefaultLogDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
-
         /// <summary>Number of rolled log files to retain.</summary>
         private const int RetainedFileCountLimit = 21;
 
@@ -56,6 +53,8 @@ namespace Vector.NNTP.NNRPD
         {
             ArgumentNullException.ThrowIfNull(builder);
 
+            string logDirectory = LoggingDirectoryUtilities.ResolveLogDirectory(builder.Configuration);
+
             Log.Logger = new LoggerConfiguration()
                 .MinimumLevel.Debug()
                 .ReadFrom.Configuration(builder.Configuration)
@@ -65,7 +64,7 @@ namespace Vector.NNTP.NNRPD
                 .Enrich.WithProperty("ProcessId", Environment.ProcessId)
                 .WriteTo.Async(asyncConfig => asyncConfig.Console(outputTemplate: ConsoleOutputTemplate))
                 .WriteTo.Async(asyncConfig => asyncConfig.File(
-                    path: Path.Combine(DefaultLogDirectory, LogFileName),
+                    path: Path.Combine(logDirectory, LogFileName),
                     outputTemplate: FileOutputTemplate,
                     rollingInterval: RollingInterval.Day,
                     retainedFileCountLimit: RetainedFileCountLimit,
@@ -74,6 +73,8 @@ namespace Vector.NNTP.NNRPD
                     buffered: true,
                     flushToDiskInterval: FlushToDiskInterval))
                 .CreateLogger();
+
+            Log.Information("Log directory: {LogDirectory}", logDirectory);
 
             _ = builder.Logging.ClearProviders();
 

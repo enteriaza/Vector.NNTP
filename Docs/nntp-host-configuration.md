@@ -20,6 +20,22 @@ NNRPD and NNTPD bind a single JSON section named `NntpServer` to **socket**, **s
 
 Distributed session admission, byte quota, and heartbeats use a separate **`Redis`** section (see [Session management](session-management.md)).
 
+## Logging
+
+Serilog rolling file sinks read the top-level **`Logging`** section from `NNTPD.json` / `NNRPD.json`:
+
+| Key | Purpose |
+|-----|---------|
+| `Logging.LogDir` | Directory for Serilog rolling files (`NNTPD-.log` / `NNRPD-.log`). Optional; defaults to `{AppContext.BaseDirectory}/logs`. Relative paths resolve under `AppContext.BaseDirectory`. |
+
+```json
+"Logging": {
+  "LogDir": "c:\\logs\\nntpd"
+}
+```
+
+Console output and log levels continue to follow the `Serilog` configuration section when present.
+
 ### Article body ingestion (POST, TAKETHIS, IHAVE)
 
 `MaxArtSize` enforces the maximum **decoded** dot-stuffed article body size while reading from the session pipe. The default is **1 MiB** (`1048576`), matching typical `NNTPD.json` deployments. When a peer exceeds the limit, transit commands return **`439`** (TAKETHIS/IHAVE) or **`441`** (POST) and the session stays up; set **`0`** to disable the check. `PipeReadBufferBytes` sizes the socket `StreamPipeReader` buffer (default **65536**, minimum **4096**). Larger buffers reduce `ReadAsync` churn during RFC 4644 streaming at the cost of slightly more memory per connection.
