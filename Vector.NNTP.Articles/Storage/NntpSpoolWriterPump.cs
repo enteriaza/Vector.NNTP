@@ -240,6 +240,10 @@ namespace Vector.NNTP.Articles.Storage
                     {
                         _metrics.RecordPreprocessFailure();
                         LogPreprocessFailed(_logger, item.MessageId, preprocessResult.FailureReason);
+                        _metrics.RecordArticleRejected(
+                            item.Origin,
+                            item.ArticleBytes,
+                            SpoolArticleRejectionClassifier.ClassifyPreprocessFailure(preprocessResult.FailureReason));
                         _newsLog.LogRejected(
                             item.MessageId,
                             item.Origin,
@@ -256,6 +260,10 @@ namespace Vector.NNTP.Articles.Storage
                     {
                         _metrics.RecordPostprocessFailure();
                         LogPostprocessFailed(_logger, item.MessageId, postprocessResult.FailureReason);
+                        _metrics.RecordArticleRejected(
+                            item.Origin,
+                            preprocessResult.ArticleBytes,
+                            SpoolArticleRejectionClassifier.ClassifyPostprocessFailure(postprocessResult.FailureReason));
                         _newsLog.LogRejected(
                             item.MessageId,
                             item.Origin,
@@ -278,6 +286,7 @@ namespace Vector.NNTP.Articles.Storage
 
                         await FileIOUtilities.AtomicWriteAsync(articlePath, postprocessResult.ArticleBytes, cancellationToken).ConfigureAwait(false);
                         _metrics.RecordWriteSuccess(postprocessResult.ArticleBytes.Length);
+                        _metrics.RecordArticleAccepted(item.Origin, postprocessResult.ArticleBytes);
                         _newsLog.LogAccepted(
                             item.MessageId,
                             item.Origin,
@@ -299,6 +308,10 @@ namespace Vector.NNTP.Articles.Storage
                     {
                         _metrics.RecordWriteFailure();
                         LogWriteFailed(_logger, ex, item.MessageId, item.MessageIdDigestHex);
+                        _metrics.RecordArticleRejected(
+                            item.Origin,
+                            postprocessResult.ArticleBytes,
+                            SpoolArticleRejectionClassifier.ClassifyWriteFailure());
                         _newsLog.LogRejected(
                             item.MessageId,
                             item.Origin,

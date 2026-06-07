@@ -3,8 +3,11 @@
 // </copyright>
 // HOT PATH: lock-free gauges and counters for transit spool queue and writer workers.
 
+using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 using Vector.NNTP.Articles.Classification;
+using Vector.NNTP.Articles.Logging;
+using Vector.NNTP.Articles.Storage;
 using Vector.NNTP.Utilities.Diagnostics;
 
 namespace Vector.NNTP.Articles.Metrics
@@ -19,6 +22,7 @@ namespace Vector.NNTP.Articles.Metrics
     /// <item><description><see cref="Storage.NntpSpoolWriteQueue"/> — enqueue, reject, and dequeue counters/gauges.</description></item>
     /// <item><description><see cref="Storage.NntpSpoolWriterPump"/> — preprocess/postprocess failure, write success/failure, payload bytes, HistoryDB release failures.</description></item>
     /// <item><description><see cref="Storage.NntpSpoolWriterPool"/> — active writer gauge via <see cref="SetActiveWriters"/>.</description></item>
+    /// <item><description><see cref="Storage.NntpSpoolWriterPump"/> and <see cref="Storage.NntpSpoolTransitStorage"/> — categorized article accept/reject outcome counters and minute throughput snapshots.</description></item>
     /// </list>
     /// <para>
     /// <b>Gauge model:</b> <see cref="_queueDepth"/> and <see cref="_queuedBytes"/> mirror
@@ -101,6 +105,21 @@ namespace Vector.NNTP.Articles.Metrics
         private readonly Counter<long> _articleTypeTotal;
 
         /// <summary>
+        /// Counter instrument <c>nntp.spool.article.accepted</c> tagged by incoming feed name.
+        /// </summary>
+        private readonly Counter<long> _articleAccepted;
+
+        /// <summary>
+        /// Counter instrument <c>nntp.spool.article.rejected</c> tagged by feed and rejection category.
+        /// </summary>
+        private readonly Counter<long> _articleRejected;
+
+        /// <summary>
+        /// Per-feed accept/reject buckets reset by <see cref="TakeMinuteSnapshotAndReset"/>.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, SpoolFeedOutcomeCounters> _feedOutcomeBuckets = new(StringComparer.Ordinal);
+
+        /// <summary>
         /// Backing value for observable gauge <c>nntp.spool.queue.depth</c>.
         /// </summary>
         /// <remarks>
@@ -142,6 +161,8 @@ namespace Vector.NNTP.Articles.Metrics
         /// <item><description><c>nntp.spool.history.release_failure</c></description></item>
         /// <item><description><c>nntp.spool.payload.bytes_written</c></description></item>
         /// <item><description><c>article_type_total</c> (tagged by <c>type</c>)</description></item>
+        /// <item><description><c>nntp.spool.article.accepted</c> (tagged by <c>feed</c>)</description></item>
+        /// <item><description><c>nntp.spool.article.rejected</c> (tagged by <c>feed</c> and <c>category</c>)</description></item>
         /// </list>
         /// <para><b>Observable gauges:</b> <c>nntp.spool.queue.depth</c>, <c>nntp.spool.queue.bytes</c>,
         /// <c>nntp.spool.writers.active</c>.</para>
@@ -158,6 +179,8 @@ namespace Vector.NNTP.Articles.Metrics
             _historyReleaseFailed = Meter.CreateCounter<long>("nntp.spool.history.release_failure");
             _payloadBytesWritten = Meter.CreateCounter<long>("nntp.spool.payload.bytes_written");
             _articleTypeTotal = Meter.CreateCounter<long>("article_type_total");
+            _articleAccepted = Meter.CreateCounter<long>("nntp.spool.article.accepted");
+            _articleRejected = Meter.CreateCounter<long>("nntp.spool.article.rejected");
 
             _ = Meter.CreateObservableGauge(
                 "nntp.spool.queue.depth",
@@ -351,6 +374,105 @@ namespace Vector.NNTP.Articles.Metrics
             {
                 _articleTypeTotal.Add(1, new KeyValuePair<string, object?>("type", ArticleTypeMetricsTags.DefaultTag));
             }
+        }
+
+        /// <summary>
+        /// Records a spool commit accept outcome aligned with <see cref="Logging.INntpNewsLog.LogAccepted"/>.
+        /// </summary>
+        /// <param name="origin">Enqueue origin metadata for feed resolution.</param>
+        /// <param name="articleBytes">Committed article bytes used for Path feed fallback.</param>
+        /// <remarks>
+        /// Increments <c>nntp.spool.article.accepted</c> and the per-feed minute bucket. Feed names match
+        /// <see cref="NntpNewsFeedResolver"/>.
+        /// </remarks>
+        internal void RecordArticleAccepted(in NntpSpoolArticleOrigin origin, ReadOnlySpan<byte> articleBytes)
+        {
+            string feed = NntpNewsFeedResolver.ResolveFeed(origin, articleBytes);
+            _articleAccepted.Add(1, new KeyValuePair<string, object?>("feed", feed));
+            GetFeedCounters(feed).RecordAccepted();
+        }
+
+        /// <summary>
+        /// Records a final spool rejection outcome aligned with <see cref="Logging.INntpNewsLog.LogRejected"/>.
+        /// </summary>
+        /// <param name="origin">Enqueue origin metadata for feed resolution.</param>
+        /// <param name="articleBytes">Article bytes available at rejection time for Path feed fallback.</param>
+        /// <param name="category">Coarse rejection bucket from <see cref="SpoolArticleRejectionClassifier"/>.</param>
+        /// <remarks>
+        /// Increments <c>nntp.spool.article.rejected</c> with <c>feed</c> and <c>category</c> tags and the per-feed minute
+        /// bucket.
+        /// </remarks>
+        internal void RecordArticleRejected(
+            in NntpSpoolArticleOrigin origin,
+            ReadOnlySpan<byte> articleBytes,
+            SpoolArticleRejectionCategory category)
+        {
+            string feed = NntpNewsFeedResolver.ResolveFeed(origin, articleBytes);
+            string categoryTag = SpoolArticleRejectionMetricsTags.GetTag(category);
+            _articleRejected.Add(
+                1,
+                new KeyValuePair<string, object?>("feed", feed),
+                new KeyValuePair<string, object?>("category", categoryTag));
+            GetFeedCounters(feed).RecordRejected(category);
+        }
+
+        /// <summary>
+        /// Captures per-feed accept/reject deltas since the previous call and resets minute buckets to zero.
+        /// </summary>
+        /// <returns>
+        /// A snapshot with a global rollup and alphabetically sorted per-feed rows omitting feeds with zero processed
+        /// articles in the window.
+        /// </returns>
+        /// <remarks>
+        /// Called once per minute by <see cref="Hosting.NntpSpoolThroughputLogHostedService"/>. Thread-safe under concurrent
+        /// writer pumps recording outcomes while the snapshot is taken.
+        /// </remarks>
+        internal SpoolThroughputMinuteSnapshot TakeMinuteSnapshotAndReset()
+        {
+            var feedRows = new List<SpoolThroughputFeedCounts>();
+            long accepted = 0;
+            long headerSyntax = 0;
+            long crc = 0;
+            long crosspost = 0;
+            long other = 0;
+
+            foreach (KeyValuePair<string, SpoolFeedOutcomeCounters> entry in _feedOutcomeBuckets)
+            {
+                SpoolThroughputFeedCounts row = entry.Value.TakeSnapshotAndReset(entry.Key);
+                if (row.Processed <= 0)
+                {
+                    continue;
+                }
+
+                feedRows.Add(row);
+                accepted += row.Accepted;
+                headerSyntax += row.HeaderSyntax;
+                crc += row.Crc;
+                crosspost += row.Crosspost;
+                other += row.Other;
+            }
+
+            feedRows.Sort(static (left, right) => string.Compare(left.Feed, right.Feed, StringComparison.Ordinal));
+
+            SpoolThroughputFeedCounts global = new(
+                SpoolThroughputMinuteSnapshot.GlobalFeedLabel,
+                accepted,
+                headerSyntax,
+                crc,
+                crosspost,
+                other);
+
+            return new SpoolThroughputMinuteSnapshot(global, feedRows);
+        }
+
+        /// <summary>
+        /// Gets or creates the lock-free counter bucket for a feed name.
+        /// </summary>
+        /// <param name="feed">Resolved feed token from <see cref="NntpNewsFeedResolver"/>.</param>
+        /// <returns>Mutable counter bucket for the feed.</returns>
+        private SpoolFeedOutcomeCounters GetFeedCounters(string feed)
+        {
+            return _feedOutcomeBuckets.GetOrAdd(feed, static _ => new SpoolFeedOutcomeCounters());
         }
     }
 }

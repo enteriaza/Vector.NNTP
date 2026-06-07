@@ -183,17 +183,23 @@ public sealed class NntpSpoolTransitStorageTests
     /// <param name="queue">Configured spool write queue.</param>
     /// <param name="maxArtSize">Maximum decoded article size; zero disables the limit.</param>
     /// <param name="newsLog">Optional news log override.</param>
+    /// <param name="metrics">Optional metrics override.</param>
     /// <returns>Configured storage instance.</returns>
     private static NntpSpoolTransitStorage CreateStorage(
         NntpSpoolWriteQueue queue,
         long maxArtSize = 1_048_576,
-        INntpNewsLog? newsLog = null)
+        INntpNewsLog? newsLog = null,
+        NntpSpoolMetrics? metrics = null)
     {
         var options = Options.Create(new NntpServerOptions
         {
             MaxArtSize = maxArtSize,
         });
-        return new NntpSpoolTransitStorage(queue, options, newsLog ?? NullNntpNewsLog.Instance);
+        return new NntpSpoolTransitStorage(
+            queue,
+            options,
+            newsLog ?? NullNntpNewsLog.Instance,
+            metrics ?? new NntpSpoolMetrics());
     }
 
     /// <summary>

@@ -20,7 +20,7 @@ namespace Vector.NNTP.Articles.Logging
     /// Registered as a singleton by <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpArticlesTransitSpool"/>
     /// when host <see cref="IConfiguration"/> is supplied. Resolves the log directory with
     /// <see cref="LoggingDirectoryUtilities.ResolveLogDirectory"/> (same <c>Logging:LogDir</c> key as the NNTPD host) and
-    /// writes to <c>{LogDir}/news</c> with Serilog day-based rolling file suffixes.
+    /// writes to <c>{LogDir}/news-{yyyyMMdd}.log</c> (Serilog day rolling via the <c>news-.log</c> path template).
     /// </para>
     /// <para><b>Sink parameters</b> mirror the NNTPD host file sink in <c>Program.Serilog.cs</c>:</para>
     /// <list type="bullet">
@@ -46,13 +46,16 @@ namespace Vector.NNTP.Articles.Logging
     internal sealed class NntpNewsLog : INntpNewsLog, IDisposable
     {
         /// <summary>
-        /// Serilog rolling file base name (without date suffix) under the resolved log directory.
+        /// Serilog rolling file path template under the resolved log directory.
         /// </summary>
         /// <remarks>
-        /// Combined with <see cref="LoggingDirectoryUtilities.ResolveLogDirectory"/> as <c>{LogDir}/news</c>, matching INN
-        /// <c>pathlog/news</c> naming. Serilog appends the day suffix when <see cref="RollingInterval.Day"/> is configured.
+        /// <para>
+        /// Combined with <see cref="LoggingDirectoryUtilities.ResolveLogDirectory"/> as <c>{LogDir}/news-.log</c>. Serilog
+        /// inserts the day stamp before the extension when <see cref="RollingInterval.Day"/> is configured, producing files
+        /// such as <c>news-20260607.log</c> (matching the host <c>NNTPD-.log</c> rolling convention).
+        /// </para>
         /// </remarks>
-        private const string NewsLogFileName = "news";
+        private const string NewsLogFileName = "news-.log";
 
         /// <summary>
         /// Maximum number of rolled <c>news</c> log files retained on disk.

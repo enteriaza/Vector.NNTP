@@ -49,7 +49,7 @@ Console output and log levels continue to follow the `Serilog` configuration sec
 
 ### INN `news` log (NNTPD transit spool)
 
-When `AddNntpArticlesTransitSpool(configuration)` is registered, Vector.NNTP.Articles writes an additional Serilog file at **`{Logging.LogDir}/news`** (daily rolling, same retention/flush parameters as `NNTPD-.log`, **file sink only** — no console). Each line is an INN-style accept/reject entry emitted at **event time** (`DateTimeOffset.Now` when logged):
+When `AddNntpArticlesTransitSpool(configuration)` is registered, Vector.NNTP.Articles writes an additional Serilog file at **`{Logging.LogDir}/news-{yyyyMMdd}.log`** (daily rolling via the `news-.log` path template, same retention/flush parameters as `NNTPD-.log`, **file sink only** — no console). Each line is an INN-style accept/reject entry emitted at **event time** (`DateTimeOffset.Now` when logged):
 
 | Code | Meaning |
 |------|---------|
@@ -67,6 +67,8 @@ Jun 07 21:55:10.500 - Giganews <binary@example.com> yEnc section CRC validation 
 ```
 
 Feed resolution order: `local` (reader POST) → transit peer name → first `Path:` hop before `!` (skipping `not-for-mail`) → peer hostname → `?`. Downstream sites on `+`/`j` lines are `?` until newsfeeds routing exists. Write failures log **exception type name only** in `news`; full detail remains in `NNTPD-.log`.
+
+Every minute, the host application log (`NNTPD-.log`) also receives **single-line spool throughput summaries** (not written to `news-{date}.log`): one global line plus one line per active feed, for example `Spool throughput (60s): processed=18452/min accepted=18213 rejected=239 header=91 crc=12 crosspost=136 other=0` and `Spool throughput (60s) feed=Giganews: ...`. Rejection buckets are **header**, **crc**, **crosspost**, and **other** (spam, size, queue full, write failures). OpenTelemetry counters `nntp.spool.article.accepted` and `nntp.spool.article.rejected` expose the same outcomes for external dashboards.
 
 ### Article body ingestion (POST, TAKETHIS, IHAVE)
 

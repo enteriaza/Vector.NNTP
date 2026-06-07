@@ -67,7 +67,7 @@ namespace Vector.NNTP.Articles.DependencyInjection
         /// </list>
         /// <para><b>Singleton registrations:</b></para>
         /// <list type="bullet">
-        /// <item><description><see cref="NntpSpoolMetrics"/> — OpenTelemetry counters and gauges for queue and writers.</description></item>
+        /// <item><description><see cref="NntpSpoolMetrics"/> — OpenTelemetry counters and gauges for queue, writers, and article outcomes.</description></item>
         /// <item><description><see cref="NntpSpoolWriteQueue"/> — bounded in-memory transit queue.</description></item>
         /// <item><description><see cref="INntpNewsLog"/> — INN-style <c>pathlog/news</c> accept/reject logging.</description></item>
         /// <item><description><see cref="ArticleSpoolPreprocessor"/> — fast header syntax validation and <c>Path</c> mutation.</description></item>
@@ -158,6 +158,7 @@ namespace Vector.NNTP.Articles.DependencyInjection
             _ = services.AddSingleton<INntpTransitStorage, NntpSpoolTransitStorage>();
             _ = services.AddHostedService<NntpSpoolWriterHostedService>();
             _ = services.AddHostedService<NntpSpoolStartupConfigLogHostedService>();
+            _ = services.AddHostedService<NntpSpoolThroughputLogHostedService>();
 
             return services;
         }

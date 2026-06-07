@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.Options;
 using Vector.NNTP.Articles.Logging;
+using Vector.NNTP.Articles.Metrics;
 using Vector.NNTP.HistoryDB.Encoding;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Sockets.Storage;
@@ -82,6 +83,11 @@ namespace Vector.NNTP.Articles.Storage
         private readonly INntpNewsLog _newsLog;
 
         /// <summary>
+        /// Spool outcome metrics for enqueue-time rejections and minute throughput snapshots.
+        /// </summary>
+        private readonly NntpSpoolMetrics _metrics;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="NntpSpoolTransitStorage"/> class.
         /// </summary>
         /// <param name="queue">Spool write queue used for admission and asynchronous writer drainage.</param>
@@ -90,8 +96,10 @@ namespace Vector.NNTP.Articles.Storage
         /// <see cref="NntpServerOptions"/> instance bound by the NNTPD host so storage and body-reader limits agree.
         /// </param>
         /// <param name="newsLog">INN news log writer for enqueue rejections.</param>
+        /// <param name="metrics">Spool outcome metrics recorder shared with writer pumps.</param>
         /// <exception cref="ArgumentNullException">
-        /// Thrown when <paramref name="queue"/>, <paramref name="options"/>, or <paramref name="newsLog"/> is <see langword="null"/>.
+        /// Thrown when <paramref name="queue"/>, <paramref name="options"/>, <paramref name="newsLog"/>, or
+        /// <paramref name="metrics"/> is <see langword="null"/>.
         /// </exception>
         /// <remarks>
         /// <see cref="_maxArtSize"/> is frozen at construction; options monitor changes are not observed.
@@ -99,15 +107,18 @@ namespace Vector.NNTP.Articles.Storage
         public NntpSpoolTransitStorage(
             NntpSpoolWriteQueue queue,
             IOptions<NntpServerOptions> options,
-            INntpNewsLog newsLog)
+            INntpNewsLog newsLog,
+            NntpSpoolMetrics metrics)
         {
             ArgumentNullException.ThrowIfNull(queue);
             ArgumentNullException.ThrowIfNull(options);
             ArgumentNullException.ThrowIfNull(newsLog);
+            ArgumentNullException.ThrowIfNull(metrics);
 
             _queue = queue;
             _maxArtSize = options.Value.MaxArtSize;
             _newsLog = newsLog;
+            _metrics = metrics;
         }
 
         /// <summary>
@@ -211,11 +222,16 @@ namespace Vector.NNTP.Articles.Storage
             NntpSpoolArticleOrigin spoolOrigin = NntpSpoolArticleOrigin.FromTransit(origin);
             if (_maxArtSize > 0 && articleBytes.Length > _maxArtSize)
             {
+                string reason = $"Article exceeds local limit of {_maxArtSize} bytes";
+                _metrics.RecordArticleRejected(
+                    spoolOrigin,
+                    articleBytes.Span,
+                    SpoolArticleRejectionClassifier.ClassifyEnqueueFailure(reason));
                 _newsLog.LogRejected(
                     messageId,
                     spoolOrigin,
                     articleBytes.Span,
-                    $"Article exceeds local limit of {_maxArtSize} bytes");
+                    reason);
                 return ValueTask.FromResult(NntpTransitStorageResult.ArticleRejected);
             }
 
@@ -229,7 +245,12 @@ namespace Vector.NNTP.Articles.Storage
             bool queued = _queue.TryEnqueue(item);
             if (!queued)
             {
-                _newsLog.LogRejected(messageId, spoolOrigin, articleBytes.Span, "Queue full");
+                const string reason = "Queue full";
+                _metrics.RecordArticleRejected(
+                    spoolOrigin,
+                    articleBytes.Span,
+                    SpoolArticleRejectionClassifier.ClassifyEnqueueFailure(reason));
+                _newsLog.LogRejected(messageId, spoolOrigin, articleBytes.Span, reason);
                 return ValueTask.FromResult(NntpTransitStorageResult.QueueFull);
             }
 
