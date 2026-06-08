@@ -10,9 +10,9 @@ namespace Vector.NNTP.Articles.Storage
     /// </summary>
     /// <remarks>
     /// <para>
-    /// These methods are invoked from the writer worker loop after preprocess, postprocess, or atomic write failures, and when
-    /// <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryReleaseAsync"/> returns an outcome that requires operator attention. Successful
-    /// spool writes do not emit log lines from this partial.
+    /// These methods are invoked from the writer worker loop after preprocess, postprocess, or atomic write failures; after
+    /// history commit or release attempts that require operator attention; successful spool writes do not emit success logs
+    /// from this partial.
     /// </para>
     /// <para>
     /// <b>EventId bands (Articles spool):</b> worker failures 1-9, queue management 10-19, scaling 700-719, shutdown
@@ -25,8 +25,10 @@ namespace Vector.NNTP.Articles.Storage
     /// <item><term>2</term><description>Atomic write failure (<see cref="LogLevel.Error"/>).</description></item>
     /// <item><term>3</term><description>History reservation release non-success outcome (<see cref="LogLevel.Warning"/>).</description></item>
     /// <item><term>4</term><description>History reservation release exception (<see cref="LogLevel.Error"/>).</description></item>
-    /// <item><term>5</term><description>Postprocess failure (<see cref="LogLevel.Warning"/>).</description></item>
-    /// </list>
+        /// <item><term>5</term><description>Postprocess failure (<see cref="LogLevel.Warning"/>).</description></item>
+        /// <item><term>6</term><description>History commit non-success outcome after spool write (<see cref="LogLevel.Warning"/>).</description></item>
+        /// <item><term>7</term><description>History commit exception after spool write (<see cref="LogLevel.Error"/>).</description></item>
+        /// </list>
     /// </remarks>
     internal sealed partial class NntpSpoolWriterPump
     {
@@ -136,6 +138,54 @@ namespace Vector.NNTP.Articles.Storage
             Level = LogLevel.Error,
             Message = "History reservation release failed for message-id {MessageId} after spool failure ({ExceptionType}).")]
         private static partial void LogHistoryReleaseFailed(
+            ILogger logger,
+            Exception ex,
+            string messageId,
+            string exceptionType);
+
+        /// <summary>
+        /// Logs a non-success <see cref="HistoryDB.Abstractions.HistoryRecordResult"/> after spool commit.
+        /// </summary>
+        /// <param name="logger">Writer pump category logger.</param>
+        /// <param name="recordResult">
+        /// Outcome from <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryRecordAsync"/>. This method is called only
+        /// for <see cref="HistoryDB.Abstractions.HistoryRecordResult.TryAgainLater"/> and
+        /// <see cref="HistoryDB.Abstractions.HistoryRecordResult.Unavailable"/>; <c>Recorded</c> and <c>Duplicate</c> are
+        /// treated as success and not logged here.
+        /// </param>
+        /// <param name="messageId">NNTP Message-ID whose history digest could not be committed after spool write.</param>
+        /// <remarks>
+        /// Emitted at <see cref="LogLevel.Warning"/> after <see cref="Metrics.NntpSpoolMetrics.RecordHistoryCommitFailure"/>.
+        /// The spool file remains on disk; duplicate CHECK may incorrectly return wanted until history is repaired.
+        /// </remarks>
+        [LoggerMessage(
+            EventId = 6,
+            Level = LogLevel.Warning,
+            Message = "History commit returned {RecordResult} for message-id {MessageId} after spool write.")]
+        private static partial void LogHistoryCommitOutcome(
+            ILogger logger,
+            HistoryDB.Abstractions.HistoryRecordResult recordResult,
+            string messageId);
+
+        /// <summary>
+        /// Logs an exception thrown while committing history after a successful spool write.
+        /// </summary>
+        /// <param name="logger">Writer pump category logger.</param>
+        /// <param name="ex">Exception from <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryRecordAsync"/>.</param>
+        /// <param name="messageId">NNTP Message-ID whose history commit faulted.</param>
+        /// <param name="exceptionType">
+        /// Short exception type name from <see cref="Exception.GetType"/>, duplicated as a structured field for
+        /// dashboard grouping alongside the attached exception.
+        /// </param>
+        /// <remarks>
+        /// Emitted at <see cref="LogLevel.Error"/> after <see cref="Metrics.NntpSpoolMetrics.RecordHistoryCommitFailure"/>.
+        /// The spool file remains on disk; duplicate CHECK may incorrectly return wanted until history is repaired.
+        /// </remarks>
+        [LoggerMessage(
+            EventId = 7,
+            Level = LogLevel.Error,
+            Message = "History commit failed for message-id {MessageId} after spool write ({ExceptionType}).")]
+        private static partial void LogHistoryCommitFailed(
             ILogger logger,
             Exception ex,
             string messageId,

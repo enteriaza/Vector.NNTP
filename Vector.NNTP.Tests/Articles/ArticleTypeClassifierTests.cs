@@ -43,6 +43,62 @@ public sealed class ArticleTypeClassifierTests
     }
 
     /// <summary>
+    /// Verifies <c>Content-Type: application/octet-stream</c> does not prevent yEnc detection in the body.
+    /// </summary>
+    [Test]
+    public void Classify_OctetStreamHeaderWithYEncBody_SetsYEnc()
+    {
+        byte[] article = Encoding.ASCII.GetBytes(
+            "Path: misc.test\r\n" +
+            "Content-Type: application/octet-stream;\r\n" +
+            "    name=\"part215.rar\"\r\n" +
+            "\r\n" +
+            "=ybegin line=128 size=217055232 part=114 total=114\r\n" +
+            "=ypart begin=216960001 end=217055232\r\n" +
+            "payload\r\n");
+
+        ArticleTypeFlags flags = ArticleTypeClassifier.Classify(article);
+
+        Assert.That(flags.HasFlag(ArticleTypeFlags.YEnc), Is.True);
+        Assert.That(flags.HasFlag(ArticleTypeFlags.Binary), Is.True);
+        Assert.That(flags.HasFlag(ArticleTypeFlags.Mime), Is.True);
+    }
+
+    /// <summary>
+    /// Verifies multipart yEnc with octet-stream MIME wrapper sets <see cref="ArticleTypeFlags.Partial"/>.
+    /// </summary>
+    [Test]
+    public void Classify_OctetStreamHeaderWithYEncPart_SetsYEncAndPartial()
+    {
+        byte[] article = Encoding.ASCII.GetBytes(
+            "Path: misc.test\r\nContent-Type: application/octet-stream\r\n\r\n" +
+            "=ybegin part=114 total=114 line=128 size=10 name=test.dat\r\n");
+
+        ArticleTypeFlags flags = ArticleTypeClassifier.Classify(article);
+
+        Assert.That(flags.HasFlag(ArticleTypeFlags.YEnc), Is.True);
+        Assert.That(flags.HasFlag(ArticleTypeFlags.Partial), Is.True);
+        Assert.That(flags.HasFlag(ArticleTypeFlags.Binary), Is.True);
+        Assert.That(flags.HasFlag(ArticleTypeFlags.Mime), Is.True);
+    }
+
+    /// <summary>
+    /// Verifies base64 transfer encoding in headers still terminates body scan without reading the body.
+    /// </summary>
+    [Test]
+    public void Classify_Base64TransferEncoding_StillStopsEarly()
+    {
+        byte[] article = Encoding.ASCII.GetBytes(
+            "Path: misc.test\r\nContent-transfer-encoding: base64\r\n\r\n" +
+            "dGVzdCBib2R5IGRhdGE=\r\n");
+
+        ArticleTypeFlags flags = ArticleTypeClassifier.Classify(article);
+
+        Assert.That(flags.HasFlag(ArticleTypeFlags.Base64), Is.True);
+        Assert.That(flags.HasFlag(ArticleTypeFlags.Binary), Is.True);
+    }
+
+    /// <summary>
     /// Verifies MIME headers set <see cref="ArticleTypeFlags.Mime"/>.
     /// </summary>
     [Test]

@@ -20,7 +20,7 @@ namespace Vector.NNTP.Articles.Metrics
     /// <para><b>Producers:</b></para>
     /// <list type="bullet">
     /// <item><description><see cref="Storage.NntpSpoolWriteQueue"/> — enqueue, reject, and dequeue counters/gauges.</description></item>
-    /// <item><description><see cref="Storage.NntpSpoolWriterPump"/> — preprocess/postprocess failure, write success/failure, payload bytes, HistoryDB release failures.</description></item>
+    /// <item><description><see cref="Storage.NntpSpoolWriterPump"/> — preprocess/postprocess failure, write success/failure, payload bytes, HistoryDB release and commit failures.</description></item>
     /// <item><description><see cref="Storage.NntpSpoolWriterPool"/> — active writer gauge via <see cref="SetActiveWriters"/>.</description></item>
     /// <item><description><see cref="Storage.NntpSpoolWriterPump"/> and <see cref="Storage.NntpSpoolTransitStorage"/> — categorized article accept/reject outcome counters and minute throughput snapshots.</description></item>
     /// </list>
@@ -95,6 +95,12 @@ namespace Vector.NNTP.Articles.Metrics
         private readonly Counter<long> _historyReleaseFailed;
 
         /// <summary>
+        /// Counter instrument <c>nntp.spool.history.commit_failure</c> incremented when HistoryDB commit after spool
+        /// write does not complete successfully.
+        /// </summary>
+        private readonly Counter<long> _historyCommitFailed;
+
+        /// <summary>
         /// Counter instrument <c>nntp.spool.payload.bytes_written</c> tracking cumulative successful payload bytes.
         /// </summary>
         private readonly Counter<long> _payloadBytesWritten;
@@ -159,6 +165,7 @@ namespace Vector.NNTP.Articles.Metrics
         /// <item><description><c>nntp.spool.preprocess.failure</c></description></item>
         /// <item><description><c>nntp.spool.postprocess.failure</c></description></item>
         /// <item><description><c>nntp.spool.history.release_failure</c></description></item>
+        /// <item><description><c>nntp.spool.history.commit_failure</c></description></item>
         /// <item><description><c>nntp.spool.payload.bytes_written</c></description></item>
         /// <item><description><c>article_type_total</c> (tagged by <c>type</c>)</description></item>
         /// <item><description><c>nntp.spool.article.accepted</c> (tagged by <c>feed</c>)</description></item>
@@ -177,6 +184,7 @@ namespace Vector.NNTP.Articles.Metrics
             _preprocessFailed = Meter.CreateCounter<long>("nntp.spool.preprocess.failure");
             _postprocessFailed = Meter.CreateCounter<long>("nntp.spool.postprocess.failure");
             _historyReleaseFailed = Meter.CreateCounter<long>("nntp.spool.history.release_failure");
+            _historyCommitFailed = Meter.CreateCounter<long>("nntp.spool.history.commit_failure");
             _payloadBytesWritten = Meter.CreateCounter<long>("nntp.spool.payload.bytes_written");
             _articleTypeTotal = Meter.CreateCounter<long>("article_type_total");
             _articleAccepted = Meter.CreateCounter<long>("nntp.spool.article.accepted");
@@ -323,6 +331,18 @@ namespace Vector.NNTP.Articles.Metrics
         internal void RecordHistoryReleaseFailure()
         {
             _historyReleaseFailed.Add(1);
+        }
+
+        /// <summary>
+        /// Records a HistoryDB reservation commit failure after successful spool persistence.
+        /// </summary>
+        /// <remarks>
+        /// Increments <c>nntp.spool.history.commit_failure</c> when <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryRecordAsync"/>
+        /// returns a non-success outcome or throws after <see cref="Utilities.IO.FileIOUtilities.AtomicWriteAsync"/>.
+        /// </remarks>
+        internal void RecordHistoryCommitFailure()
+        {
+            _historyCommitFailed.Add(1);
         }
 
         /// <summary>

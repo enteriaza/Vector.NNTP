@@ -49,8 +49,9 @@ namespace Vector.NNTP.Articles.Storage
     /// </item>
     /// <item>
     /// <description>
-    /// On successful <see cref="FileIOUtilities.AtomicWriteAsync"/>, retain the HistoryDB reservation — it transitions
-    /// with ownership to the persisted spool article; there is no release on the success path.
+    /// On successful <see cref="FileIOUtilities.AtomicWriteAsync"/>, commit the digest with
+    /// <see cref="IHistoryDatabase.TryRecordAsync"/> (idempotent when TAKETHIS/IHAVE already reserved) and retain the
+    /// reservation — there is no release on the success path.
     /// </description>
     /// </item>
     /// <item>
@@ -66,10 +67,11 @@ namespace Vector.NNTP.Articles.Storage
     /// creation across workers.
     /// </para>
     /// <para>
-    /// <b>History reservation invariant:</b> Reservations are held from CHECK acceptance through successful spool
-    /// persistence. <see cref="TryReleaseHistoryReservationAsync"/> runs only on preprocess, postprocess, write failure,
-    /// or worker cancellation during an in-flight write. A completed atomic write keeps the reservation so duplicate
-    /// CHECK rejections remain correct for the persisted article.
+    /// <b>History reservation invariant:</b> TAKETHIS/IHAVE call <see cref="IHistoryDatabase.TryRecordAsync"/> before body
+    /// transfer; the pump commits again after successful spool persistence so history aligns with news-log <c>+</c>
+    /// lines. <see cref="TryReleaseHistoryReservationAsync"/> runs only on preprocess, postprocess, write failure, or
+    /// worker cancellation during an in-flight write. A completed atomic write keeps the reservation so duplicate CHECK
+    /// rejections remain correct for the persisted article.
     /// </para>
     /// <para>
     /// Source-generated log helpers live in the logging partial class file (EventIds 1-5).
@@ -298,6 +300,8 @@ namespace Vector.NNTP.Articles.Storage
                                 item.Origin,
                                 postprocessResult.ArticleBytes);
                         }
+
+                        await TryCommitHistoryReservationAsync(item.MessageId).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
@@ -401,6 +405,41 @@ namespace Vector.NNTP.Articles.Storage
             {
                 _metrics.RecordHistoryReleaseFailure();
                 LogHistoryReleaseFailed(_logger, ex, messageId, ex.GetType().Name);
+            }
+        }
+
+        /// <summary>
+        /// Commits a HistoryDB digest reservation after successful spool persistence.
+        /// </summary>
+        /// <param name="messageId">NNTP Message-ID whose digest should remain in all history tiers.</param>
+        /// <returns>A task that completes after the commit attempt and any failure logging.</returns>
+        /// <remarks>
+        /// <para>
+        /// Uses <see cref="CancellationToken.None"/> so commit completes even when the worker token is already canceled.
+        /// Invoked only after <see cref="FileIOUtilities.AtomicWriteAsync"/> succeeds. When TAKETHIS/IHAVE already
+        /// reserved the digest, <see cref="HistoryRecordResult.Duplicate"/> is treated as success.
+        /// </para>
+        /// <para>
+        /// Non-success outcomes increment failure metrics and emit warning logs; the spool file is retained.
+        /// </para>
+        /// </remarks>
+        private async Task TryCommitHistoryReservationAsync(string messageId)
+        {
+            try
+            {
+                HistoryRecordResult recordResult = await _historyDatabase
+                    .TryRecordAsync(messageId, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (recordResult is not (HistoryRecordResult.Recorded or HistoryRecordResult.Duplicate))
+                {
+                    _metrics.RecordHistoryCommitFailure();
+                    LogHistoryCommitOutcome(_logger, recordResult, messageId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _metrics.RecordHistoryCommitFailure();
+                LogHistoryCommitFailed(_logger, ex, messageId, ex.GetType().Name);
             }
         }
     }

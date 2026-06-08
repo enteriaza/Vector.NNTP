@@ -3,6 +3,7 @@
 // </copyright>
 // COLD PATH: TAKETHIS command handler (RFC 4644).
 
+using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Protocol;
 using Vector.NNTP.Sockets.Session;
 using Vector.NNTP.Sockets.Storage;
@@ -99,6 +100,8 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                 {
                     await NntpDotStuffingReader.DrainBodyAsync(lineReader, cancellationToken)
                         .ConfigureAwait(false);
+                    await TryReleaseHistoryReservationAsync(historyDatabase, messageId, cancellationToken)
+                        .ConfigureAwait(false);
                     await session.Writer.WriteLineAsync("439 Transfer failed", cancellationToken).ConfigureAwait(false);
                     return true;
                 }
@@ -112,6 +115,12 @@ namespace Vector.NNTP.Sockets.Transport.Commands
                         origin,
                         cancellationToken)
                     .ConfigureAwait(false);
+                if (storageResult != NntpTransitStorageResult.Success)
+                {
+                    await TryReleaseHistoryReservationAsync(historyDatabase, messageId, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
                 string responseLine = storageResult switch
                 {
                     NntpTransitStorageResult.Success => "239 Article transferred OK",
@@ -126,6 +135,21 @@ namespace Vector.NNTP.Sockets.Transport.Commands
             {
                 session.State.MultiLineBodyPending = false;
             }
+        }
+
+        /// <summary>
+        /// Best-effort HistoryDB release after TAKETHIS failure following a successful <see cref="IHistoryDatabase.TryRecordAsync"/>.
+        /// </summary>
+        /// <param name="historyDatabase">Transit history database.</param>
+        /// <param name="messageId">Message identifier to release.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes after the release attempt.</returns>
+        private static async ValueTask TryReleaseHistoryReservationAsync(
+            IHistoryDatabase historyDatabase,
+            string messageId,
+            CancellationToken cancellationToken)
+        {
+            _ = await historyDatabase.TryReleaseAsync(messageId, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>

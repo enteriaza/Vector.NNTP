@@ -40,7 +40,7 @@ local v2 = redis.call('GET', KEYS[1])
 if v2 and tonumber(v2) > tonumber(ARGV[1]) then
   return 1
 end
-return 0
+return 2
 """;
 
         /// <summary>

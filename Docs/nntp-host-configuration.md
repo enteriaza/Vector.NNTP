@@ -114,7 +114,7 @@ Example PromQL for a five-minute rate by type:
 sum by (type) (rate(article_type_total[5m]))
 ```
 
-Other spool instruments: `nntp.spool.queue.*`, `nntp.spool.write.*`, `nntp.spool.preprocess.failure`, `nntp.spool.postprocess.failure`, `nntp.spool.payload.bytes_written`.
+Other spool instruments: `nntp.spool.queue.*`, `nntp.spool.write.*`, `nntp.spool.preprocess.failure`, `nntp.spool.postprocess.failure`, `nntp.spool.payload.bytes_written`, `nntp.spool.history.commit_failure`, `nntp.spool.history.release_failure`.
 
 ## Transit peers (NNTPD)
 
@@ -198,7 +198,8 @@ Unit tests that do not call `AddNntpSessionRedis` keep in-memory coordinators fr
 **NNTPD only.** `NntpServer:HistoryDb` configures transit history via `Vector.NNTP.HistoryDB` (memory → Redis Lua → RocksDB). See [historydb-rocksdb-schema.md](historydb-rocksdb-schema.md).
 
 - **CHECK** is read-only: probes duplicates (`238` / `438`) without recording.
-- **TAKETHIS** and **IHAVE** (before `335`) call `TryRecordAsync` (`SET NX`) before article storage.
+- **TAKETHIS** and **IHAVE** (before `335`) call `TryRecordAsync` (`SET NX`) before article storage as an in-flight reservation.
+- **Articles spool commit** calls `TryRecordAsync` again after successful `AtomicWriteAsync` so history aligns with news-log **`+`** lines (not wire `239`/`235` alone). Spool preprocess/postprocess/write failures call `TryReleaseAsync`; TAKETHIS/IHAVE `439`/`437` paths after a successful record also release.
 
 | Key | Purpose |
 |-----|---------|
@@ -207,6 +208,7 @@ Unit tests that do not call `AddNntpSessionRedis` keep in-memory coordinators fr
 | `MemoryLimitBytes` | Hot in-memory cache budget (default 1 GiB). |
 | `MemoryShardCount` | Digest-key shard count for parallel CHECK/TAKETHIS (power of two; default 64). Per-shard budget is `MemoryLimitBytes / MemoryShardCount`. |
 | `QueueCapacity` | Bounded backfill queue after Redis record on accept. |
+| `KeyPrefix` | Optional Redis key prefix prepended to `history:{digest}` keys (defaults to empty; **not** the session `Redis:KeyPrefix`). |
 | `RebuildCheckpointInterval` | Redis `history:rebuild_state` checkpoint interval during rebuild. |
 | `RebuildRedisBatchSize` | Pipeline batch size for Rocks→Redis rebuild. |
 | `EnableMemoryPreloadOnStartup` | Reverse-iterate `by_expiration` into memory after rebuild. |
@@ -217,8 +219,10 @@ Unit tests that do not call `AddNntpSessionRedis` keep in-memory coordinators fr
 - On **every process start**, NNTPD runs a **full Rocks→Redis rebuild** before CHECK and record paths are operational (`503` until complete).
 - At billions of keys, rebuild may take hours; target throughput tiers are documented in the ADR (10k / 50k / 100k keys/s).
 - Plan **hundreds of GB** on `DbDir` at multi-billion entry scale (`estimatedBytes ≈ liveEntryCount × 81 × overhead`).
-- **RocksDB writes are asynchronous:** only successful **TAKETHIS/IHAVE record** (`TryRecordAsync`) enqueues a digest for the background worker to `PutReservation` in Rocks. CHECK `238` does not write Redis or Rocks. Opening the DB or finishing rebuild may show **0 writes** until accept-path traffic is persisted; SST files appear after memtable flush/compaction.
-- **Orphan keys:** if history records a message-id but storage rejects the article (`439`), the id stays in history until TTL (documented in the ADR).
+- **RocksDB writes are asynchronous:** only successful **history record** (`TryRecordAsync`, including the post-spool commit on news-log **`+`**) enqueues a digest for the background worker to `PutReservation` in Rocks. CHECK `238` does not write Redis or Rocks. Opening the DB or finishing rebuild may show **0 writes** until accept-path traffic is persisted; SST files appear after memtable flush/compaction.
+- **Digest keys, not Message-IDs:** all tiers store a **32-byte BLAKE3 digest** of the UTF-8 Message-ID string. Redis keys are `{HistoryDb.KeyPrefix}history:{digest-bytes}` (binary digest suffix, not hex). To inspect a committed article, derive the digest with `HistoryKeyEncoder.EncodeHexLower(messageId)` for Rocks/spool paths, or scan Redis with the configured `KeyPrefix` — do not expect human-readable Message-IDs in key names.
+- **Release paths:** Articles spool failures (`-` in `news-{date}.log`) release in-flight reservations. TAKETHIS/IHAVE `439`/`437` after a successful record also release. Wire **`239`/`235`** alone does not guarantee durable history until spool commit (`+`).
+- **Metrics correlation:** compare `history.record.recorded` (HistoryDB) with `nntp.spool.article.accepted` (Articles) over the same window. They should track within normal in-flight lag. If `recorded ≈ 0` while `accepted > 0`, the history commit path is failing — check `nntp.spool.history.commit_failure` and NNTPD logs (EventId 6/7). If `recorded >> accepted`, broad spool-layer releases may be clearing reservations (`nntp.spool.history.release_failure`, EventId 3/4). `history.memory.entries` reflects the in-memory hot cache only.
 
 Register `AddNntpHistoryDatabase` after `AddNntpSessionRedis` and before `AddNntpSocketsTransit`.
 

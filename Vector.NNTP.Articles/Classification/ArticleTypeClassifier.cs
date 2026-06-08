@@ -18,7 +18,7 @@ namespace Vector.NNTP.Articles.Classification
     /// <para><b>Scan invariant:</b></para>
     /// <list type="bullet">
     /// <item><description><b>Header classification always scans the entire header block.</b></description></item>
-    /// <item><description><b>Body classification may terminate early when <see cref="ArticleTypeFlags.Binary"/> is detected</b> (or when <see cref="MaxClassificationBytes"/> is reached).</description></item>
+    /// <item><description><b>Body classification may terminate early when a concrete encoding (<see cref="ArticleTypeFlags.YEnc"/>, <see cref="ArticleTypeFlags.UuEncode"/>, <see cref="ArticleTypeFlags.Base64"/>, or <see cref="ArticleTypeFlags.BinHex"/>) is identified</b> (or when <see cref="MaxClassificationBytes"/> is reached).</description></item>
     /// </list>
     /// <para><b>Scan scope:</b></para>
     /// <list type="number">
@@ -39,6 +39,15 @@ namespace Vector.NNTP.Articles.Classification
         /// Minimum <c>Newsgroups:</c> token count that sets <see cref="ArticleTypeFlags.MassCrosspost"/>.
         /// </summary>
         internal const int MassCrosspostThreshold = 10;
+
+        /// <summary>
+        /// Body-scan stops once any of these encoding flags is set (generic <see cref="ArticleTypeFlags.Binary"/> from MIME headers alone does not qualify).
+        /// </summary>
+        private const ArticleTypeFlags BodyEncodingIdentified =
+            ArticleTypeFlags.YEnc |
+            ArticleTypeFlags.UuEncode |
+            ArticleTypeFlags.Base64 |
+            ArticleTypeFlags.BinHex;
 
         /// <summary>
         /// Known automated NZB poster tokens matched case-insensitively in <c>X-Newsposter:</c> or <c>User-Agent:</c> headers.
@@ -95,8 +104,8 @@ namespace Vector.NNTP.Articles.Classification
         /// <param name="articleBytes">Full article octets including headers, separator, and optional body.</param>
         /// <returns>Accumulated classification flags for the scanned prefix.</returns>
         /// <remarks>
-        /// Header lines are always fully classified. Body scanning stops when <see cref="ArticleTypeFlags.Binary"/> is set
-        /// or the body byte cap is reached.
+        /// Header lines are always fully classified. Body scanning stops when a concrete body encoding is identified or the
+        /// body byte cap is reached.
         /// </remarks>
         public static ArticleTypeFlags Classify(ReadOnlySpan<byte> articleBytes)
         {
@@ -117,7 +126,7 @@ namespace Vector.NNTP.Articles.Classification
             while (index < scanLimit)
             {
                 bool inHeader = headerEnd < 0 || index < headerEnd;
-                if (!inHeader && (scanner.Type & ArticleTypeFlags.Binary) != 0)
+                if (!inHeader && (scanner.Type & BodyEncodingIdentified) != 0)
                 {
                     break;
                 }
@@ -208,7 +217,7 @@ namespace Vector.NNTP.Articles.Classification
                     return;
                 }
 
-                if ((Type & ArticleTypeFlags.Binary) != 0)
+                if ((Type & BodyEncodingIdentified) != 0)
                 {
                     return;
                 }

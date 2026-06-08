@@ -32,8 +32,10 @@ namespace Vector.NNTP.Articles.Classification
     /// </list>
     /// <para>
     /// Multiple flags may be set on one article (for example <see cref="Binary"/> | <see cref="YEnc"/>). The classifier
-    /// clears <see cref="Default"/> on the first non-default detection. <see cref="Binary"/> stops body scanning early; the
-    /// full header block is always classified.
+    /// clears <see cref="Default"/> on the first non-default detection. Body scanning terminates early only after a
+    /// concrete encoding (<see cref="YEnc"/>, <see cref="UuEncode"/>, <see cref="Base64"/>, or <see cref="BinHex"/>)
+    /// is identified; generic <see cref="Binary"/> from MIME headers alone does not stop the body scan. The full header
+    /// block is always classified.
     /// </para>
     /// <para>
     /// <b>Underlying type:</b> Stored as <see cref="uint"/> so up to 32 independent bits are available on all supported
@@ -67,8 +69,10 @@ namespace Vector.NNTP.Articles.Classification
         /// Binary payload detected via content type, transfer encoding, encoded body lines, or yEnc section headers.
         /// </summary>
         /// <remarks>
-        /// Triggers early termination of body scanning once set (header scanning continues). May coexist with
-        /// <see cref="UuEncode"/>, <see cref="Base64"/>, <see cref="BinHex"/>, or <see cref="YEnc"/>.
+        /// Set when content type, transfer encoding, encoded body lines, or yEnc section headers indicate binary payload.
+        /// Does not alone terminate body scanning — only concrete encoding flags
+        /// (<see cref="YEnc"/>, <see cref="UuEncode"/>, <see cref="Base64"/>, <see cref="BinHex"/>) stop the body scan
+        /// early. May coexist with those encoding flags.
         /// </remarks>
         Binary = 1 << 1,
 
