@@ -73,7 +73,7 @@ namespace Vector.NNTP.Articles.Processing
     /// </para>
     /// <para><b>Threading:</b> Safe to pass across writer-pump tasks; no shared mutable state.</para>
     /// </remarks>
-    public sealed record ArticleSpoolPostprocessResult(
+    internal sealed record ArticleSpoolPostprocessResult(
         byte[] ArticleBytes,
         bool Success,
         string? FailureReason,

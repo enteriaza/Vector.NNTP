@@ -67,7 +67,7 @@ namespace Vector.NNTP.Articles.Logging
     /// </para>
     /// <para><b>Thread safety:</b> Serilog async file sinks tolerate concurrent Information writes from multiple writer pump threads.</para>
     /// </remarks>
-    internal sealed class NntpNewsLog : INntpNewsLog, IDisposable
+    internal sealed partial class NntpNewsLog : INntpNewsLog, IDisposable
     {
         /// <summary>
         /// Serilog rolling file path template under the resolved log directory.
@@ -104,14 +104,12 @@ namespace Vector.NNTP.Articles.Logging
         /// <summary>
         /// Dedicated Serilog core logger instance writing only INN news lines to the rolling file sink.
         /// </summary>
-        /// <remarks>
-        /// <para>
-        /// Created once in the constructor via <see cref="LoggerConfiguration.CreateLogger"/>. Not the static
-        /// <see cref="Log.Logger"/> used by the host application log — news lines never mix into the main NNTPD log file.
-        /// </para>
-        /// <para>Disposed by <see cref="Dispose"/>.</para>
-        /// </remarks>
         private readonly Logger _logger;
+
+        /// <summary>
+        /// Host category logger for Serilog sink failures on the news log path.
+        /// </summary>
+        private readonly ILogger<NntpNewsLog> _hostLogger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NntpNewsLog"/> class and creates the rolling file sink.
@@ -121,8 +119,11 @@ namespace Vector.NNTP.Articles.Logging
         /// <see cref="LoggingDirectoryUtilities.ResolveLogDirectory"/>). When unset, logs default under
         /// <c>{AppContext.BaseDirectory}/logs</c> per utilities policy.
         /// </param>
+        /// <param name="hostLogger">
+        /// Host category logger used when the Serilog news sink throws so pump workers do not fault on log I/O failures.
+        /// </param>
         /// <exception cref="ArgumentNullException">
-        /// Thrown when <paramref name="configuration"/> is <see langword="null"/>.
+        /// Thrown when <paramref name="configuration"/> or <paramref name="hostLogger"/> is <see langword="null"/>.
         /// </exception>
         /// <remarks>
         /// <para>
@@ -135,9 +136,11 @@ namespace Vector.NNTP.Articles.Logging
         /// <see langword="false"/> so rolls are day-based only.
         /// </para>
         /// </remarks>
-        public NntpNewsLog(IConfiguration configuration)
+        public NntpNewsLog(IConfiguration configuration, ILogger<NntpNewsLog> hostLogger)
         {
             ArgumentNullException.ThrowIfNull(configuration);
+            ArgumentNullException.ThrowIfNull(hostLogger);
+            _hostLogger = hostLogger;
             string logDirectory = LoggingDirectoryUtilities.ResolveLogDirectory(configuration);
             _logger = new LoggerConfiguration()
                 .MinimumLevel.Information()
@@ -192,7 +195,26 @@ namespace Vector.NNTP.Articles.Logging
                 feed,
                 messageId,
                 articleBytes.Length);
-            _logger.Information(line);
+            TryWriteLine(line);
+        }
+
+        /// <summary>
+        /// Writes a formatted INN news line through Serilog, logging sink failures to the host logger without throwing.
+        /// </summary>
+        /// <param name="line">Preformatted INN line to write at Information level.</param>
+        private void TryWriteLine(string line)
+        {
+            try
+            {
+                _logger.Information(line);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                if (_hostLogger.IsEnabled(LogLevel.Warning))
+                {
+                    LogSinkFailure(_hostLogger, ex);
+                }
+            }
         }
 
         /// <summary>
@@ -245,7 +267,7 @@ namespace Vector.NNTP.Articles.Logging
                 feed,
                 messageId,
                 reason);
-            _logger.Information(line);
+            TryWriteLine(line);
         }
 
         /// <summary>
@@ -289,7 +311,7 @@ namespace Vector.NNTP.Articles.Logging
                 feed,
                 messageId,
                 target);
-            _logger.Information(line);
+            TryWriteLine(line);
         }
 
         /// <summary>
@@ -326,7 +348,7 @@ namespace Vector.NNTP.Articles.Logging
                 feed,
                 messageId,
                 articleBytes.Length);
-            _logger.Information(line);
+            TryWriteLine(line);
         }
 
         /// <summary>

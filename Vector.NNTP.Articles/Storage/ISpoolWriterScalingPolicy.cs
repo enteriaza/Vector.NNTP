@@ -41,7 +41,7 @@ namespace Vector.NNTP.Articles.Storage
     /// <para><b>Threading:</b> Implementations are typically singletons and must be safe to call from the hosted
     /// scaling loop without external synchronization. They must not block on I/O or worker completion.</para>
     /// </remarks>
-    public interface ISpoolWriterScalingPolicy
+    internal interface ISpoolWriterScalingPolicy
     {
         /// <summary>
         /// Gets the minimum number of spool writer workers the pool should maintain after startup.

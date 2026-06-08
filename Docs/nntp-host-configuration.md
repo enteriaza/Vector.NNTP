@@ -115,7 +115,11 @@ Example PromQL for a five-minute rate by type:
 sum by (type) (rate(article_type_total[5m]))
 ```
 
-Other spool instruments: `nntp.spool.queue.*`, `nntp.spool.write.*`, `nntp.spool.preprocess.failure`, `nntp.spool.postprocess.failure`, `nntp.spool.payload.bytes_written`, `nntp.spool.history.commit_failure`, `nntp.spool.history.release_failure`.
+Other spool instruments: `nntp.spool.queue.*`, `nntp.spool.write.*`, `nntp.spool.preprocess.failure`, `nntp.spool.postprocess.failure`, `nntp.spool.payload.bytes_written`, `nntp.spool.history.commit_failure`, `nntp.spool.history.release_failure`, `nntp.spool.spamd.fail_open` (tagged `reason`), `nntp.spool.writers.scale_total` (tagged `direction=up|down`), `nntp.spool.queue.saturation_log`.
+
+Latency histograms (milliseconds): `nntp.spool.preprocess.duration_ms`, `nntp.spool.postprocess.duration_ms`, `nntp.spool.write.duration_ms`, `nntp.spool.spamd.duration_ms`.
+
+Optional OpenTelemetry tracing: register activity source `Vector.NNTP.Articles` (`ArticlesSpoolTelemetry.SourceName`) to collect spans `nntp.spool.preprocess`, `nntp.spool.postprocess`, `nntp.spool.spamd.check`, `nntp.spool.write`, `nntp.spool.history.release`, and `nntp.spool.history.commit`.
 
 ## Transit peers (NNTPD)
 

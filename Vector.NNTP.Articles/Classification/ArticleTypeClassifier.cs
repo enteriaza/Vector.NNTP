@@ -50,7 +50,7 @@ namespace Vector.NNTP.Articles.Classification
     /// <para><b>Performance:</b> Line and separator scans delegate to <see cref="ArticleByteScanSimd"/>.</para>
     /// <para><b>Thread safety:</b> Stateless static methods; safe for concurrent writer pumps.</para>
     /// </remarks>
-    public static class ArticleTypeClassifier
+    internal static class ArticleTypeClassifier
     {
         /// <summary>
         /// Maximum number of body bytes scanned for classification after the header/body separator.

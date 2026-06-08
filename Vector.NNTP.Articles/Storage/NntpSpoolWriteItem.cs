@@ -79,7 +79,7 @@ namespace Vector.NNTP.Articles.Storage
     /// <para><b>Threading:</b> After enqueue, instances may be read concurrently by one pump worker that dequeued the
     /// item. The shared <paramref name="ArticleBytes"/> array must not be mutated by producers once the item is queued.</para>
     /// </remarks>
-    public sealed record NntpSpoolWriteItem(
+    internal sealed record NntpSpoolWriteItem(
         string MessageId,
         byte[] ArticleBytes,
         string MessageIdDigestHex,

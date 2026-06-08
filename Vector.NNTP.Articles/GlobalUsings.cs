@@ -3,4 +3,5 @@
 // </copyright>
 // GlobalUsings.cs -- Shared global using directives for Vector.NNTP.Articles compilation units.
 
+global using System.Diagnostics;
 global using Microsoft.Extensions.Logging;

@@ -41,7 +41,7 @@ namespace Vector.NNTP.Articles.Processing
     /// </para>
     /// <para><b>Threading:</b> Stateless static methods; safe for concurrent writer pumps without synchronization.</para>
     /// </remarks>
-    public static class ArticlePathHeaderMutator
+    internal static class ArticlePathHeaderMutator
     {
         /// <summary>
         /// Canonical NNTP <c>Path</c> header field name used for insertion and matching.

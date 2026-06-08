@@ -75,7 +75,7 @@ namespace Vector.NNTP.Articles.Classification
     /// </para>
     /// </remarks>
     [Flags]
-    public enum ArticleTypeFlags : uint
+    internal enum ArticleTypeFlags : uint
     {
         /// <summary>
         /// No specific content or control type has been detected yet (Diablo <c>ARTTYPE_DEFAULT</c>).

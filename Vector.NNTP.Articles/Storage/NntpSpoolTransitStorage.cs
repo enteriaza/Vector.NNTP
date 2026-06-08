@@ -67,8 +67,12 @@ namespace Vector.NNTP.Articles.Storage
     /// <para><b>Threading:</b> Safe for concurrent <see cref="TakeThisAsync"/> from multiple transit sessions; enqueue
     /// synchronously completes under <see cref="NntpSpoolWriteQueue"/> locking without async I/O.</para>
     /// </remarks>
-    internal sealed class NntpSpoolTransitStorage : INntpTransitStorage
+    internal sealed partial class NntpSpoolTransitStorage : INntpTransitStorage
     {
+        /// <summary>
+        /// Minimum interval between queue saturation warning logs.
+        /// </summary>
+        private static readonly TimeSpan QueueSaturationLogInterval = TimeSpan.FromSeconds(30);
         /// <summary>
         /// Bounded queue receiving spool write items from transit producers.
         /// </summary>
@@ -114,6 +118,16 @@ namespace Vector.NNTP.Articles.Storage
         private readonly NntpSpoolMetrics _metrics;
 
         /// <summary>
+        /// Category logger for rate-limited enqueue saturation warnings and trace enqueue diagnostics.
+        /// </summary>
+        private readonly ILogger<NntpSpoolTransitStorage> _logger;
+
+        /// <summary>
+        /// UTC timestamp of the last queue saturation warning log, used for rate limiting.
+        /// </summary>
+        private long _lastQueueSaturationLogUtcTicks;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="NntpSpoolTransitStorage"/> class.
         /// </summary>
         /// <param name="queue">
@@ -128,6 +142,7 @@ namespace Vector.NNTP.Articles.Storage
         /// <param name="metrics">
         /// Spool observability recorder shared with the queue, writer pump, and writer pool.
         /// </param>
+        /// <param name="logger">Category logger for enqueue saturation and trace diagnostics.</param>
         /// <remarks>
         /// <see cref="_maxArtSize"/> is frozen at construction; <see cref="IOptionsMonitor{T}"/> changes are not observed.
         /// </remarks>
@@ -139,17 +154,20 @@ namespace Vector.NNTP.Articles.Storage
             NntpSpoolWriteQueue queue,
             IOptions<NntpServerOptions> options,
             INntpNewsLog newsLog,
-            NntpSpoolMetrics metrics)
+            NntpSpoolMetrics metrics,
+            ILogger<NntpSpoolTransitStorage> logger)
         {
             ArgumentNullException.ThrowIfNull(queue);
             ArgumentNullException.ThrowIfNull(options);
             ArgumentNullException.ThrowIfNull(newsLog);
             ArgumentNullException.ThrowIfNull(metrics);
+            ArgumentNullException.ThrowIfNull(logger);
 
             _queue = queue;
             _maxArtSize = options.Value.MaxArtSize;
             _newsLog = newsLog;
             _metrics = metrics;
+            _logger = logger;
         }
 
         /// <summary>
@@ -298,10 +316,42 @@ namespace Vector.NNTP.Articles.Storage
                     articleBytes.Span,
                     SpoolArticleRejectionClassifier.ClassifyEnqueueFailure(Reason));
                 _newsLog.LogRejected(messageId, spoolOrigin, articleBytes.Span, Reason);
+                MaybeLogQueueSaturation();
                 return ValueTask.FromResult(NntpTransitStorageResult.QueueFull);
             }
 
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                LogEnqueueAccepted(_logger, messageId, item.ArticleBytes.Length);
+            }
+
             return ValueTask.FromResult(NntpTransitStorageResult.Success);
+        }
+
+        /// <summary>
+        /// Emits a rate-limited queue saturation warning and counter when enqueue rejects spike.
+        /// </summary>
+        /// <remarks>
+        /// Uses <see cref="Interlocked.CompareExchange(ref long, long, long)"/> on
+        /// <see cref="_lastQueueSaturationLogUtcTicks"/> so concurrent transit sessions emit at most one warning per
+        /// <see cref="QueueSaturationLogInterval"/> window.
+        /// </remarks>
+        private void MaybeLogQueueSaturation()
+        {
+            long nowTicks = DateTime.UtcNow.Ticks;
+            long lastTicks = Volatile.Read(ref _lastQueueSaturationLogUtcTicks);
+            if (nowTicks - lastTicks < QueueSaturationLogInterval.Ticks)
+            {
+                return;
+            }
+
+            if (Interlocked.CompareExchange(ref _lastQueueSaturationLogUtcTicks, nowTicks, lastTicks) != lastTicks)
+            {
+                return;
+            }
+
+            _metrics.RecordQueueSaturationLog();
+            LogQueueSaturation(_logger, _queue.Depth, _queue.Capacity);
         }
     }
 }

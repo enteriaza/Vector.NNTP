@@ -77,7 +77,7 @@ namespace Vector.NNTP.Articles.Storage
     /// </para>
     /// <para><b>Thread safety:</b> Immutable value type; safe to read from concurrent writer pumps after enqueue.</para>
     /// </remarks>
-    public readonly record struct NntpSpoolArticleOrigin(
+    internal readonly record struct NntpSpoolArticleOrigin(
         IPAddress PeerAddress,
         string? PeerHostName,
         DateTimeOffset ReceivedUtc,

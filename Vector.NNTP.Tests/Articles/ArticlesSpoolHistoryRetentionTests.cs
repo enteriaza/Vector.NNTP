@@ -256,6 +256,7 @@ public sealed class ArticlesSpoolHistoryRetentionTests
             serverOptions,
             spamAssassin ?? new FailOpenSpamAssassin(),
             new SpamdScanArticleBuilder(),
+            new NntpSpoolMetrics(),
             NullLogger<ArticleSpoolPostprocessor>.Instance);
         var pump = new NntpSpoolWriterPump(
             queue,

@@ -31,7 +31,7 @@ namespace Vector.NNTP.Articles.Storage
     /// <para>
     /// <see cref="Hosting.NntpSpoolWriterHostedService"/> ticks every second, computes
     /// <see cref="ComputeDesiredWriterCount"/> from queue depth via <see cref="ISpoolWriterScalingPolicy"/>, and forwards
-    /// the result to <see cref="AdjustWriterCountAsync"/>. Active writer count changes emit Information-level EventId 700
+    /// the result to <see cref="AdjustWriterCountAsync"/>. Active writer count changes emit Information-level EventId 200
     /// through the logging partial (<c>NntpSpoolWriterPool.Logging.cs</c>) and update gauge
     /// <c>nntp.spool.writers.active</c> via <see cref="NntpSpoolMetrics.SetActiveWriters"/>.
     /// </para>
@@ -101,7 +101,7 @@ namespace Vector.NNTP.Articles.Storage
         /// Category logger passed to source-generated scaling diagnostics on the logging partial.
         /// </summary>
         /// <remarks>
-        /// Emits EventId 700 when <see cref="AdjustWriterCountAsync"/> changes the active worker count.
+        /// Emits EventId 200 when <see cref="AdjustWriterCountAsync"/> changes the active worker count.
         /// </remarks>
         private readonly ILogger<NntpSpoolWriterPool> _logger;
 
@@ -377,9 +377,13 @@ namespace Vector.NNTP.Articles.Storage
                     {
                         // Worker exited due to scale-down cancellation.
                     }
+                    catch (Exception ex) when (worker.Task.IsFaulted)
+                    {
+                        LogWorkerTaskFaulted(_logger, ex);
+                    }
                     catch (Exception)
                     {
-                        // Worker failure is already logged by the pump loop.
+                        // Benign worker exit without fault state.
                     }
                     finally
                     {
@@ -390,6 +394,8 @@ namespace Vector.NNTP.Articles.Storage
 
             if (newCount != previousCount)
             {
+                string direction = newCount > previousCount ? "up" : "down";
+                _metrics.RecordWriterScale(direction);
                 SpoolWriterPoolScaled(
                     _logger,
                     previousCount,
@@ -456,9 +462,13 @@ namespace Vector.NNTP.Articles.Storage
                 {
                     // Host or worker cancellation during shutdown drain.
                 }
+                catch (Exception ex) when (worker.Task.IsFaulted)
+                {
+                    LogWorkerTaskFaulted(_logger, ex);
+                }
                 catch (Exception)
                 {
-                    // Worker loop handles its own fault logging.
+                    // Benign worker exit without fault state.
                 }
                 finally
                 {

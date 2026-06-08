@@ -232,14 +232,15 @@ public sealed class ArticleTypeClassifierTests
     /// Verifies multipart MIME subtypes set subtype flags and generic <see cref="ArticleTypeFlags.Multipart"/>.
     /// </summary>
     /// <param name="contentType">Content-Type header value under test.</param>
-    /// <param name="subtype">Expected multipart subtype flag.</param>
+    /// <param name="expectedSubtypeBits">Expected multipart subtype flag bits cast from <see cref="ArticleTypeFlags"/>.</param>
     [TestCase("Content-Type: multipart/mixed", ArticleTypeFlags.MultipartMixed)]
     [TestCase("Content-Type: multipart/alternative", ArticleTypeFlags.MultipartAlternative)]
     [TestCase("Content-Type: multipart/related", ArticleTypeFlags.MultipartRelated)]
     [TestCase("Content-Type: multipart/signed", ArticleTypeFlags.MultipartSigned)]
-    public void Classify_MultipartSubtypes_SetsSubtypeAndMultipart(string contentType, ArticleTypeFlags subtype)
+    public void Classify_MultipartSubtypes_SetsSubtypeAndMultipart(string contentType, uint expectedSubtypeBits)
     {
         byte[] article = Encoding.ASCII.GetBytes($"Path: misc.test\r\n{contentType}\r\n\r\n");
+        var subtype = (ArticleTypeFlags)expectedSubtypeBits;
 
         ArticleTypeFlags flags = ArticleTypeClassifier.Classify(article);
 
@@ -252,16 +253,17 @@ public sealed class ArticleTypeClassifierTests
     /// Verifies MIME taxonomy flags for archive, image, video, audio, and text.
     /// </summary>
     /// <param name="contentType">Content-Type header value under test.</param>
-    /// <param name="family">Expected content family flag.</param>
+    /// <param name="expectedFamilyBits">Expected content family flag bits cast from <see cref="ArticleTypeFlags"/>.</param>
     /// <param name="expectsBinary">Whether <see cref="ArticleTypeFlags.Binary"/> should also be set.</param>
     [TestCase("Content-Type: application/zip", ArticleTypeFlags.Archive, true)]
     [TestCase("Content-Type: image/jpeg", ArticleTypeFlags.Image, true)]
     [TestCase("Content-Type: video/mp4", ArticleTypeFlags.Video, true)]
     [TestCase("Content-Type: audio/mpeg", ArticleTypeFlags.Audio, true)]
     [TestCase("Content-Type: text/plain", ArticleTypeFlags.Text, false)]
-    public void Classify_ContentTaxonomy_SetsFamilyFlag(string contentType, ArticleTypeFlags family, bool expectsBinary)
+    public void Classify_ContentTaxonomy_SetsFamilyFlag(string contentType, uint expectedFamilyBits, bool expectsBinary)
     {
         byte[] article = Encoding.ASCII.GetBytes($"Path: misc.test\r\n{contentType}\r\n\r\n");
+        var family = (ArticleTypeFlags)expectedFamilyBits;
 
         ArticleTypeFlags flags = ArticleTypeClassifier.Classify(article);
 

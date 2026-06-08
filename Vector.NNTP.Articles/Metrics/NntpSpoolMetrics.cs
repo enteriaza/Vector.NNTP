@@ -214,6 +214,41 @@ namespace Vector.NNTP.Articles.Metrics
         private long _activeWriters;
 
         /// <summary>
+        /// Histogram instrument <c>nntp.spool.preprocess.duration_ms</c>.
+        /// </summary>
+        private readonly Histogram<double> _preprocessDurationMs;
+
+        /// <summary>
+        /// Histogram instrument <c>nntp.spool.postprocess.duration_ms</c>.
+        /// </summary>
+        private readonly Histogram<double> _postprocessDurationMs;
+
+        /// <summary>
+        /// Histogram instrument <c>nntp.spool.write.duration_ms</c>.
+        /// </summary>
+        private readonly Histogram<double> _writeDurationMs;
+
+        /// <summary>
+        /// Histogram instrument <c>nntp.spool.spamd.duration_ms</c>.
+        /// </summary>
+        private readonly Histogram<double> _spamdDurationMs;
+
+        /// <summary>
+        /// Counter instrument <c>nntp.spool.spamd.fail_open</c> tagged by <c>reason</c>.
+        /// </summary>
+        private readonly Counter<long> _spamdFailOpen;
+
+        /// <summary>
+        /// Counter instrument <c>nntp.spool.writers.scale_total</c> tagged by <c>direction</c>.
+        /// </summary>
+        private readonly Counter<long> _writerScaleTotal;
+
+        /// <summary>
+        /// Counter instrument <c>nntp.spool.queue.saturation_log</c> for rate-limited operator visibility of enqueue rejects.
+        /// </summary>
+        private readonly Counter<long> _queueSaturationLog;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="NntpSpoolMetrics"/> class and registers spool instruments.
         /// </summary>
         /// <remarks>
@@ -232,7 +267,12 @@ namespace Vector.NNTP.Articles.Metrics
         /// <item><description><c>article_type_total</c> (tagged by <c>type</c>)</description></item>
         /// <item><description><c>nntp.spool.article.accepted</c> (tagged by <c>feed</c>)</description></item>
         /// <item><description><c>nntp.spool.article.rejected</c> (tagged by <c>feed</c> and <c>category</c>)</description></item>
+        /// <item><description><c>nntp.spool.spamd.fail_open</c> (tagged by <c>reason</c>)</description></item>
+        /// <item><description><c>nntp.spool.writers.scale_total</c> (tagged by <c>direction</c>)</description></item>
+        /// <item><description><c>nntp.spool.queue.saturation_log</c></description></item>
         /// </list>
+        /// <para><b>Histograms:</b> <c>nntp.spool.preprocess.duration_ms</c>, <c>nntp.spool.postprocess.duration_ms</c>,
+        /// <c>nntp.spool.write.duration_ms</c>, <c>nntp.spool.spamd.duration_ms</c>.</para>
         /// <para><b>Observable gauges:</b> <c>nntp.spool.queue.depth</c>, <c>nntp.spool.queue.bytes</c>,
         /// <c>nntp.spool.writers.active</c> — sampled via callbacks that read backing fields with
         /// <see cref="Volatile"/> reads.</para>
@@ -252,6 +292,13 @@ namespace Vector.NNTP.Articles.Metrics
             _articleTypeTotal = Meter.CreateCounter<long>("article_type_total");
             _articleAccepted = Meter.CreateCounter<long>("nntp.spool.article.accepted");
             _articleRejected = Meter.CreateCounter<long>("nntp.spool.article.rejected");
+            _preprocessDurationMs = Meter.CreateHistogram<double>("nntp.spool.preprocess.duration_ms", unit: "ms");
+            _postprocessDurationMs = Meter.CreateHistogram<double>("nntp.spool.postprocess.duration_ms", unit: "ms");
+            _writeDurationMs = Meter.CreateHistogram<double>("nntp.spool.write.duration_ms", unit: "ms");
+            _spamdDurationMs = Meter.CreateHistogram<double>("nntp.spool.spamd.duration_ms", unit: "ms");
+            _spamdFailOpen = Meter.CreateCounter<long>("nntp.spool.spamd.fail_open");
+            _writerScaleTotal = Meter.CreateCounter<long>("nntp.spool.writers.scale_total");
+            _queueSaturationLog = Meter.CreateCounter<long>("nntp.spool.queue.saturation_log");
 
             _ = Meter.CreateObservableGauge(
                 "nntp.spool.queue.depth",
@@ -461,6 +508,108 @@ namespace Vector.NNTP.Articles.Metrics
         internal void SetActiveWriters(int writers)
         {
             _ = Interlocked.Exchange(ref _activeWriters, writers);
+        }
+
+        /// <summary>
+        /// Records preprocess wall time for a dequeued spool item.
+        /// </summary>
+        /// <param name="durationMs">Elapsed milliseconds from preprocess start to completion.</param>
+        /// <remarks>
+        /// Observed by <see cref="Storage.NntpSpoolWriterPump"/> after
+        /// <see cref="Processing.ArticleSpoolPreprocessor.PreprocessAsync"/> returns. Never throws.
+        /// </remarks>
+        internal void RecordPreprocessDuration(double durationMs)
+        {
+            if (durationMs >= 0)
+            {
+                _preprocessDurationMs.Record(durationMs);
+            }
+        }
+
+        /// <summary>
+        /// Records postprocess wall time for a dequeued spool item.
+        /// </summary>
+        /// <param name="durationMs">Elapsed milliseconds from postprocess start to completion.</param>
+        /// <remarks>
+        /// Observed by <see cref="Storage.NntpSpoolWriterPump"/> after
+        /// <see cref="Processing.ArticleSpoolPostprocessor.PostprocessAsync"/> returns. Never throws.
+        /// </remarks>
+        internal void RecordPostprocessDuration(double durationMs)
+        {
+            if (durationMs >= 0)
+            {
+                _postprocessDurationMs.Record(durationMs);
+            }
+        }
+
+        /// <summary>
+        /// Records atomic spool write wall time for a dequeued item.
+        /// </summary>
+        /// <param name="durationMs">Elapsed milliseconds for digest directory preparation and atomic write.</param>
+        /// <remarks>
+        /// Observed by <see cref="Storage.NntpSpoolWriterPump"/> around disk I/O. Never throws.
+        /// </remarks>
+        internal void RecordWriteDuration(double durationMs)
+        {
+            if (durationMs >= 0)
+            {
+                _writeDurationMs.Record(durationMs);
+            }
+        }
+
+        /// <summary>
+        /// Records SpamAssassin round-trip wall time for a postprocess check.
+        /// </summary>
+        /// <param name="durationMs">Elapsed milliseconds for the spamd protocol exchange.</param>
+        /// <remarks>
+        /// Observed by <see cref="Processing.ArticleSpoolPostprocessor"/> on successful spamd responses and fail-open
+        /// faults (duration still reflects time spent before the fault). Never throws.
+        /// </remarks>
+        internal void RecordSpamdDuration(double durationMs)
+        {
+            if (durationMs >= 0)
+            {
+                _spamdDurationMs.Record(durationMs);
+            }
+        }
+
+        /// <summary>
+        /// Records a SpamAssassin fail-open event when postprocess accepts an article despite spamd faults.
+        /// </summary>
+        /// <param name="reason">
+        /// Coarse fault bucket (for example <c>timeout</c>, <c>connect</c>, <c>protocol</c>) for dashboard grouping.
+        /// </param>
+        /// <remarks>
+        /// Increments <c>nntp.spool.spamd.fail_open</c> with a <c>reason</c> tag. Pair with warning logs from
+        /// <see cref="Processing.ArticleSpoolPostprocessor"/>. Never throws.
+        /// </remarks>
+        internal void RecordSpamdFailOpen(string reason)
+        {
+            _spamdFailOpen.Add(1, new KeyValuePair<string, object?>("reason", reason));
+        }
+
+        /// <summary>
+        /// Records a writer pool scale-up or scale-down adjustment.
+        /// </summary>
+        /// <param name="direction">Literal <c>up</c> or <c>down</c> matching pool scaling direction.</param>
+        /// <remarks>
+        /// Incremented by <see cref="Storage.NntpSpoolWriterPool"/> when worker count changes. Never throws.
+        /// </remarks>
+        internal void RecordWriterScale(string direction)
+        {
+            _writerScaleTotal.Add(1, new KeyValuePair<string, object?>("direction", direction));
+        }
+
+        /// <summary>
+        /// Records a rate-limited operator visibility event when enqueue reject pressure is elevated.
+        /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="Storage.NntpSpoolTransitStorage"/> when sustained queue-full or max-size rejections
+        /// trigger a warning log. Never throws.
+        /// </remarks>
+        internal void RecordQueueSaturationLog()
+        {
+            _queueSaturationLog.Add(1);
         }
 
         /// <summary>

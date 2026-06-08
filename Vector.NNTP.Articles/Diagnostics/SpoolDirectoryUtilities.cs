@@ -33,7 +33,7 @@ namespace Vector.NNTP.Articles.Diagnostics
     /// </para>
     /// <para><b>Thread safety:</b> Static and stateless; safe for concurrent writer pumps after options are resolved.</para>
     /// </remarks>
-    public static class SpoolDirectoryUtilities
+    internal static class SpoolDirectoryUtilities
     {
         /// <summary>
         /// Default spool subdirectory name under <see cref="AppContext.BaseDirectory"/> when

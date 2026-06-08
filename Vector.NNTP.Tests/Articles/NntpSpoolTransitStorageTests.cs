@@ -2,6 +2,7 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.Articles.Logging;
 using Vector.NNTP.Articles.Metrics;
@@ -199,7 +200,8 @@ public sealed class NntpSpoolTransitStorageTests
             queue,
             options,
             newsLog ?? NullNntpNewsLog.Instance,
-            metrics ?? new NntpSpoolMetrics());
+            metrics ?? new NntpSpoolMetrics(),
+            NullLogger<NntpSpoolTransitStorage>.Instance);
     }
 
     /// <summary>

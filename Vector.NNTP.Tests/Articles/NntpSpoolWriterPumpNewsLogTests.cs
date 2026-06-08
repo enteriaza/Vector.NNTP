@@ -11,6 +11,7 @@ using Vector.NNTP.Articles.Processing;
 using Vector.NNTP.Articles.Storage;
 using Vector.NNTP.Filters.PostFilter;
 using Vector.NNTP.Filters.SpamAssassin;
+using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.HistoryDB.Encoding;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Tests.HistoryDB.Fakes;
@@ -144,16 +145,52 @@ public sealed class NntpSpoolWriterPumpNewsLogTests
     }
 
     /// <summary>
+    /// Verifies postprocess cancellation releases the HistoryDB reservation and exits the worker cleanly.
+    /// </summary>
+    /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
+    [Test]
+    public async Task RunAsync_PostprocessCancellation_ReleasesHistoryAndExitsCleanly()
+    {
+        var history = new FakeHistoryDatabase();
+        const string MessageId = "<cancel-spam@example.com>";
+        await history.TryRecordAsync(MessageId, CancellationToken.None).ConfigureAwait(false);
+
+        var spamAssassin = new CancelingSpamAssassin
+        {
+            EnteredGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        (NntpSpoolWriterPump pump, NntpSpoolWriteQueue queue) = CreatePumpWithQueue(
+            new RecordingNntpNewsLog(),
+            historyDatabase: history,
+            spamAssassin: spamAssassin);
+
+        using CancellationTokenSource workerCts = new();
+        Task pumpTask = pump.RunAsync(workerCts.Token);
+        byte[] article = BuildValidArticle(MessageId);
+        Assert.That(queue.TryEnqueue(CreateItem(MessageId, article)), Is.True);
+        await spamAssassin.EnteredGate!.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        workerCts.Cancel();
+        queue.Complete();
+
+        await pumpTask.ConfigureAwait(false);
+
+        Assert.That(history.ReleaseCallCount, Is.EqualTo(1));
+        Assert.That(await history.CheckAsync(MessageId, CancellationToken.None).ConfigureAwait(false), Is.EqualTo(HistoryCheckResult.Wanted));
+    }
+
+    /// <summary>
     /// Builds a pump and queue pair sharing one queue instance for test orchestration.
     /// </summary>
     /// <param name="newsLog">Recording news log test double.</param>
     /// <param name="spamAssassin">Optional spamd client override.</param>
     /// <param name="spoolDirectory">Optional spool root override.</param>
+    /// <param name="historyDatabase">Optional history database override.</param>
     /// <returns>Pump and queue tuple for enqueue and drain.</returns>
     private static (NntpSpoolWriterPump Pump, NntpSpoolWriteQueue Queue) CreatePumpWithQueue(
         RecordingNntpNewsLog newsLog,
         ISpamAssassin? spamAssassin = null,
-        string? spoolDirectory = null)
+        string? spoolDirectory = null,
+        IHistoryDatabase? historyDatabase = null)
     {
         var queueOptions = Options.Create(new NntpServerOptions
         {
@@ -175,12 +212,13 @@ public sealed class NntpSpoolWriterPumpNewsLogTests
             serverOptions,
             spamAssassin ?? new FakeSpamAssassin(),
             new SpamdScanArticleBuilder(),
+            new NntpSpoolMetrics(),
             NullLogger<ArticleSpoolPostprocessor>.Instance);
         var pump = new NntpSpoolWriterPump(
             queue,
             preprocessor,
             postprocessor,
-            new FakeHistoryDatabase(),
+            historyDatabase ?? new FakeHistoryDatabase(),
             new NntpSpoolMetrics(),
             serverOptions,
             newsLog,
@@ -278,6 +316,32 @@ public sealed class NntpSpoolWriterPumpNewsLogTests
                 reportText: null,
                 rawResponseHeaders: new Dictionary<string, string>());
             return Task.FromResult(result);
+        }
+    }
+
+    /// <summary>
+    /// SpamAssassin fake that blocks until cancellation so pump postprocess observes worker shutdown.
+    /// </summary>
+    private sealed class CancelingSpamAssassin : ISpamAssassin
+    {
+        /// <summary>
+        /// Gets or sets a gate signaled when <see cref="CheckAsync"/> begins waiting on cancellation.
+        /// </summary>
+        internal TaskCompletionSource? EnteredGate { get; set; }
+
+        /// <inheritdoc />
+        public async Task<SpamdCheckResult> CheckAsync(ReadOnlyMemory<byte> articleUtf8, CancellationToken cancellationToken = default)
+        {
+            _ = articleUtf8;
+            this.EnteredGate?.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            return new SpamdCheckResult(
+                false,
+                score: 0,
+                threshold: 5,
+                symbols: [],
+                reportText: null,
+                rawResponseHeaders: new Dictionary<string, string>());
         }
     }
 }

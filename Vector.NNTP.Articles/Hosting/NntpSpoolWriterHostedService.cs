@@ -74,7 +74,7 @@ namespace Vector.NNTP.Articles.Hosting
     /// awaiting canceled workers.
     /// </para>
     /// </remarks>
-    internal sealed class NntpSpoolWriterHostedService : BackgroundService
+    internal sealed partial class NntpSpoolWriterHostedService : BackgroundService
     {
         /// <summary>
         /// Singleton writer pool whose lifecycle and periodic scaling this service drives.
@@ -91,6 +91,11 @@ namespace Vector.NNTP.Articles.Hosting
         private readonly NntpSpoolWriterPool _writerPool;
 
         /// <summary>
+        /// Category logger for hosted service lifecycle and scaling-loop fault diagnostics.
+        /// </summary>
+        private readonly ILogger<NntpSpoolWriterHostedService> _logger;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="NntpSpoolWriterHostedService"/> class.
         /// </summary>
         /// <param name="writerPool">
@@ -98,6 +103,7 @@ namespace Vector.NNTP.Articles.Hosting
         /// <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpArticlesTransitSpool"/>. Must be the same
         /// instance resolved for <see cref="NntpSpoolWriterPump"/> and <see cref="NntpSpoolWriteQueue"/> consumers.
         /// </param>
+        /// <param name="logger">Category logger for service lifecycle and scaling-loop faults.</param>
         /// <exception cref="ArgumentNullException">
         /// Thrown when <paramref name="writerPool"/> is <see langword="null"/>.
         /// </exception>
@@ -105,10 +111,14 @@ namespace Vector.NNTP.Articles.Hosting
         /// Does not start workers; <see cref="ExecuteAsync"/> calls <see cref="NntpSpoolWriterPool.StartAsync"/> after
         /// the host starts this service.
         /// </remarks>
-        public NntpSpoolWriterHostedService(NntpSpoolWriterPool writerPool)
+        public NntpSpoolWriterHostedService(
+            NntpSpoolWriterPool writerPool,
+            ILogger<NntpSpoolWriterHostedService> logger)
         {
             ArgumentNullException.ThrowIfNull(writerPool);
+            ArgumentNullException.ThrowIfNull(logger);
             _writerPool = writerPool;
+            _logger = logger;
         }
 
         /// <summary>
@@ -189,12 +199,35 @@ namespace Vector.NNTP.Articles.Hosting
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             await _writerPool.StartAsync(stoppingToken).ConfigureAwait(false);
+            LogServiceStarted(_logger);
 
             using PeriodicTimer timer = new(TimeSpan.FromSeconds(1));
-            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+            try
             {
-                int desired = _writerPool.ComputeDesiredWriterCount();
-                await _writerPool.AdjustWriterCountAsync(desired, stoppingToken).ConfigureAwait(false);
+                while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+                {
+                    try
+                    {
+                        int desired = _writerPool.ComputeDesiredWriterCount();
+                        await _writerPool.AdjustWriterCountAsync(desired, stoppingToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        LogScalingLoopFailure(_logger, ex);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Normal shutdown.
+            }
+            finally
+            {
+                LogServiceStopped(_logger);
             }
         }
     }

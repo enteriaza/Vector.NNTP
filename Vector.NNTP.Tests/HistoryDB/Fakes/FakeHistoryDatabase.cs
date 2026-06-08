@@ -15,6 +15,11 @@ namespace Vector.NNTP.Tests.HistoryDB.Fakes
         private bool _operational = true;
 
         /// <summary>
+        /// Gets the number of <see cref="TryReleaseAsync"/> calls observed by this fake.
+        /// </summary>
+        public int ReleaseCallCount { get; private set; }
+
+        /// <summary>
         /// Marks a message-id as already recorded (duplicate on CHECK and record).
         /// </summary>
         /// <param name="messageId">Message-id.</param>
@@ -63,6 +68,7 @@ namespace Vector.NNTP.Tests.HistoryDB.Fakes
         public ValueTask<HistoryReleaseResult> TryReleaseAsync(string messageId, CancellationToken cancellationToken)
         {
             _ = cancellationToken;
+            this.ReleaseCallCount++;
             if (!this._operational)
             {
                 return ValueTask.FromResult(HistoryReleaseResult.Unavailable);

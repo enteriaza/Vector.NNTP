@@ -5,6 +5,7 @@
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Vector.NNTP.Articles.Metrics;
 using Vector.NNTP.Articles.Processing;
 using Vector.NNTP.Articles.Storage;
 using Vector.NNTP.Filters.PostFilter;
@@ -242,6 +243,7 @@ public sealed class ArticleSpoolPostprocessorTests
             }),
             spamAssassin ?? new FakeSpamAssassin(),
             new SpamdScanArticleBuilder(),
+            new NntpSpoolMetrics(),
             NullLogger<ArticleSpoolPostprocessor>.Instance);
     }
 

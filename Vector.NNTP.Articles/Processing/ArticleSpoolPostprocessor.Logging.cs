@@ -2,7 +2,7 @@
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
 // HOT PATH (Tier 2 logging): LoggerMessage definitions for spamd fail-open events on eligible articles.
-// EventId range: 1-2 (ArticleSpoolPostprocessor spamd fail-open). Pump worker failures use 1-9 in NntpSpoolWriterPump.Logging.cs (separate logger category).
+// EventId range: 100-199 (ArticleSpoolPostprocessor spamd fail-open).
 
 namespace Vector.NNTP.Articles.Processing
 {
@@ -31,15 +31,14 @@ namespace Vector.NNTP.Articles.Processing
     /// rethrows <see cref="OperationCanceledException"/> and is not logged from this partial.
     /// </para>
     /// <para>
-    /// <b>EventId band:</b> EventIds 1-2 are scoped to <c>ILogger&lt;ArticleSpoolPostprocessor&gt;</c> and do not
-    /// collide with <see cref="Storage.NntpSpoolWriterPump"/> EventIds 1-9 on a different category logger. Assign new
-    /// postprocessor diagnostics starting at 3 within this partial before reusing pump bands.
+    /// <b>EventId band:</b> EventIds 100-199 are scoped to <c>ILogger&lt;ArticleSpoolPostprocessor&gt;</c>. Pump worker
+    /// failures use EventIds 1-99 on <c>ILogger&lt;NntpSpoolWriterPump&gt;</c>.
     /// </para>
     /// <para><b>EventIds defined in this partial:</b></para>
     /// <list type="table">
     /// <listheader><term>EventId</term><description>Failure class and level</description></listheader>
-    /// <item><term>1</term><description><see cref="Filters.SpamAssassin.SpamdProtocolException"/> — <see cref="LogLevel.Warning"/>.</description></item>
-    /// <item><term>2</term><description>Unexpected exception (including scan-build faults and non-protocol spamd errors) — <see cref="LogLevel.Warning"/>.</description></item>
+    /// <item><term>100</term><description><see cref="Filters.SpamAssassin.SpamdProtocolException"/> — <see cref="LogLevel.Warning"/>.</description></item>
+    /// <item><term>101</term><description>Unexpected exception (including scan-build faults and non-protocol spamd errors) — <see cref="LogLevel.Warning"/>.</description></item>
     /// </list>
     /// <para><b>Threading:</b> Static helpers have no mutable state and are safe to call from any writer worker thread
     /// without external synchronization.</para>
@@ -68,12 +67,12 @@ namespace Vector.NNTP.Articles.Processing
         /// returning <see langword="null"/> so <see cref="PostprocessAsync"/> can complete with a successful result.
         /// </para>
         /// <para>
-        /// Does not record <see cref="Metrics.NntpSpoolMetrics"/> rejection counters; the article is accepted on the
-        /// fail-open path.
+        /// Does not record <see cref="Metrics.NntpSpoolMetrics.RecordArticleRejected"/>; the article is accepted on the
+        /// fail-open path. Pair with <see cref="Metrics.NntpSpoolMetrics.RecordSpamdFailOpen"/>.
         /// </para>
         /// </remarks>
         [LoggerMessage(
-            EventId = 1,
+            EventId = 100,
             Level = LogLevel.Warning,
             Message = "Spamd check failed open for Message-ID {MessageId}; accepting article.")]
         private static partial void LogSpamdFailedOpen(ILogger logger, Exception exception, string messageId);
@@ -100,12 +99,12 @@ namespace Vector.NNTP.Articles.Processing
         /// <see cref="LogLevel.Warning"/> before returning <see langword="null"/> so postprocessing can succeed.
         /// </para>
         /// <para>
-        /// Does not record <see cref="Metrics.NntpSpoolMetrics"/> rejection counters; the article is accepted on the
-        /// fail-open path.
+        /// Does not record <see cref="Metrics.NntpSpoolMetrics.RecordArticleRejected"/>; the article is accepted on the
+        /// fail-open path. Pair with <see cref="Metrics.NntpSpoolMetrics.RecordSpamdFailOpen"/>.
         /// </para>
         /// </remarks>
         [LoggerMessage(
-            EventId = 2,
+            EventId = 101,
             Level = LogLevel.Warning,
             Message = "Unexpected spamd check failure for Message-ID {MessageId}; accepting article (fail-open).")]
         private static partial void LogSpamdUnexpectedFailure(ILogger logger, Exception exception, string messageId);

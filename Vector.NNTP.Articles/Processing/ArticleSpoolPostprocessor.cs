@@ -6,8 +6,10 @@
 using System.Text;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.Articles.Classification;
+using Vector.NNTP.Articles.Metrics;
 using Vector.NNTP.Articles.Scanning;
 using Vector.NNTP.Articles.Storage;
+using Vector.NNTP.Articles.Telemetry;
 using Vector.NNTP.Filters.DateParser;
 using Vector.NNTP.Filters.PostFilter;
 using Vector.NNTP.Filters.SpamAssassin;
@@ -125,6 +127,11 @@ namespace Vector.NNTP.Articles.Processing
         private readonly SpamdScanArticleBuilder _spamdScanBuilder;
 
         /// <summary>
+        /// Spool observability recorder for spamd fail-open and duration histograms.
+        /// </summary>
+        private readonly NntpSpoolMetrics _metrics;
+
+        /// <summary>
         /// Category logger for spamd fail-open diagnostics on the transit spool path.
         /// </summary>
         /// <remarks>
@@ -147,6 +154,7 @@ namespace Vector.NNTP.Articles.Processing
         /// </param>
         /// <param name="spamAssassin">spamd client for eligible non-yEnc articles.</param>
         /// <param name="spamdScanBuilder">Temporary scan article builder used before each spamd <c>CHECK</c>.</param>
+        /// <param name="metrics">Spool observability recorder for spamd duration and fail-open counters.</param>
         /// <param name="logger">Category logger for spamd fail-open events.</param>
         /// <remarks>
         /// Snapshots <paramref name="postFilterOptions"/> and <paramref name="serverOptions"/> values into readonly
@@ -159,17 +167,20 @@ namespace Vector.NNTP.Articles.Processing
             IOptions<NntpServerOptions> serverOptions,
             ISpamAssassin spamAssassin,
             SpamdScanArticleBuilder spamdScanBuilder,
+            NntpSpoolMetrics metrics,
             ILogger<ArticleSpoolPostprocessor> logger)
         {
             ArgumentNullException.ThrowIfNull(postFilterOptions);
             ArgumentNullException.ThrowIfNull(serverOptions);
             ArgumentNullException.ThrowIfNull(spamAssassin);
             ArgumentNullException.ThrowIfNull(spamdScanBuilder);
+            ArgumentNullException.ThrowIfNull(metrics);
             ArgumentNullException.ThrowIfNull(logger);
             _styleOptions = postFilterOptions.Value.Style;
             _serverOptions = serverOptions.Value;
             _spamAssassin = spamAssassin;
             _spamdScanBuilder = spamdScanBuilder;
+            _metrics = metrics;
             _logger = logger;
         }
 
@@ -327,10 +338,16 @@ namespace Vector.NNTP.Articles.Processing
             byte[] articleBytes,
             CancellationToken cancellationToken)
         {
+            Stopwatch spamdStopwatch = Stopwatch.StartNew();
+            using Activity? spamdActivity = ArticlesSpoolTelemetry.ActivitySource.StartActivity(
+                ArticlesSpoolTelemetry.SpamdCheckOperation,
+                ActivityKind.Internal);
             try
             {
                 byte[] scanBytes = _spamdScanBuilder.BuildScanArticle(articleBytes, item.Origin, _serverOptions, item.MessageId);
                 SpamdCheckResult result = await _spamAssassin.CheckAsync(scanBytes, cancellationToken).ConfigureAwait(false);
+                spamdStopwatch.Stop();
+                _metrics.RecordSpamdDuration(spamdStopwatch.Elapsed.TotalMilliseconds);
                 if (result.IsSpam)
                 {
                     return new ArticleSpoolPostprocessResult(
@@ -341,14 +358,23 @@ namespace Vector.NNTP.Articles.Processing
             }
             catch (SpamdProtocolException ex)
             {
+                spamdStopwatch.Stop();
+                _metrics.RecordSpamdDuration(spamdStopwatch.Elapsed.TotalMilliseconds);
+                spamdActivity?.SetStatus(ActivityStatusCode.Error, "spamd protocol");
+                _metrics.RecordSpamdFailOpen("protocol");
                 LogSpamdFailedOpen(_logger, ex, item.MessageId);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                spamdActivity?.SetStatus(ActivityStatusCode.Error, "canceled");
                 throw;
             }
             catch (Exception ex)
             {
+                spamdStopwatch.Stop();
+                _metrics.RecordSpamdDuration(spamdStopwatch.Elapsed.TotalMilliseconds);
+                spamdActivity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
+                _metrics.RecordSpamdFailOpen(ex.GetType().Name);
                 LogSpamdUnexpectedFailure(_logger, ex, item.MessageId);
             }
 

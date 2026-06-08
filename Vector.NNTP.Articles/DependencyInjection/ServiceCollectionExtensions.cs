@@ -110,7 +110,7 @@ namespace Vector.NNTP.Articles.DependencyInjection
         /// </list>
         /// <para><b>Singleton registrations (both branches):</b></para>
         /// <list type="bullet">
-        /// <item><description><see cref="NntpSpoolMetrics"/> — OpenTelemetry counters/gauges and minute throughput buckets.</description></item>
+        /// <item><description><see cref="NntpSpoolMetrics"/> — OpenTelemetry counters, histograms, and minute throughput buckets (meter <c>Vector.NNTP.Articles</c>).</description></item>
         /// <item><description><see cref="NntpSpoolWriteQueue"/> — bounded in-memory transit queue.</description></item>
         /// <item><description><see cref="ArticleSpoolPreprocessor"/> — header syntax validation and <c>Path</c> mutation.</description></item>
         /// <item><description><see cref="SpamdScanArticleBuilder"/> — synthetic scan article bytes for SpamAssassin.</description></item>
@@ -133,7 +133,13 @@ namespace Vector.NNTP.Articles.DependencyInjection
         /// <see cref="INntpTransitStorage"/> uses explicit implementation registration so production spool storage wins
         /// over any later development-stub fallback registrations in the same service collection.
         /// </para>
-        /// <para><b>Hosted services:</b></para>
+        /// <para>
+        /// <b>OpenTelemetry tracing:</b> Register activity source
+        /// <see cref="Telemetry.ArticlesSpoolTelemetry.SourceName"/> on the host tracer provider when distributed tracing
+        /// is enabled (<c>builder.Tracing.AddSource(ArticlesSpoolTelemetry.SourceName)</c>).
+        /// </para>
+        /// <para><b>EventId bands (Articles spool):</b> pump 1-99, postprocessor 100-199, pool/hosted 200-299,
+        /// transit/queue 300-399, throughput/startup 500+.</para>
         /// <list type="bullet">
         /// <item><description><see cref="NntpSpoolWriterHostedService"/> — pool start and one-second writer scaling loop.</description></item>
         /// <item><description><see cref="NntpSpoolStartupConfigLogHostedService"/> — one-shot spool configuration log (EventId 1).</description></item>
@@ -161,7 +167,9 @@ namespace Vector.NNTP.Articles.DependencyInjection
                     .ValidateDataAnnotations()
                     .ValidateOnStart();
                 _ = services.AddSpamAssassin(configuration);
-                _ = services.AddSingleton<INntpNewsLog>(sp => new NntpNewsLog(configuration));
+                _ = services.AddSingleton<INntpNewsLog>(sp => new NntpNewsLog(
+                    configuration,
+                    sp.GetRequiredService<ILogger<NntpNewsLog>>()));
             }
             else
             {

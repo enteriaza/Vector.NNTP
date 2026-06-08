@@ -1,7 +1,7 @@
 // <copyright file="NntpSpoolWriterPool.Logging.cs" company="Usenet Ninja">
 // Copyright (c) Chris Knipe &lt;cknipe@opticnetworks.net&gt;. Licensed under the Apache License, Version 2.0 (see LICENSE).
 // </copyright>
-// EventId range: 700-719 (spool writer pool scaling diagnostics).
+// EventId range: 200-299 (spool writer pool scaling and worker faults).
 
 namespace Vector.NNTP.Articles.Storage
 {
@@ -31,14 +31,15 @@ namespace Vector.NNTP.Articles.Storage
     /// </para>
     /// <para>
     /// <b>EventId bands (Articles spool):</b> worker failures 1-9 (<c>NntpSpoolWriterPump.Logging.cs</c>), queue
-    /// management 10-19 (reserved), scaling 700-719 (this partial), shutdown 720-729 (reserved). Assign new pool scaling
-    /// diagnostics within 700-719 before extending the band.
+    /// scaling 200-299 (this partial), transit/queue 300-399 (reserved). Assign new pool diagnostics within 200-299
+    /// before extending the band.
     /// </para>
     /// <para><b>EventIds defined in this partial:</b></para>
     /// <list type="table">
     /// <listheader><term>EventId</term><description>Meaning</description></listheader>
-    /// <item><term>700</term><description>Active writer count changed after scale-up or hysteresis-qualified scale-down — <see cref="LogLevel.Information"/>.</description></item>
-    /// <item><term>701-719</term><description>Reserved; unassigned in this repository revision.</description></item>
+    /// <item><term>200</term><description>Active writer count changed after scale-up or hysteresis-qualified scale-down — <see cref="LogLevel.Information"/>.</description></item>
+    /// <item><term>201</term><description>Worker pump task faulted without per-article pump logging — <see cref="LogLevel.Error"/>.</description></item>
+    /// <item><term>202-299</term><description>Reserved; unassigned in this repository revision.</description></item>
     /// </list>
     /// <para><b>Threading:</b> Static helpers have no mutable state. <see cref="SpoolWriterPoolScaled"/> is invoked from
     /// the hosted scaling loop thread after releasing <see cref="_gate"/> and any scale-down awaits;
@@ -99,7 +100,7 @@ namespace Vector.NNTP.Articles.Storage
         /// </para>
         /// </remarks>
         [LoggerMessage(
-            EventId = 700,
+            EventId = 200,
             Level = LogLevel.Information,
             Message = "Spool writer pool scaled from {PreviousCount} to {NewCount} (depth {QueueDepth}/{QueueCapacity}).")]
         private static partial void SpoolWriterPoolScaled(
@@ -108,5 +109,21 @@ namespace Vector.NNTP.Articles.Storage
             int newCount,
             long queueDepth,
             int queueCapacity);
+
+        /// <summary>
+        /// Logs an unexpected worker pump task fault observed during scale-down or shutdown await.
+        /// </summary>
+        /// <param name="logger">Pool category logger.</param>
+        /// <param name="exception">Observed worker task exception.</param>
+        /// <remarks>
+        /// Emitted when <see cref="AdjustWriterCountAsync"/> or <see cref="StopAsync"/> awaits a worker whose
+        /// <see cref="Task"/> completed in the faulted state. Per-article failures are normally logged by
+        /// <see cref="NntpSpoolWriterPump"/>; this covers unexpected worker-level faults.
+        /// </remarks>
+        [LoggerMessage(
+            EventId = 201,
+            Level = LogLevel.Error,
+            Message = "Spool writer worker task faulted unexpectedly.")]
+        private static partial void LogWorkerTaskFaulted(ILogger logger, Exception exception);
     }
 }

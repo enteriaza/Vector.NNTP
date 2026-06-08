@@ -11,6 +11,7 @@ using Vector.NNTP.Articles.Diagnostics;
 using Vector.NNTP.Articles.Logging;
 using Vector.NNTP.Articles.Metrics;
 using Vector.NNTP.Articles.Processing;
+using Vector.NNTP.Articles.Telemetry;
 using Vector.NNTP.HistoryDB.Abstractions;
 using Vector.NNTP.Sockets.Configuration;
 using Vector.NNTP.Utilities.IO;
@@ -330,11 +331,18 @@ namespace Vector.NNTP.Articles.Storage
 
                 try
                 {
+                    Stopwatch preprocessStopwatch = Stopwatch.StartNew();
+                    using Activity? preprocessActivity = ArticlesSpoolTelemetry.ActivitySource.StartActivity(
+                        ArticlesSpoolTelemetry.PreprocessOperation,
+                        ActivityKind.Internal);
                     ArticleSpoolPreprocessResult preprocessResult = await _preprocessor
                         .PreprocessAsync(item.MessageId, item.ArticleBytes)
                         .ConfigureAwait(false);
+                    preprocessStopwatch.Stop();
+                    _metrics.RecordPreprocessDuration(preprocessStopwatch.Elapsed.TotalMilliseconds);
                     if (!preprocessResult.Success)
                     {
+                        preprocessActivity?.SetStatus(ActivityStatusCode.Error, "preprocess rejected");
                         _metrics.RecordPreprocessFailure();
                         LogPreprocessFailed(_logger, item.MessageId, preprocessResult.FailureReason);
                         _metrics.RecordArticleRejected(
@@ -350,11 +358,29 @@ namespace Vector.NNTP.Articles.Storage
                         continue;
                     }
 
-                    ArticleSpoolPostprocessResult postprocessResult = await _postprocessor
-                        .PostprocessAsync(item, preprocessResult.ArticleBytes, cancellationToken)
-                        .ConfigureAwait(false);
+                    Stopwatch postprocessStopwatch = Stopwatch.StartNew();
+                    using Activity? postprocessActivity = ArticlesSpoolTelemetry.ActivitySource.StartActivity(
+                        ArticlesSpoolTelemetry.PostprocessOperation,
+                        ActivityKind.Internal);
+                    ArticleSpoolPostprocessResult postprocessResult;
+                    try
+                    {
+                        postprocessResult = await _postprocessor
+                            .PostprocessAsync(item, preprocessResult.ArticleBytes, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        postprocessActivity?.SetStatus(ActivityStatusCode.Error, "postprocess canceled");
+                        await TryReleaseHistoryReservationAsync(item.MessageId).ConfigureAwait(false);
+                        return;
+                    }
+
+                    postprocessStopwatch.Stop();
+                    _metrics.RecordPostprocessDuration(postprocessStopwatch.Elapsed.TotalMilliseconds);
                     if (!postprocessResult.Success)
                     {
+                        postprocessActivity?.SetStatus(ActivityStatusCode.Error, "postprocess rejected");
                         _metrics.RecordPostprocessFailure();
                         LogPostprocessFailed(_logger, item.MessageId, postprocessResult.FailureReason);
                         _metrics.RecordArticleRejected(
@@ -381,7 +407,13 @@ namespace Vector.NNTP.Articles.Storage
                             EnsureArticleDirectoryExists(articleDirectory);
                         }
 
+                        Stopwatch writeStopwatch = Stopwatch.StartNew();
+                        using Activity? writeActivity = ArticlesSpoolTelemetry.ActivitySource.StartActivity(
+                            ArticlesSpoolTelemetry.WriteOperation,
+                            ActivityKind.Client);
                         await FileIOUtilities.AtomicWriteAsync(articlePath, postprocessResult.ArticleBytes, cancellationToken).ConfigureAwait(false);
+                        writeStopwatch.Stop();
+                        _metrics.RecordWriteDuration(writeStopwatch.Elapsed.TotalMilliseconds);
                         _metrics.RecordWriteSuccess(postprocessResult.ArticleBytes.Length);
                         _metrics.RecordArticleAccepted(item.Origin, postprocessResult.ArticleBytes);
                         _newsLog.LogAccepted(
@@ -494,6 +526,9 @@ namespace Vector.NNTP.Articles.Storage
         /// </remarks>
         private async Task TryReleaseHistoryReservationAsync(string messageId)
         {
+            using Activity? activity = ArticlesSpoolTelemetry.ActivitySource.StartActivity(
+                ArticlesSpoolTelemetry.HistoryReleaseOperation,
+                ActivityKind.Internal);
             try
             {
                 HistoryReleaseResult releaseResult = await _historyDatabase
@@ -501,12 +536,14 @@ namespace Vector.NNTP.Articles.Storage
                     .ConfigureAwait(false);
                 if (releaseResult is not (HistoryReleaseResult.Released or HistoryReleaseResult.NotFound))
                 {
+                    activity?.SetStatus(ActivityStatusCode.Error, releaseResult.ToString());
                     _metrics.RecordHistoryReleaseFailure();
                     LogHistoryReleaseOutcome(_logger, releaseResult, messageId);
                 }
             }
             catch (Exception ex)
             {
+                activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
                 _metrics.RecordHistoryReleaseFailure();
                 LogHistoryReleaseFailed(_logger, ex, messageId, ex.GetType().Name);
             }
@@ -535,6 +572,9 @@ namespace Vector.NNTP.Articles.Storage
         /// </remarks>
         private async Task TryCommitHistoryReservationAsync(string messageId)
         {
+            using Activity? activity = ArticlesSpoolTelemetry.ActivitySource.StartActivity(
+                ArticlesSpoolTelemetry.HistoryCommitOperation,
+                ActivityKind.Internal);
             try
             {
                 HistoryRecordResult recordResult = await _historyDatabase
@@ -542,12 +582,14 @@ namespace Vector.NNTP.Articles.Storage
                     .ConfigureAwait(false);
                 if (recordResult is not (HistoryRecordResult.Recorded or HistoryRecordResult.Duplicate))
                 {
+                    activity?.SetStatus(ActivityStatusCode.Error, recordResult.ToString());
                     _metrics.RecordHistoryCommitFailure();
                     LogHistoryCommitOutcome(_logger, recordResult, messageId);
                 }
             }
             catch (Exception ex)
             {
+                activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
                 _metrics.RecordHistoryCommitFailure();
                 LogHistoryCommitFailed(_logger, ex, messageId, ex.GetType().Name);
             }
