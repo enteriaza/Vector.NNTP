@@ -19,9 +19,23 @@ namespace Vector.NNTP.Sockets.Configuration
         public const string SectionName = "NntpServer";
 
         /// <summary>
-        /// Gets or sets the bind address for cleartext NNTP (empty or <c>*</c> for all interfaces).
+        /// Gets or sets the IPv4 bind address for cleartext and implicit-TLS listeners.
         /// </summary>
+        /// <remarks>
+        /// Empty or <c>*</c> binds all IPv4 interfaces (<c>0.0.0.0</c>). A separate IPv6 listener is started only when
+        /// <see cref="BindAddress6"/> is configured; this property does not enable dual-stack acceptance on its own.
+        /// </remarks>
         public string BindAddress { get; set; } = "0.0.0.0";
+
+        /// <summary>
+        /// Gets or sets the IPv6 bind address for cleartext and implicit-TLS listeners.
+        /// </summary>
+        /// <remarks>
+        /// When empty, no IPv6 listener is started. <c>*</c> or <c>::</c> binds all IPv6 interfaces. When set to a
+        /// specific address, <see cref="Hosting.NntpSocketAcceptor"/> starts a separate <see cref="System.Net.Sockets.TcpListener"/>
+        /// on this address for each configured port (<see cref="Port"/>, <see cref="TlsPort"/>).
+        /// </remarks>
+        public string BindAddress6 { get; set; } = string.Empty;
 
         /// <summary>
         /// Gets or sets the cleartext NNTP port (default 119).
@@ -254,7 +268,9 @@ namespace Vector.NNTP.Sockets.Configuration
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.SpoolQueueCapacity)} must be positive.")
                 : options.MaxQueuedBytes <= 0
                 ? ValidateOptionsResult.Fail($"{nameof(NntpServerOptions.MaxQueuedBytes)} must be positive.")
-                : NntpTransitPeersOptionsValidator.Validate(options.TransitPeers);
+                : NntpBindAddressNormalizer.ValidateBindAddress(options.BindAddress)
+                ?? NntpBindAddressNormalizer.ValidateBindAddress6(options.BindAddress6)
+                ?? NntpTransitPeersOptionsValidator.Validate(options.TransitPeers);
         }
     }
 }

@@ -17,7 +17,7 @@ namespace Vector.NNTP.NNTPD
     /// <remarks>
     /// <para>
     /// The shared <c>NntpServer</c> JSON section binds two option types: Encryption uses <c>NodeName</c>;
-    /// Sockets uses <c>Port</c>, <c>TlsPort</c>, <c>BindAddress</c>, <c>EnableStartTls</c>,
+    /// Sockets uses <c>Port</c>, <c>TlsPort</c>, <c>BindAddress</c>, <c>BindAddress6</c>, <c>EnableStartTls</c>,
     /// <c>ServerIdentification</c>, and related listener settings. See <c>Docs/nntp-host-configuration.md</c>.
     /// </para>
     /// </remarks>

@@ -99,12 +99,12 @@ namespace Vector.NNTP.Sockets.Hosting
             List<Task> tasks = [];
             if (opts.Port > 0)
             {
-                tasks.Add(RunListenerAsync(opts.BindAddress, opts.Port, implicitTls: false, cancellationToken));
+                this.AddListenerTasks(tasks, opts.BindAddress, opts.BindAddress6, opts.Port, implicitTls: false, cancellationToken);
             }
 
             if (opts.TlsPort > 0)
             {
-                tasks.Add(RunListenerAsync(opts.BindAddress, opts.TlsPort, implicitTls: true, cancellationToken));
+                this.AddListenerTasks(tasks, opts.BindAddress, opts.BindAddress6, opts.TlsPort, implicitTls: true, cancellationToken);
             }
 
             if (tasks.Count == 0)
@@ -116,18 +116,49 @@ namespace Vector.NNTP.Sockets.Hosting
         }
 
         /// <summary>
+        /// Registers IPv4 and optional IPv6 listener tasks for one port.
+        /// </summary>
+        /// <param name="tasks">Listener task list.</param>
+        /// <param name="bindAddress">IPv4 bind address from configuration.</param>
+        /// <param name="bindAddress6">IPv6 bind address from configuration.</param>
+        /// <param name="port">TCP port.</param>
+        /// <param name="implicitTls">Whether implicit TLS is enabled.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        private void AddListenerTasks(
+            List<Task> tasks,
+            string bindAddress,
+            string bindAddress6,
+            int port,
+            bool implicitTls,
+            CancellationToken cancellationToken)
+        {
+            if (!NntpBindAddressNormalizer.TryResolveIpv4BindAddress(bindAddress, out IPAddress ipv4))
+            {
+                throw new InvalidOperationException(
+                    $"NntpServer: {nameof(NntpServerOptions.BindAddress)} '{bindAddress}' is not a valid IPv4 bind address.");
+            }
+
+            tasks.Add(this.RunListenerAsync(ipv4, port, implicitTls, cancellationToken));
+
+            if (NntpBindAddressNormalizer.TryResolveIpv6BindAddress(bindAddress6, out IPAddress? ipv6) && ipv6 is not null)
+            {
+                tasks.Add(this.RunListenerAsync(ipv6, port, implicitTls, cancellationToken));
+            }
+        }
+
+        /// <summary>
         /// Runs a listener for the given bind address and port.
         /// </summary>
-        /// <param name="bindAddress">The bind address.</param>
+        /// <param name="bindAddress">Resolved bind address.</param>
         /// <param name="port">The port.</param>
         /// <param name="implicitTls">Whether implicit TLS is enabled.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>A task that completes when the listener stops.</returns>
-        private async Task RunListenerAsync(string bindAddress, int port, bool implicitTls, CancellationToken cancellationToken)
+        private async Task RunListenerAsync(IPAddress bindAddress, int port, bool implicitTls, CancellationToken cancellationToken)
         {
-            TcpListener listener = new(IPAddress.Parse(NormalizeBind(bindAddress)), port);
+            TcpListener listener = new(bindAddress, port);
             listener.Start();
-            LogListening(bindAddress, port, implicitTls ? "TLS" : "cleartext");
+            LogListening(bindAddress.ToString(), port, implicitTls ? "TLS" : "cleartext");
 
             try
             {
@@ -573,14 +604,5 @@ namespace Vector.NNTP.Sockets.Hosting
             }
         }
 
-        /// <summary>
-        /// Normalizes the bind address.
-        /// </summary>
-        /// <param name="address">The address.</param>
-        /// <returns>The normalized address.</returns>
-        private static string NormalizeBind(string address)
-        {
-            return string.IsNullOrWhiteSpace(address) || address == "*" ? "0.0.0.0" : address;
-        }
     }
 }

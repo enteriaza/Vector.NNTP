@@ -8,7 +8,8 @@ NNRPD and NNTPD bind a single JSON section named `NntpServer` to **socket**, **s
 | `DomainName` | Sockets | DNS domain suffix combined with `NodeName` for SpamAssassin scan header synthesis (for example `usenetninja.net` → `transit1.usenetninja.net`). Optional; when empty, `NodeName` alone is used. |
 | `Port` | `Vector.NNTP.Sockets` | Cleartext NNTP listener (default `119`). |
 | `TlsPort` | `Vector.NNTP.Sockets` | Implicit TLS (NNTPS) listener; `0` disables (default `0`). |
-| `BindAddress` | Sockets | Bind address (`0.0.0.0` or `*` for all interfaces). |
+| `BindAddress` | Sockets | IPv4 bind address (`0.0.0.0` or `*` for all IPv4 interfaces). |
+| `BindAddress6` | Sockets | IPv6 bind address; empty disables the IPv6 listener; `*` or `::` for all IPv6 interfaces. When set, a separate listener is started on this address for each configured port. |
 | `IdleTimeoutSeconds` | Sockets + Session | Per-read idle timeout in seconds (default `600`). |
 | `MaxConnections` | Sockets | Concurrent connection cap (`0` = unlimited). |
 | `ServerIdentification` | Sockets | Banner and CAPABILITIES `IMPLEMENTATION` (defaults to host assembly name). |
