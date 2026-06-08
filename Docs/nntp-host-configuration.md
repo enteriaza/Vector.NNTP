@@ -240,7 +240,7 @@ NNTPD binds `SpamAssassin` and `PostFilter` when `AddNntpArticlesTransitSpool(co
 
 Transit spool postprocessing scans **non-yEnc** articles under **128 KiB** only. Spamd connectivity and protocol errors **fail open** (article accepted). yEnc articles run `YEncSectionCrc.Validate` instead; CRC failure rejects the article.
 
-Synthetic spamd scan headers (`Received:`, `To:`, `X-Usenet-Newsgroups:`) are built from peer origin metadata and `NntpServer:NodeName` + `NntpServer:DomainName` — not from static scan-host JSON keys.
+Synthetic spamd scan headers (`Received:`, `To:`, `X-Usenet-Newsgroups:`) are built from peer origin metadata and `NntpServer:NodeName` + `NntpServer:DomainName` — not from static scan-host JSON keys. The `Received:` `by` clause includes `NntpServer:ServerIdentification` in parentheses (for example `by nntpd01.usenet.ninja (Vector.NNTPD)`), and an `id` token carries the validated article Message-ID (for example `id <msgid@host>;`), giving SpamAssassin and human analysts full per-hop tracing context.
 
 Example:
 

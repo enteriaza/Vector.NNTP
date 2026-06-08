@@ -14,8 +14,11 @@ namespace Vector.NNTP.Tests.Articles;
 [TestFixture]
 public sealed class SpamdScanArticleBuilderTests
 {
+    private const string SampleMessageId = "<scan@example.com>";
+
     /// <summary>
-    /// Verifies FQDN peer metadata produces a full Received clause and synthetic To address.
+    /// Verifies FQDN peer metadata produces a full Received clause with server identification, Message-ID, and
+    /// synthetic To address.
     /// </summary>
     [Test]
     public void BuildScanArticle_WithPeerHostName_AddsReceivedAndTo()
@@ -26,14 +29,17 @@ public sealed class SpamdScanArticleBuilderTests
         {
             NodeName = "transit1",
             DomainName = "usenetninja.net",
+            ServerIdentification = "Vector.NNTPD",
         };
 
-        byte[] scan = builder.BuildScanArticle(original, SpoolTestOrigins.SpoolOrigin(), serverOptions);
+        byte[] scan = builder.BuildScanArticle(original, SpoolTestOrigins.SpoolOrigin(), serverOptions, SampleMessageId);
         string text = Encoding.UTF8.GetString(scan);
 
         Assert.That(text, Does.Contain("Received: from border-3.ord.giganews.com (border-3.ord.giganews.com [203.0.113.10])"));
-        Assert.That(text, Does.Contain("by transit1.usenetninja.net"));
-        Assert.That(text, Does.Contain("with NNTP;"));
+        Assert.That(text, Does.Contain("by transit1.usenetninja.net (Vector.NNTPD)"));
+        Assert.That(text, Does.Contain("with NNTP"));
+        Assert.That(text, Does.Not.Contain("with NNTP;"));
+        Assert.That(text, Does.Contain("id <scan@example.com>;"));
         Assert.That(text, Does.Contain("Sun, 07 Jun 2026 18:42:17 +0000"));
         Assert.That(text, Does.Contain("To: usenet@transit1.usenetninja.net"));
         Assert.That(text, Does.Contain("X-Usenet-Newsgroups: misc.test"));
@@ -42,7 +48,7 @@ public sealed class SpamdScanArticleBuilderTests
     }
 
     /// <summary>
-    /// Verifies IP-only Received form when peer hostname is unknown.
+    /// Verifies IP-only Received form when peer hostname is unknown, and that the id clause is still present.
     /// </summary>
     [Test]
     public void BuildScanArticle_WithoutPeerHostName_UsesIpOnlyReceived()
@@ -55,11 +61,28 @@ public sealed class SpamdScanArticleBuilderTests
             SpoolTestOrigins.SampleReceivedUtc);
         var serverOptions = new NntpServerOptions { NodeName = "transit1", DomainName = "usenetninja.net" };
 
-        byte[] scan = builder.BuildScanArticle(original, origin, serverOptions);
+        byte[] scan = builder.BuildScanArticle(original, origin, serverOptions, SampleMessageId);
         string text = Encoding.UTF8.GetString(scan);
 
         Assert.That(text, Does.Contain("Received: from [203.0.113.10]"));
+        Assert.That(text, Does.Contain("id <scan@example.com>;"));
         Assert.That(text, Does.Not.Contain("border-3.ord.giganews.com"));
+    }
+
+    /// <summary>
+    /// Verifies that a Message-ID supplied without angle brackets is normalized to the bracketed form in the id clause.
+    /// </summary>
+    [Test]
+    public void BuildScanArticle_UnbracketedMessageId_NormalizesToBracketedIdClause()
+    {
+        byte[] original = BuildSampleArticle();
+        var builder = new SpamdScanArticleBuilder();
+        var serverOptions = new NntpServerOptions { NodeName = "node1" };
+
+        byte[] scan = builder.BuildScanArticle(original, SpoolTestOrigins.SpoolOrigin(), serverOptions, "scan@example.com");
+        string text = Encoding.UTF8.GetString(scan);
+
+        Assert.That(text, Does.Contain("id <scan@example.com>;"));
     }
 
     /// <summary>
@@ -72,7 +95,7 @@ public sealed class SpamdScanArticleBuilderTests
         var builder = new SpamdScanArticleBuilder();
         var serverOptions = new NntpServerOptions { NodeName = "node1" };
 
-        byte[] scan = builder.BuildScanArticle(original, SpoolTestOrigins.SpoolOrigin(), serverOptions);
+        byte[] scan = builder.BuildScanArticle(original, SpoolTestOrigins.SpoolOrigin(), serverOptions, SampleMessageId);
 
         int originalBodyStart = FindBodyStart(original);
         int scanBodyStart = FindBodyStart(scan);

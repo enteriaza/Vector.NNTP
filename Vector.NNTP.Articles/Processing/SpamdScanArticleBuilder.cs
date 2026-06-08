@@ -67,8 +67,13 @@ namespace Vector.NNTP.Articles.Processing
         /// <see cref="NntpSpoolWriteItem.Origin"/> for honest <c>Received:</c> synthesis.
         /// </param>
         /// <param name="serverOptions">
-        /// Local server identity from <see cref="Sockets.Configuration.NntpServerIdentityExtensions.GetServerFqdn"/> and
+        /// Local server identity from <see cref="Sockets.Configuration.NntpServerIdentityExtensions.GetServerReceivedByClause"/> and
         /// <see cref="Sockets.Configuration.NntpServerIdentityExtensions.GetSpamScanToAddress"/>.
+        /// </param>
+        /// <param name="messageId">
+        /// Validated transit Message-ID for the article, included verbatim as the <c>id</c> token in the synthetic
+        /// <c>Received:</c> header. May be bracketed or unbracketed; <see cref="NormalizeReceivedMessageId"/> normalizes
+        /// it to the <c>&lt;token&gt;</c> form.
         /// </param>
         /// <returns>
         /// A newly allocated byte array containing rewritten headers and the identical original body octets starting at
@@ -88,11 +93,18 @@ namespace Vector.NNTP.Articles.Processing
         /// present <c>Newsgroups:</c> field is copied to <c>X-Usenet-Newsgroups:</c> and may also remain in the
         /// preserved header list under its original name.
         /// </para>
+        /// <para>
+        /// The synthetic <c>Received:</c> field uses the full four-clause form:
+        /// <c>from … by {fqdn} ({ident}) with NNTP id {msgid}; {date}</c>.
+        /// The <c>by</c> clause includes <see cref="NntpServerOptions.ServerIdentification"/> in parentheses when set,
+        /// matching the same identification string exposed in the NNTP greeting and <c>CAPABILITIES IMPLEMENTATION</c>.
+        /// </para>
         /// </remarks>
         public byte[] BuildScanArticle(
             ReadOnlySpan<byte> originalArticleBytes,
             NntpSpoolArticleOrigin origin,
-            NntpServerOptions serverOptions)
+            NntpServerOptions serverOptions,
+            string messageId)
         {
             ArgumentNullException.ThrowIfNull(serverOptions);
 
@@ -120,7 +132,7 @@ namespace Vector.NNTP.Articles.Processing
             ParseHeaders(originalArticleBytes[..headerEnd], preservedHeaders, ref newsgroupsValue, ref hasDate);
 
             var output = new ArrayBufferWriter<byte>(originalArticleBytes.Length + 512);
-            WriteHeader(output, "Received", BuildReceivedHeader(origin, serverOptions));
+            WriteHeader(output, "Received", BuildReceivedHeader(origin, serverOptions, messageId));
             WriteHeader(output, "To", serverOptions.GetSpamScanToAddress());
 
             if (newsgroupsValue is not null)
@@ -394,28 +406,64 @@ namespace Vector.NNTP.Articles.Processing
         /// </summary>
         /// <param name="origin">Peer and reception metadata.</param>
         /// <param name="serverOptions">Local server identity.</param>
+        /// <param name="messageId">
+        /// Validated transit Message-ID placed in the <c>id</c> clause. Normalized to <c>&lt;token&gt;</c> form via
+        /// <see cref="NormalizeReceivedMessageId"/>.
+        /// </param>
         /// <returns>
-        /// Unfolded <c>Received:</c> field body using CRLF continuations. When
+        /// Folded <c>Received:</c> field body using CRLF continuations. When
         /// <see cref="NntpSpoolArticleOrigin.PeerHostName"/> is present, emits
         /// <c>from host (host [ip])</c>; otherwise <c>from [ip]</c> (IPv6 bracketed via <see cref="FormatPeerIp"/>).
+        /// The <c>by</c> clause uses <see cref="NntpServerIdentityExtensions.GetServerReceivedByClause"/> to include
+        /// the optional server identification in parentheses. The <c>id</c> clause carries the normalized Message-ID
+        /// followed by a semicolon; the date is on its own folded line.
         /// </returns>
         /// <remarks>
         /// Reception time comes from <see cref="NntpSpoolArticleOrigin.ReceivedUtc"/>; local identity from
         /// <paramref name="serverOptions"/>. Never throws.
         /// </remarks>
-        private static string BuildReceivedHeader(NntpSpoolArticleOrigin origin, NntpServerOptions serverOptions)
+        private static string BuildReceivedHeader(NntpSpoolArticleOrigin origin, NntpServerOptions serverOptions, string messageId)
         {
-            string serverFqdn = serverOptions.GetServerFqdn();
+            string byClause = serverOptions.GetServerReceivedByClause();
             string receptionDate = FormatMailDate(origin.ReceivedUtc);
             string peerIp = FormatPeerIp(origin.PeerAddress);
+            string normalizedId = NormalizeReceivedMessageId(messageId);
 
             if (!string.IsNullOrWhiteSpace(origin.PeerHostName))
             {
                 string host = origin.PeerHostName.Trim();
-                return $"from {host} ({host} [{peerIp}])\r\n    by {serverFqdn}\r\n    with NNTP;\r\n    {receptionDate}";
+                return $"from {host} ({host} [{peerIp}])\r\n    by {byClause}\r\n    with NNTP\r\n    id {normalizedId};\r\n    {receptionDate}";
             }
 
-            return $"from [{peerIp}]\r\n    by {serverFqdn}\r\n    with NNTP;\r\n    {receptionDate}";
+            return $"from [{peerIp}]\r\n    by {byClause}\r\n    with NNTP\r\n    id {normalizedId};\r\n    {receptionDate}";
+        }
+
+        /// <summary>
+        /// Normalizes a transit Message-ID to the <c>&lt;token&gt;</c> form required by the <c>Received:</c> <c>id</c> clause.
+        /// </summary>
+        /// <param name="messageId">Raw Message-ID, which may or may not carry outer angle brackets.</param>
+        /// <returns>
+        /// The Message-ID wrapped in a single pair of angle brackets with surrounding whitespace removed, for example
+        /// <c>&lt;scan@example.com&gt;</c>.
+        /// </returns>
+        /// <remarks>
+        /// If the input is already bracketed, the existing brackets are stripped and a fresh pair is applied so the
+        /// output never contains doubled brackets. An empty or whitespace input returns an empty string.
+        /// </remarks>
+        private static string NormalizeReceivedMessageId(string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(messageId))
+            {
+                return string.Empty;
+            }
+
+            ReadOnlySpan<char> span = messageId.AsSpan().Trim();
+            if (span.Length >= 2 && span[0] == '<' && span[^1] == '>')
+            {
+                span = span[1..^1].Trim();
+            }
+
+            return string.Create(CultureInfo.InvariantCulture, $"<{span}>");
         }
 
         /// <summary>

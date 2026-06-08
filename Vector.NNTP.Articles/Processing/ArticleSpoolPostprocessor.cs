@@ -208,7 +208,7 @@ namespace Vector.NNTP.Articles.Processing
         {
             try
             {
-                byte[] scanBytes = _spamdScanBuilder.BuildScanArticle(articleBytes, item.Origin, _serverOptions);
+                byte[] scanBytes = _spamdScanBuilder.BuildScanArticle(articleBytes, item.Origin, _serverOptions, item.MessageId);
                 SpamdCheckResult result = await _spamAssassin.CheckAsync(scanBytes, cancellationToken).ConfigureAwait(false);
                 if (result.IsSpam)
                 {

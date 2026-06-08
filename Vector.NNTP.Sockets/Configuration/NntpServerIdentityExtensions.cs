@@ -28,6 +28,28 @@ namespace Vector.NNTP.Sockets.Configuration
         }
 
         /// <summary>
+        /// Returns the <c>by</c> clause value for synthetic <c>Received:</c> headers, combining the server FQDN with
+        /// an optional software identification token.
+        /// </summary>
+        /// <param name="options">Bound server options.</param>
+        /// <returns>
+        /// <c>{fqdn} ({ServerIdentification})</c> when <see cref="NntpServerOptions.ServerIdentification"/> is
+        /// non-empty after trimming; otherwise just <c>{fqdn}</c>.
+        /// </returns>
+        /// <remarks>
+        /// The parenthesized product name is the same identification string used in the initial NNTP greeting and
+        /// <c>CAPABILITIES IMPLEMENTATION</c> responses, allowing operators to distinguish server software in
+        /// mail-tracing tools that parse <c>Received:</c> lines.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is <see langword="null"/>.</exception>
+        public static string GetServerReceivedByClause(this NntpServerOptions options)
+        {
+            string fqdn = options.GetServerFqdn();
+            string ident = options.ServerIdentification?.Trim() ?? string.Empty;
+            return ident.Length > 0 ? $"{fqdn} ({ident})" : fqdn;
+        }
+
+        /// <summary>
         /// Returns the synthetic <c>To:</c> address for spamd scan articles.
         /// </summary>
         /// <param name="options">Bound server options.</param>
