@@ -47,6 +47,13 @@ namespace Vector.NNTP.Sockets.Policy
         /// <returns>A task that runs until <paramref name="stoppingToken"/> is canceled.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            void HandleServerOptionsChanged(NntpServerOptions _, string? __)
+            {
+                OnServerOptionsChanged(stoppingToken);
+            }
+
+            using IDisposable optionsChangeSubscription = _options.OnChange(HandleServerOptionsChanged)!;
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 NntpTransitPeersOptions transitPeers = _options.CurrentValue.TransitPeers;
@@ -66,6 +73,19 @@ namespace Vector.NNTP.Sockets.Policy
                 {
                     break;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Rebuilds the transit peer snapshot immediately after a successful configuration reload.
+        /// </summary>
+        /// <param name="stoppingToken">Host shutdown token passed to coordinator reconcile calls.</param>
+        private void OnServerOptionsChanged(CancellationToken stoppingToken)
+        {
+            NntpTransitPeersOptions transitPeers = _options.CurrentValue.TransitPeers;
+            if (transitPeers.Peers is not null && transitPeers.Peers.Length > 0)
+            {
+                _ = RefreshAndReconcileAsync(transitPeers, stoppingToken);
             }
         }
 

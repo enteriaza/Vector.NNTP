@@ -181,7 +181,7 @@ namespace Vector.NNTP.Filters.PostFilter
         /// Maximum distinct newsgroups allowed in a <c>Newsgroups</c> header (0 disables the crosspost limit).
         /// </summary>
         [Range(0, 10_000)]
-        public int MaxNewsgroupCrossposts { get; set; } = 7;
+        public int MaxNewsgroupCrossposts { get; set; } = 8;
 
         /// <summary>
         /// Maximum article size in bytes including headers (0 disables); oversized articles reject with code 12.
@@ -191,7 +191,7 @@ namespace Vector.NNTP.Filters.PostFilter
         /// <c>NntpServer:MaxArtSize</c> setting instead of this property.
         /// </remarks>
         [Range(0, long.MaxValue)]
-        public long MaxArticleBytes { get; set; } = 1_048_576;
+        public long MaxArticleBytes { get; set; } = 4194304;
     }
 
     /// <summary>Optional header transforms applied on accept (subset of Perl <c>mod_headers</c> behavior).</summary>

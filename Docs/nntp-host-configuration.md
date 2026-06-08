@@ -128,7 +128,11 @@ Other spool instruments: `nntp.spool.queue.*`, `nntp.spool.write.*`, `nntp.spool
 | `Peers[].MaxConnections` | Cluster cap via Redis ZSET (`0` = unlimited, default `10`). |
 | `Peers[].AcceptFrom` | Literal IP, CIDR, or DNS hostname entries. |
 
-Startup **fails** if any two peers have overlapping address ranges. Hostname entries are resolved at startup and on each refresh; failed refresh keeps the previous snapshot.
+Startup **fails** if any two peers have overlapping address ranges, if `Peers[].Name` values are duplicated (for example two entries named `Giganews`), or if required fields are invalid. Each `Name` must be unique because it keys Redis capacity coordination and metrics labels.
+
+**Runtime reload:** `NNTPD.json` is loaded with `reloadOnChange: true`. Valid edits to `NntpServer` (including `TransitPeers`) take effect without restarting the process; the transit peer matcher rebuilds immediately on successful reload. Invalid edits are logged at Error and **ignored** until corrected—the server keeps the last-known-good configuration and continues accepting connections. Fix validation errors (duplicate names, overlapping-CIDR, malformed `AcceptFrom`, and so on) and save again to apply the change.
+
+Hostname entries are resolved at startup and on each refresh; failed DNS snapshot rebuild keeps the previous matcher snapshot.
 
 Stale Redis ZSET members are purged using roughly **three heartbeat intervals** (not socket idle timeout), so crashed sessions release capacity within minutes. On startup the refresh service reconciles counts immediately. If peering stays at capacity after a restart, inspect `nntp.transitpeer.current_capacity` or flush the Redis key `{prefix}transitpeer:{peerId}:sessions`.
 
