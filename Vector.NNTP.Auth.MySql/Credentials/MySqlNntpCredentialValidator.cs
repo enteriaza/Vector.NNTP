@@ -18,54 +18,91 @@ using Vector.NNTP.Utilities.Encoding;
 namespace Vector.NNTP.Auth.MySql.Credentials
 {
     /// <summary>
-    /// MySQL-backed implementation of <see cref="INntpCredentialValidator"/> and <see cref="INntpSaslAccountAuthenticator"/>
-    /// that validates credentials and policy against rows in the <c>nntpusers</c> table.
+    /// Production MySQL credential validator and SASL account finalizer for reader NNTP authentication.
     /// </summary>
     /// <remarks>
-    /// <para><b>Outcomes:</b> Invalid credentials return <see cref="NntpAuthResult.InvalidCredentials"/>; backend failures
-    /// return <see cref="NntpAuthResult.TransientFailure"/> so the sockets layer can answer with 503.</para>
-    /// <para><b>Burst cache:</b> Successful AUTHINFO and SASL completions populate <see cref="MySqlUserRecordCache"/> with
-    /// AES-256-GCM protected snapshots and a short TTL for concurrent duplicate logons.</para>
-    /// <para><b>SASL staging:</b> Credential stores stash records in <see cref="MySqlUserRecordSaslCache"/> for the
-    /// completion step; <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/> clears that slot on auth reset.</para>
-    /// <para><b>Password compare:</b> <see cref="PasswordEquals"/> uses constant-time ASCII comparison for AUTHINFO paths.</para>
+    /// <para>
+    /// <b>Role:</b> Single singleton implementing both <see cref="INntpCredentialValidator"/> and
+    /// <see cref="INntpSaslAccountAuthenticator"/>, registered by
+    /// <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpMySqlAuth"/>. Validates AUTHINFO and SASL password
+    /// mechanisms against <c>nntpusers</c> and finalizes SCRAM-SHA-256 and CRAM-MD5 after wire-level proof verification in
+    /// the sockets layer.
+    /// </para>
+    /// <para>
+    /// <b>Outcomes:</b> Policy and credential failures return <see cref="NntpAuthResult.InvalidCredentials"/> (typically 481
+    /// on the wire). Database and transport faults return <see cref="NntpAuthResult.TransientFailure"/> (503-class semantics).
+    /// Success returns <see cref="NntpAuthResult.Success"/> with <see cref="NntpSessionPolicy"/>; session admission and quota
+    /// enforcement happen later in <c>Vector.NNTP.Session</c>, not in this type.
+    /// </para>
+    /// <para>
+    /// <b>Burst cache:</b> Successful paths call <see cref="MySqlUserRecordCache.Put"/> with either a password fingerprint
+    /// (AUTHINFO) or <see cref="MySqlUserRecordCache.UsernameOnlyFingerprint"/> (SASL). Payloads are AES-256-GCM protected with
+    /// a short TTL for concurrent duplicate logons.
+    /// </para>
+    /// <para>
+    /// <b>SASL staging:</b> <see cref="MySqlScramCredentialStore"/> and <see cref="MySqlCramMd5CredentialStore"/> stage rows in
+    /// <see cref="MySqlUserRecordSaslCache"/> during secret retrieval; finalize consumes or falls back to async store lookup.
+    /// <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/> clears the per-exchange slot on auth reset.
+    /// </para>
+    /// <para>
+    /// <b>Observability:</b> Structured logs from <c>MySqlNntpCredentialValidator.Logging.cs</c> (EventIds <c>200</c>–<c>210</c>),
+    /// <see cref="AuthMySqlMetrics.RecordValidate"/> / <see cref="AuthMySqlMetrics.RecordLookup"/>, and
+    /// <see cref="AuthMySqlTelemetry"/> spans <c>auth.mysql.validate.password</c> and <c>auth.mysql.validate.sasl</c>.
+    /// </para>
+    /// <para><b>Thread safety:</b> Singleton safe for concurrent NNTP sessions; per-call state uses AsyncLocal SASL staging only.</para>
     /// </remarks>
     internal sealed partial class MySqlNntpCredentialValidator : INntpCredentialValidator, INntpSaslAccountAuthenticator
     {
         /// <summary>
-        /// Backing user record store.
+        /// Decorated user-record store for MySQL lookups (production: <see cref="CachingMySqlUserRecordStore"/>).
         /// </summary>
+        /// <remarks>Never null after construction.</remarks>
         private readonly INntpUserRecordStore _recordStore;
 
         /// <summary>
-        /// Account key normalizer for policy construction.
+        /// BLAKE3 account-key normalizer used when building <see cref="NntpSessionPolicy"/>.
         /// </summary>
+        /// <remarks>Supplied by session DI (<see cref="IAccountKeyNormalizer"/>).</remarks>
         private readonly IAccountKeyNormalizer _accountKeyNormalizer;
 
         /// <summary>
-        /// Successful-authentication cache for burst deduplication.
+        /// Shared burst deduplication cache also consulted for password-fingerprint hits in <c>ValidatePasswordAsync</c>.
         /// </summary>
+        /// <remarks>Same singleton instance registered for the caching record-store decorator.</remarks>
         private readonly MySqlUserRecordCache _authCache;
 
         /// <summary>
-        /// Metrics for validation outcomes.
+        /// Auth MySQL metrics recorder for validation and password cache-hit counters.
         /// </summary>
         private readonly AuthMySqlMetrics _metrics;
 
         /// <summary>
-        /// Logger for backend/auth failures.
+        /// Category logger for validation lifecycle events (EventIds <c>200</c>–<c>210</c>).
         /// </summary>
         private readonly ILogger<MySqlNntpCredentialValidator> _logger;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="MySqlNntpCredentialValidator"/> class.
+        /// Creates the production credential validator with store, policy, cache, metrics, and logging dependencies.
         /// </summary>
-        /// <param name="recordStore">Backing user record store.</param>
-        /// <param name="accountKeyNormalizer">Account key normalizer for policy construction.</param>
-        /// <param name="authCache">Successful-authentication cache.</param>
-        /// <param name="metrics">Metrics for validation outcomes.</param>
-        /// <param name="logger">Logger for backend/auth failures.</param>
-        /// <exception cref="ArgumentNullException">Thrown when any parameter is null.</exception>
+        /// <param name="recordStore">
+        /// <see cref="INntpUserRecordStore"/> from DI. Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="accountKeyNormalizer">
+        /// <see cref="IAccountKeyNormalizer"/> from session registration. Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="authCache">
+        /// Shared <see cref="MySqlUserRecordCache"/> singleton. Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="metrics">
+        /// <see cref="AuthMySqlMetrics"/> singleton. Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="logger">
+        /// Logger for <see cref="MySqlNntpCredentialValidator"/>. Must not be <see langword="null"/>.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when any parameter is <see langword="null"/>.
+        /// </exception>
+        /// <remarks>Registered once in DI; exposed as both credential-validator interfaces on the same instance.</remarks>
         internal MySqlNntpCredentialValidator(
             INntpUserRecordStore recordStore,
             IAccountKeyNormalizer accountKeyNormalizer,
@@ -81,28 +118,43 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Finalizes SCRAM-SHA-256 or CRAM-MD5 authentication after wire-level cryptographic verification succeeds.
+        /// Finalizes SCRAM-SHA-256 or CRAM-MD5 authentication after the wire proof has already been verified.
         /// </summary>
-        /// <param name="mechanism">SASL mechanism label (<see cref="NntpAuthMechanisms.SaslScramSha256"/> or <see cref="NntpAuthMechanisms.SaslCramMd5"/>).</param>
-        /// <param name="username">Authenticated username supplied by the client.</param>
-        /// <param name="clientIp">Client IP address used for structured logs and session policy materialisation.</param>
-        /// <param name="isTls">Whether the NNTP session transport is TLS-protected at completion time.</param>
-        /// <param name="cancellationToken">Cancellation token for the backing user-record lookup on cache miss.</param>
+        /// <param name="mechanism">
+        /// SASL mechanism label: <see cref="NntpAuthMechanisms.SaslScramSha256"/> or
+        /// <see cref="NntpAuthMechanisms.SaslCramMd5"/> only.
+        /// </param>
+        /// <param name="username">
+        /// Plaintext account name from the SASL exchange. Whitespace-only values yield
+        /// <see cref="NntpAuthResult.InvalidCredentials"/> without throwing.
+        /// </param>
+        /// <param name="clientIp">
+        /// Client IP for logging and policy materialisation. Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="isTls">Whether the NNTP session uses TLS at completion time.</param>
+        /// <param name="cancellationToken">
+        /// Honoured when async store lookup runs on per-exchange cache miss.
+        /// </param>
         /// <returns>
-        /// <see cref="NntpAuthResult.Success"/> with <see cref="NntpSessionPolicy"/> when the account is enabled and the
-        /// mechanism is permitted; <see cref="NntpAuthResult.InvalidCredentials"/> for policy or lookup failures;
-        /// <see cref="NntpAuthResult.TransientFailure"/> when MySQL I/O fails.
+        /// <see cref="NntpAuthResult.Success"/> with policy when enabled and mechanism permitted;
+        /// <see cref="NntpAuthResult.InvalidCredentials"/> for missing row, disabled account, or policy denial;
+        /// <see cref="NntpAuthResult.TransientFailure"/> on backend fault.
         /// </returns>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="mechanism"/> is not SCRAM-SHA-256 or CRAM-MD5.</exception>
+        /// <exception cref="ArgumentException">
+        /// Thrown when <paramref name="mechanism"/> is not SCRAM-SHA-256 or CRAM-MD5.
+        /// </exception>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="clientIp"/> is <see langword="null"/> (via <c>FormatClientIp</c>).
+        /// </exception>
         /// <remarks>
         /// <para>
-        /// Consumes a record stashed by <see cref="MySqlScramCredentialStore"/> or <see cref="MySqlCramMd5CredentialStore"/>
-        /// via <see cref="MySqlUserRecordSaslCache"/> when available; otherwise queries
-        /// <see cref="INntpUserRecordStore.TryGetUserAsync"/>.
+        /// Implements <see cref="INntpSaslAccountAuthenticator.CompleteSaslAccountAsync"/>. Delegates to
+        /// <c>FinalizeAuthenticationAsync</c> with policy delegate <see cref="MySqlUserRecord.AllowAuthScram256"/> for SCRAM
+        /// or <see cref="MySqlUserRecord.AllowAuthPlain"/> for CRAM-MD5. Cryptographic verification is not repeated here.
         /// </para>
         /// <para>
-        /// <see cref="MySqlUserRecordSaslCache.Clear"/> runs in a <c>finally</c> block so the per-exchange slot does not
-        /// leak across authentications. <see cref="OperationCanceledException"/> propagates when the lookup is cancelled.
+        /// <see cref="MySqlUserRecordSaslCache.Clear"/> runs in <c>finally</c> inside finalize so the AsyncLocal slot never
+        /// leaks across exchanges. <see cref="OperationCanceledException"/> propagates without being mapped to transient failure.
         /// </para>
         /// </remarks>
         async ValueTask<NntpAuthResult> INntpSaslAccountAuthenticator.CompleteSaslAccountAsync(
@@ -131,15 +183,17 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Clears staged SASL user-record material when the client resets authentication mid-exchange.
+        /// Clears per-exchange SASL staging when the client abandons or restarts authentication.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Invoked by the sockets authentication layer from
-        /// <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/> when the client issues a new AUTHINFO or
-        /// abandons an in-progress SASL dialog.
+        /// Implements <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/>. Called by the sockets authentication
+        /// layer when the client issues a new AUTHINFO, starts a different SASL mechanism, or disconnects mid-exchange.
         /// </para>
-        /// <para>Clears <see cref="MySqlUserRecordSaslCache"/> and logs the abandonment. Idempotent when no exchange is active.</para>
+        /// <para>
+        /// Logs EventId <c>208</c> and calls <see cref="MySqlUserRecordSaslCache.Clear"/>. Does not clear the TTL burst cache
+        /// (<see cref="MySqlUserRecordCache"/>). Idempotent when no record is staged.
+        /// </para>
         /// </remarks>
         void INntpSaslAccountAuthenticator.AbandonSaslExchange()
         {
@@ -148,18 +202,43 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Validates a password for AUTHINFO PASS or SASL password mechanisms against the MySQL user store.
+        /// Validates a cleartext password for AUTHINFO PASS or SASL password mechanisms against MySQL.
         /// </summary>
-        /// <param name="mechanism">Authentication mechanism label (for example AUTHINFO PASS or SASL PLAIN).</param>
-        /// <param name="username">Username supplied by the client.</param>
-        /// <param name="password">Password supplied by the client.</param>
-        /// <param name="clientIp">Client IP address.</param>
-        /// <param name="isTls">Whether the connection is TLS-protected.</param>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Authentication outcome and optional session policy.</returns>
+        /// <param name="mechanism">
+        /// Wire mechanism label (for example AUTHINFO PASS or SASL PLAIN). Used for logging and bounded metrics tags only.
+        /// </param>
+        /// <param name="username">
+        /// Account name from the client. Whitespace-only values return <see cref="NntpAuthResult.InvalidCredentials"/> without
+        /// throwing.
+        /// </param>
+        /// <param name="password">Password supplied by the client (may be empty).</param>
+        /// <param name="clientIp">
+        /// Client IP for logging and policy. Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="isTls">Whether the session transport is TLS-protected.</param>
+        /// <param name="cancellationToken">
+        /// Passed to <see cref="INntpUserRecordStore.TryGetUserAsync"/> on burst-cache miss.
+        /// </param>
+        /// <returns>
+        /// <see cref="NntpAuthResult.Success"/> with <see cref="NntpSessionPolicy"/> when the password matches and policy allows;
+        /// <see cref="NntpAuthResult.InvalidCredentials"/> otherwise; <see cref="NntpAuthResult.TransientFailure"/> on backend
+        /// fault.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="clientIp"/> is <see langword="null"/>.
+        /// </exception>
         /// <remarks>
-        /// A null or whitespace <paramref name="username"/> yields <see cref="NntpAuthResult.InvalidCredentials"/> rather
-        /// than throwing. <see cref="OperationCanceledException"/> propagates when the backing lookup is cancelled.
+        /// <para><b>Flow:</b></para>
+        /// <list type="number">
+        /// <item><description>Compute password fingerprint and try <see cref="MySqlUserRecordCache"/> (metrics <c>cache_hit</c> on hit).</description></item>
+        /// <item><description>On miss, await <see cref="INntpUserRecordStore.TryGetUserAsync"/>.</description></item>
+        /// <item><description>Reject when row missing, disabled, <see cref="MySqlUserRecord.AllowAuthPlain"/> false, or <see cref="PasswordEquals"/> false.</description></item>
+        /// <item><description>On success: burst-cache <c>Put</c>, metrics <c>success</c>, return policy via <c>Succeed</c>.</description></item>
+        /// </list>
+        /// <para>
+        /// Implements <see cref="INntpCredentialValidator.ValidatePasswordAsync"/>. Emits span
+        /// <c>auth.mysql.validate.password</c>. <see cref="OperationCanceledException"/> propagates from the store lookup.
+        /// </para>
         /// </remarks>
         async ValueTask<NntpAuthResult> INntpCredentialValidator.ValidatePasswordAsync(
             string mechanism,
@@ -243,15 +322,25 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Compares the stored password with the supplied password using constant-time ASCII encoding.
+        /// Compares decrypted and supplied passwords using constant-time ASCII byte comparison.
         /// </summary>
-        /// <param name="storedPassword">Decrypted password from the data store.</param>
-        /// <param name="suppliedPassword">Password supplied by the client.</param>
-        /// <returns><see langword="true"/> when the passwords match; <see langword="false"/> when either argument is null,
-        /// non-ASCII, or the values differ.</returns>
+        /// <param name="storedPassword">Cleartext password from <see cref="MySqlUserRecord.AccountPassword"/>.</param>
+        /// <param name="suppliedPassword">Password presented on the wire during AUTHINFO or SASL password mechanisms.</param>
+        /// <returns>
+        /// <see langword="true"/> only when both strings are non-null ASCII with identical content and equal length;
+        /// <see langword="false"/> when either argument is <see langword="null"/>, contains non-ASCII code points, or bytes
+        /// differ.
+        /// </returns>
         /// <remarks>
-        /// Pads both sides to the longer length before <see cref="CryptographicOperations.FixedTimeEquals"/> so length
-        /// differences do not leak via early exit. Large passwords rent pooled buffers cleared on return.
+        /// <para>
+        /// Pads both sides to <c>max(storedLength, suppliedLength)</c> before
+        /// <see cref="CryptographicOperations.FixedTimeEquals"/> so timing does not shorten on length mismatch alone. The final
+        /// result also requires <c>storedLength == suppliedLength</c> so padded comparisons cannot equate different lengths.
+        /// </para>
+        /// <para>
+        /// Passwords up to <c>4096</c> characters use <c>stackalloc</c> buffers; longer passwords rent
+        /// <see cref="ArrayPool{T}"/> arrays cleared on return. Exposed as <see langword="internal"/> for unit tests.
+        /// </para>
         /// </remarks>
         internal bool PasswordEquals(string storedPassword, string suppliedPassword)
         {
@@ -304,21 +393,30 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Formats a client IP for structured authentication logs.
+        /// Normalises and stringifies a client IP for structured authentication logs.
         /// </summary>
-        /// <param name="clientIp">Client IP address.</param>
-        /// <returns>Normalised textual IP representation.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="clientIp"/> is null.</exception>
+        /// <param name="clientIp">Session client address. Must not be <see langword="null"/>.</param>
+        /// <returns>
+        /// <see cref="IPAddress.ToString"/> after <see cref="FormattingUtilities.NormaliseAddress"/> (IPv4-mapped IPv6 addresses
+        /// map to IPv4 text).
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="clientIp"/> is <see langword="null"/>.
+        /// </exception>
         private static string FormatClientIp(IPAddress clientIp)
         {
             return FormattingUtilities.NormaliseAddress(clientIp).ToString();
         }
 
         /// <summary>
-        /// Maps mechanism labels to bounded metric mechanism names.
+        /// Maps wire mechanism labels to low-cardinality <see cref="AuthMySqlMetrics.RecordValidate"/> mechanism tags.
         /// </summary>
-        /// <param name="mechanism">Authentication mechanism label.</param>
-        /// <returns>Bounded metric label.</returns>
+        /// <param name="mechanism">Authentication mechanism label from the sockets layer.</param>
+        /// <returns>
+        /// <c>sasl_scram</c> for <see cref="NntpAuthMechanisms.SaslScramSha256"/>, <c>sasl_cram</c> for
+        /// <see cref="NntpAuthMechanisms.SaslCramMd5"/>, otherwise <c>authinfo</c> (all other password mechanisms).
+        /// </returns>
+        /// <remarks>Prevents unbounded mechanism strings from entering metrics cardinality.</remarks>
         private static string MapMechanismMetric(string mechanism)
         {
             return string.Equals(mechanism, NntpAuthMechanisms.SaslScramSha256, StringComparison.Ordinal)
@@ -327,10 +425,18 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Creates an <see cref="NntpSessionPolicy"/> from the supplied user record.
+        /// Materialises <see cref="NntpSessionPolicy"/> from a validated <see cref="MySqlUserRecord"/>.
         /// </summary>
-        /// <param name="record">User record materialised from the backing store.</param>
-        /// <returns>Session policy representing the granted permissions and limits.</returns>
+        /// <param name="record">Authenticated row snapshot. Must not be <see langword="null"/>.</param>
+        /// <returns>
+        /// Policy with posting allowed, rate/byte limits from the row, and BLAKE3 account key from
+        /// <see cref="IAccountKeyNormalizer"/>.
+        /// </returns>
+        /// <remarks>
+        /// Maps limit columns through <see cref="NntpAccountLimits"/> and
+        /// <see cref="NntpSessionPolicyFactory.Create"/> with <c>allowPosting: true</c> for all successful authentications in
+        /// this validator.
+        /// </remarks>
         private NntpSessionPolicy CreatePolicy(MySqlUserRecord record)
         {
             NntpAccountLimits limits = new(
@@ -345,15 +451,34 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Finalizes SASL authentication after cryptographic verification on the wire.
+        /// Shared SASL and password-finalization path after wire verification (account policy and caching).
         /// </summary>
-        /// <param name="mechanism">Authentication mechanism label.</param>
-        /// <param name="username">Authenticated username.</param>
-        /// <param name="clientIp">Client IP address.</param>
-        /// <param name="isTls">Whether the connection is TLS-protected.</param>
-        /// <param name="isMechanismPermitted">Delegate that checks whether the mechanism is allowed for the account.</param>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Authentication outcome and optional session policy.</returns>
+        /// <param name="mechanism">Authentication mechanism label for logs and metrics.</param>
+        /// <param name="username">Account name to finalize.</param>
+        /// <param name="clientIp">Client IP for logging and policy. Must not be <see langword="null"/>.</param>
+        /// <param name="isTls">Whether TLS is active on the session.</param>
+        /// <param name="isMechanismPermitted">
+        /// Row policy predicate (SCRAM vs CRAM/plain flags) evaluated after enablement check.
+        /// </param>
+        /// <param name="cancellationToken">Honoured on async store lookup when per-exchange cache misses.</param>
+        /// <returns>
+        /// <see cref="NntpAuthResult"/> with the same semantics as password and SASL public entry points.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="clientIp"/> is <see langword="null"/>.
+        /// </exception>
+        /// <remarks>
+        /// <para><b>Flow:</b></para>
+        /// <list type="number">
+        /// <item><description><see cref="MySqlUserRecordSaslCache.TryTake"/> or async store lookup on miss.</description></item>
+        /// <item><description>Reject on missing row, disabled account, or failed <paramref name="isMechanismPermitted"/>.</description></item>
+        /// <item><description>Cache username-only burst entry, record metrics <c>success</c>, return <c>Succeed</c>.</description></item>
+        /// </list>
+        /// <para>
+        /// Emits span <c>auth.mysql.validate.sasl</c>. Always clears <see cref="MySqlUserRecordSaslCache"/> in <c>finally</c>.
+        /// Backend faults map to <see cref="NntpAuthResult.TransientFailure"/>.
+        /// </para>
+        /// </remarks>
         private async ValueTask<NntpAuthResult> FinalizeAuthenticationAsync(
             string mechanism,
             string username,
@@ -428,13 +553,17 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Caches a successful authentication record for burst deduplication.
+        /// Inserts an AES-256-GCM protected snapshot into the post-success burst cache.
         /// </summary>
-        /// <param name="username">Authenticated username.</param>
-        /// <param name="fingerprint">Credential fingerprint or username-only sentinel.</param>
-        /// <param name="record">Validated user record.</param>
+        /// <param name="username">Authenticated account name (cache key component).</param>
+        /// <param name="fingerprint">
+        /// Password SHA-256 fingerprint from <see cref="MySqlUserRecordCache.ComputePasswordFingerprint"/> or
+        /// <see cref="MySqlUserRecordCache.UsernameOnlyFingerprint"/> for SASL finalize.
+        /// </param>
+        /// <param name="record">Validated row to cache. Must not be <see langword="null"/>.</param>
         /// <remarks>
-        /// The cache encrypts password and SCRAM key material at rest and expires entries within a short TTL window.
+        /// Delegates to <see cref="MySqlUserRecordCache.Put"/>. Entries expire by TTL only; failed authentications never call
+        /// this helper.
         /// </remarks>
         private void CacheSuccessfulAuth(string username, byte[] fingerprint, MySqlUserRecord record)
         {
@@ -442,12 +571,16 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Logs successful authentication and returns policy without admission.
+        /// Builds session policy, logs EventId <c>204</c>, and returns a success auth result.
         /// </summary>
         /// <param name="mechanism">Authentication mechanism label.</param>
-        /// <param name="record">Validated user record.</param>
-        /// <param name="clientIp">Client IP address.</param>
-        /// <returns>Authentication outcome and session policy.</returns>
+        /// <param name="record">Validated user record used to construct policy.</param>
+        /// <param name="clientIp">Client IP for the success log line. Must not be <see langword="null"/>.</param>
+        /// <returns><see cref="NntpAuthResult.Success"/> carrying the materialised <see cref="NntpSessionPolicy"/>.</returns>
+        /// <remarks>
+        /// Does not perform session admission, quota checks, or cluster-wide session limits — the session coordinator consumes
+        /// the returned policy afterward.
+        /// </remarks>
         private NntpAuthResult Succeed(string mechanism, MySqlUserRecord record, IPAddress clientIp)
         {
             NntpSessionPolicy policy = CreatePolicy(record);

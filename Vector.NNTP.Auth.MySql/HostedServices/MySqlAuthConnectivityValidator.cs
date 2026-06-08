@@ -11,35 +11,75 @@ using Vector.NNTP.Auth.MySql.Configuration;
 namespace Vector.NNTP.Auth.MySql.HostedServices
 {
     /// <summary>
-    /// Validates MySQL connectivity for NNTP authentication during host startup.
+    /// Fail-fast hosted service that proves the auth MySQL database is reachable before NNTP credential handling starts.
     /// </summary>
     /// <remarks>
-    /// <para><b>Behavior:</b> Opens a connection and executes <c>SELECT 1</c>. Failure throws and prevents the host
-    /// from accepting authentication traffic with an unreachable database.</para>
+    /// <para>
+    /// <b>Role:</b> Registered by <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpMySqlAuth"/> as an
+    /// <see cref="IHostedService"/> that runs once during host startup. Uses the same
+    /// <see cref="MySqlAuthOptions.ConnectionString"/> as <see cref="Records.MySqlUserRecordStore"/> but executes only
+    /// <c>SELECT 1</c> — it does not query <c>nntpusers</c> or validate schema.
+    /// </para>
+    /// <para>
+    /// <b>Success path:</b> Opens a <see cref="MySqlConnection"/>, runs <c>SELECT 1</c> with a fixed command timeout, logs
+    /// EventId <c>110</c> via <c>MySqlAuthConnectivityValidator.Logging.cs</c>, and returns
+    /// <see cref="Task.CompletedTask"/> so the host can continue starting listeners and authentication services.
+    /// </para>
+    /// <para>
+    /// <b>Failure path:</b> Any exception from connect or execute is logged at EventId <c>111</c>, wrapped in
+    /// <see cref="InvalidOperationException"/>, and rethrown so the generic host aborts startup rather than accepting AUTH
+    /// traffic against an unreachable database.
+    /// </para>
+    /// <para>
+    /// <b>Timeouts:</b> Connection open honours <c>Connection Timeout</c> from the connection string. The probe command uses
+    /// <see cref="ConnectivityTimeoutSeconds"/> (<c>5</c>) for <see cref="MySqlCommand.CommandTimeout"/> only; it does not
+    /// read <c>Default Command Timeout</c> from the string (unlike per-lookup commands in the record store).
+    /// </para>
+    /// <para>
+    /// <b>Lifecycle:</b> <see cref="IHostedService.StopAsync"/> is a no-op; there is no periodic
+    /// re-validation after startup.
+    /// </para>
     /// </remarks>
     internal sealed partial class MySqlAuthConnectivityValidator : IHostedService
     {
         /// <summary>
-        /// Startup connectivity probe timeout in seconds.
+        /// Command timeout in seconds applied to the startup <c>SELECT 1</c> probe.
         /// </summary>
+        /// <value><c>5</c> seconds.</value>
+        /// <remarks>
+        /// Bound independently of <c>Default Command Timeout</c> in the connection string so startup fail-fast behavior is
+        /// predictable even when lookup commands use a different default.
+        /// </remarks>
         private const int ConnectivityTimeoutSeconds = 5;
 
         /// <summary>
-        /// Validated connection settings.
+        /// Validated authentication options supplying the MySQL connection string for the probe.
         /// </summary>
+        /// <remarks>
+        /// Captured at construction from DI; immutable for the hosted-service lifetime.
+        /// </remarks>
         private readonly MySqlAuthOptions _options;
 
         /// <summary>
-        /// Logger for connectivity validation events.
+        /// Category logger for startup connectivity success and failure events (EventIds <c>110</c>–<c>111</c>).
         /// </summary>
+        /// <remarks>Passed to source-generated helpers in the logging partial.</remarks>
         private readonly ILogger<MySqlAuthConnectivityValidator> _logger;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="MySqlAuthConnectivityValidator"/> class.
+        /// Creates a startup connectivity validator bound to validated auth database settings.
         /// </summary>
-        /// <param name="options">Validated MySQL authentication options.</param>
-        /// <param name="logger">Logger for startup connectivity validation.</param>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> or <paramref name="logger"/> is null.</exception>
+        /// <param name="options">
+        /// Singleton <see cref="MySqlAuthOptions"/> from <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpMySqlAuth"/>.
+        /// Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="logger">
+        /// Logger for <see cref="MySqlAuthConnectivityValidator"/>. Must not be <see langword="null"/>.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="options"/> or <paramref name="logger"/> is <see langword="null"/>.
+        /// </exception>
+        /// <remarks>Does not open a connection; the probe runs on the first <c>StartAsync</c> invocation.</remarks>
         internal MySqlAuthConnectivityValidator(MySqlAuthOptions options, ILogger<MySqlAuthConnectivityValidator> logger)
         {
             _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -47,15 +87,29 @@ namespace Vector.NNTP.Auth.MySql.HostedServices
         }
 
         /// <summary>
-        /// Opens a MySQL connection and executes <c>SELECT 1</c> before the host accepts authentication traffic.
+        /// Runs the synchronous <c>SELECT 1</c> connectivity probe during host startup.
         /// </summary>
-        /// <param name="cancellationToken">Host shutdown token (not observed by the synchronous probe).</param>
-        /// <returns>A completed task when validation succeeds.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when the connectivity probe fails.</exception>
+        /// <param name="cancellationToken">
+        /// Host shutdown token from the generic host. Not observed by this implementation; the probe always runs to
+        /// completion or failure synchronously inside <c>StartAsync</c>.
+        /// </param>
+        /// <returns><see cref="Task.CompletedTask"/> when the probe succeeds.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when connection open or <c>SELECT 1</c> execution fails. The inner exception preserves the original
+        /// <see cref="MySqlConnector"/> or network fault after EventId <c>111</c> is logged.
+        /// </exception>
         /// <remarks>
-        /// The probe uses synchronous <see cref="MySqlConnection.Open"/> and <c>ExecuteScalar</c>; <paramref name="cancellationToken"/>
-        /// is not observed. Wait time is bounded by connection-string <c>ConnectionTimeout</c> and
-        /// <see cref="ConnectivityTimeoutSeconds"/>.
+        /// <para><b>Flow:</b></para>
+        /// <list type="number">
+        /// <item><description>Construct <see cref="MySqlConnection"/> from <see cref="MySqlAuthOptions.ConnectionString"/>.</description></item>
+        /// <item><description><see cref="MySqlConnection.Open"/> (connection-string <c>Connection Timeout</c> applies).</description></item>
+        /// <item><description>Execute <c>SELECT 1</c> via <c>ExecuteScalar</c> with <see cref="ConnectivityTimeoutSeconds"/>.</description></item>
+        /// <item><description>Log success (EventId <c>110</c>) or failure (EventId <c>111</c>) and return or throw.</description></item>
+        /// </list>
+        /// <para>
+        /// Implements <see cref="IHostedService.StartAsync"/>. All exceptions are caught,
+        /// logged, and rethrown as <see cref="InvalidOperationException"/>; none are swallowed.
+        /// </para>
         /// </remarks>
         Task IHostedService.StartAsync(CancellationToken cancellationToken)
         {
@@ -81,10 +135,15 @@ namespace Vector.NNTP.Auth.MySql.HostedServices
         }
 
         /// <summary>
-        /// No-op shutdown hook; connectivity validation runs only during <see cref="IHostedService.StartAsync"/>.
+        /// No-op hosted-service shutdown hook.
         /// </summary>
-        /// <param name="cancellationToken">Host shutdown token.</param>
-        /// <returns>A completed task.</returns>
+        /// <param name="cancellationToken">Host shutdown token (ignored).</param>
+        /// <returns><see cref="Task.CompletedTask"/> immediately.</returns>
+        /// <remarks>
+        /// Connectivity validation runs only during
+        /// <see cref="IHostedService.StartAsync"/>. No connections are held open after the
+        /// probe completes.
+        /// </remarks>
         Task IHostedService.StopAsync(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;

@@ -11,47 +11,75 @@ using Vector.NNTP.Sockets.Authentication;
 namespace Vector.NNTP.Auth.MySql.Credentials
 {
     /// <summary>
-    /// MySQL-backed implementation of <see cref="IScramCredentialStore"/> that supplies SCRAM-SHA-256 stored keys
-    /// provisioned in the <c>nntpusers</c> table.
+    /// MySQL-backed <see cref="IScramCredentialStore"/> that supplies RFC 5802 SCRAM-SHA-256 stored keys from the
+    /// <c>nntpusers</c> table.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Lookup key:</b> The backing store queries rows by <c>account_name = MD5(username)</c>. This type accepts the
-    /// plaintext NNTP username and delegates the lookup to <see cref="INntpUserRecordStore"/>.
+    /// <b>Role:</b> Production SCRAM credential source registered by
+    /// <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpMySqlAuth"/> as
+    /// <see cref="IScramCredentialStore"/>, replacing the development stub from
+    /// <c>Vector.NNTP.Sockets</c>. Consumed by <see cref="NntpAuthenticationService"/> and
+    /// <see cref="Sockets.Transport.NntpCommandDispatcher"/> during SASL SCRAM-SHA-256 exchange setup.
     /// </para>
     /// <para>
-    /// <b>Mechanism policy:</b> SCRAM material is only returned when the account is enabled and <c>allow_auth_scram256</c>
-    /// is <c>Y</c> and all SCRAM columns are present.
+    /// <b>Lookup path:</b> Accepts the plaintext NNTP username from the wire and calls
+    /// <see cref="INntpUserRecordStore"/> (production: <see cref="CachingMySqlUserRecordStore"/> with optional
+    /// username-only burst-cache hit). The inner store resolves rows where <c>account_name = MD5(username)</c>.
     /// </para>
     /// <para>
-    /// <b>I/O model:</b> The synchronous <see cref="IScramCredentialStore"/> contract is satisfied via
-    /// <see cref="INntpUserRecordStore.TryGetUser"/>, which performs synchronous MySqlConnector I/O on the connection
-    /// command-loop context. Authentication is control-plane traffic; ADO.NET connection and command timeouts bound wait time.
+    /// <b>Policy gates:</b> Returns SCRAM material only when the account is enabled (<c>is_enabled = Y</c>),
+    /// <see cref="MySqlUserRecord.AllowAuthScram256"/> is <see langword="true"/> (<c>allow_auth_scram256 = Y</c>), and
+    /// salt, positive iterations, stored key, and server key are all provisioned. Other outcomes return
+    /// <see langword="false"/> and log at EventIds <c>321</c>–<c>324</c> (see
+    /// <c>MySqlScramCredentialStore.Logging.cs</c>).
     /// </para>
     /// <para>
-    /// <b>Cache contract:</b> A successful lookup calls <see cref="MySqlUserRecordSaslCache.Set"/>; hosts must call
-    /// <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/> on auth reset and
-    /// <see cref="INntpSaslAccountAuthenticator.CompleteSaslAccountAsync"/> on success (which clears via <c>finally</c>).
+    /// <b>I/O model:</b> <see cref="IScramCredentialStore"/> is synchronous with no cancellation token. Lookups run on the
+    /// NNTP command-loop thread via <see cref="INntpUserRecordStore.TryGetUser"/>; connection and command timeouts from the
+    /// MySQL connection string bound wait time.
     /// </para>
+    /// <para>
+    /// <b>SASL staging:</b> Successful lookups call <see cref="MySqlUserRecordSaslCache.Set"/> so
+    /// <see cref="INntpSaslAccountAuthenticator.CompleteSaslAccountAsync"/> can finalize the account without a second
+    /// database round-trip. Hosts must call <see cref="INntpSaslAccountAuthenticator.AbandonSaslExchange"/> on auth reset;
+    /// completion clears the slot in a <c>finally</c> block inside the credential validator.
+    /// </para>
+    /// <para><b>Thread safety:</b> Singleton safe for concurrent sessions; each lookup uses independent connector state.</para>
     /// </remarks>
     internal sealed partial class MySqlScramCredentialStore : IScramCredentialStore
     {
         /// <summary>
-        /// Backing user record store.
+        /// Decorated user-record store that performs MySQL I/O (and optional burst-cache read-through) on lookup.
         /// </summary>
+        /// <remarks>
+        /// In production this is <see cref="CachingMySqlUserRecordStore"/> wrapping <see cref="MySqlUserRecordStore"/>.
+        /// Never null after construction.
+        /// </remarks>
         private readonly INntpUserRecordStore _recordStore;
 
         /// <summary>
-        /// Logger for SCRAM credential lookup diagnostics.
+        /// Category logger for SCRAM lookup lifecycle events (EventIds <c>320</c>–<c>326</c>).
         /// </summary>
+        /// <remarks>Passed to source-generated helpers in the logging partial.</remarks>
         private readonly ILogger<MySqlScramCredentialStore> _logger;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="MySqlScramCredentialStore"/> class.
+        /// Creates a SCRAM credential store backed by the supplied user-record store.
         /// </summary>
-        /// <param name="recordStore">Backing user record store.</param>
-        /// <param name="logger">Logger for SCRAM credential lookup diagnostics.</param>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="recordStore"/> or <paramref name="logger"/> is null.</exception>
+        /// <param name="recordStore">
+        /// <see cref="INntpUserRecordStore"/> implementation from DI. Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="logger">
+        /// Logger for <see cref="MySqlScramCredentialStore"/>. Must not be <see langword="null"/>.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="recordStore"/> or <paramref name="logger"/> is <see langword="null"/>.
+        /// </exception>
+        /// <remarks>
+        /// Registered as a singleton in <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpMySqlAuth"/>.
+        /// Does not open a connection at construction time.
+        /// </remarks>
         internal MySqlScramCredentialStore(
             INntpUserRecordStore recordStore,
             ILogger<MySqlScramCredentialStore> logger)
@@ -61,23 +89,49 @@ namespace Vector.NNTP.Auth.MySql.Credentials
         }
 
         /// <summary>
-        /// Resolves SCRAM-SHA-256 stored-key material for <paramref name="username"/> from the MySQL user store.
+        /// Resolves SCRAM-SHA-256 stored-key material for a username from the MySQL user store.
         /// </summary>
-        /// <param name="username">Plaintext NNTP username supplied by the client.</param>
+        /// <param name="username">
+        /// Plaintext NNTP account name supplied by the SASL client. Must not be <see langword="null"/> or empty.
+        /// </param>
         /// <param name="credential">
-        /// Populated <see cref="ScramStoredCredential"/> when the account is enabled, SCRAM is permitted, and all SCRAM
-        /// columns are present; otherwise <see langword="null"/>.
+        /// When this method returns <see langword="true"/>, a <see cref="ScramStoredCredential"/> built from the row's SCRAM
+        /// columns. When this method returns <see langword="false"/>, <see langword="null"/>.
         /// </param>
         /// <returns>
-        /// <see langword="true"/> when SCRAM material was returned; <see langword="false"/> for not-found, disabled,
-        /// policy-denied, or incomplete SCRAM provisioning without throwing.
+        /// <see langword="true"/> when SCRAM material was returned; <see langword="false"/> for not-found, disabled account,
+        /// policy denial, or incomplete SCRAM provisioning without throwing.
         /// </returns>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="username"/> is null or empty.</exception>
-        /// <exception cref="NntpCredentialStoreTransientException">Thrown when the backing store fails due to a backend error.</exception>
+        /// <exception cref="ArgumentException">
+        /// Thrown when <paramref name="username"/> is <see langword="null"/> or empty.
+        /// </exception>
+        /// <exception cref="NntpCredentialStoreTransientException">
+        /// Thrown when the backing record store fails due to a database or transport error after EventId <c>326</c> is
+        /// logged.
+        /// </exception>
         /// <remarks>
-        /// On success, stashes the materialised record in <see cref="MySqlUserRecordSaslCache"/> for
-        /// <see cref="INntpSaslAccountAuthenticator.CompleteSaslAccountAsync"/>. The synchronous
-        /// <see cref="INntpUserRecordStore.TryGetUser"/> contract does not accept cancellation.
+        /// <para><b>Flow:</b></para>
+        /// <list type="number">
+        /// <item><description>Log started (EventId <c>320</c>).</description></item>
+        /// <item><description>Load row via <see cref="INntpUserRecordStore.TryGetUser"/>.</description></item>
+        /// <item><description>Reject with Debug/Warning logs when row missing, disabled, not SCRAM-permitted, or SCRAM columns incomplete.</description></item>
+        /// <item>
+        /// <description>
+        /// On success: build <see cref="ScramStoredCredential"/>, <see cref="MySqlUserRecordSaslCache.Set"/>, log succeeded
+        /// (EventId <c>325</c>), return <see langword="true"/>.
+        /// </description>
+        /// </item>
+        /// </list>
+        /// <para>
+        /// Implements <see cref="IScramCredentialStore.TryGetScramCredential"/>. Rejection paths are expected authentication
+        /// outcomes (wire layer maps <see langword="false"/> to SASL failure). Backend faults are classified by
+        /// <see cref="AuthMySqlFailureClassifier"/> before wrapping in <see cref="NntpCredentialStoreTransientException"/>.
+        /// <see cref="OperationCanceledException"/> is rethrown without logging or wrapping.
+        /// </para>
+        /// <para>
+        /// Does not populate the post-success burst cache (<see cref="MySqlUserRecordCache"/>); that occurs only after
+        /// cryptographic verification in <see cref="MySqlNntpCredentialValidator"/>.
+        /// </para>
         /// </remarks>
         bool IScramCredentialStore.TryGetScramCredential(string username, [NotNullWhen(true)] out ScramStoredCredential? credential)
         {

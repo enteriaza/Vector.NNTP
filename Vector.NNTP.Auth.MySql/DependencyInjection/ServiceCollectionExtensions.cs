@@ -18,26 +18,56 @@ using Vector.NNTP.Sockets.Authentication;
 namespace Vector.NNTP.Auth.MySql.DependencyInjection
 {
     /// <summary>
-    /// Extension methods for wiring MySQL-backed NNTP authentication into a host.
+    /// Dependency-injection entry points that wire MySQL-backed NNTP authentication into a generic host.
     /// </summary>
     /// <remarks>
-    /// <para><b>Host contract:</b> Call after <c>AddNntpSocketsReader</c> or <c>AddNntpSocketsTransit</c> so MySQL
-    /// credential services replace the development authentication stubs from the sockets assembly.</para>
+    /// <para>
+    /// <b>Assembly role:</b> Replaces development credential and SASL store stubs from
+    /// <c>Vector.NNTP.Sockets</c> with production implementations backed by the <c>nntpusers</c> table. NNRPD and NNTPD
+    /// hosts call <see cref="AddNntpMySqlAuthFromHostConfiguration"/> during startup (see
+    /// <c>Vector.NNTP.NNRPD.Program</c> and <c>Vector.NNTP.NNTPD.Program</c>).
+    /// </para>
+    /// <para>
+    /// <b>Ordering:</b> May run before or after <c>AddNntpSocketsReader</c> / <c>AddNntpSocketsTransit</c>.
+    /// <see cref="AddNntpMySqlAuth"/> removes prior auth-related service descriptors so
+    /// MySQL implementations win when socket registration added development stubs first. When MySQL auth is registered first,
+    /// later <c>TryAdd</c> stub registration does not override production services.
+    /// </para>
+    /// <para>
+    /// <b>Prerequisites:</b> Hosts must register logging and <see cref="IAccountKeyNormalizer"/> (typically via
+    /// <c>AddNntpSessionRedis</c> or session core) before resolving <see cref="MySqlNntpCredentialValidator"/>.
+    /// </para>
     /// </remarks>
     public static class ServiceCollectionExtensions
     {
         /// <summary>
-        /// Registers MySQL-backed NNTP authentication when a connection string is available on the host configuration.
+        /// Registers MySQL-backed NNTP authentication using the <c>MainDB</c> connection string from host configuration.
         /// </summary>
+        /// <param name="services">
+        /// Host service collection. Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="configuration">
+        /// Root <see cref="IConfiguration"/> (for example <c>builder.Configuration</c>). Must not be <see langword="null"/>.
+        /// </param>
+        /// <returns><paramref name="services"/> for fluent chaining.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="services"/> or <paramref name="configuration"/> is <see langword="null"/>.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when <c>ConnectionStrings:MainDB</c> is missing or whitespace-only.
+        /// </exception>
         /// <remarks>
-        /// <para>Uses the connection string named <c>MainDB</c>.</para>
-        /// <para><b>Fatal startup behavior:</b> Missing or blank <c>MainDB</c> throws and host startup fails.</para>
+        /// <para>
+        /// Reads <c>configuration.GetConnectionString("MainDB")</c> and delegates to <see cref="AddNntpMySqlAuth"/>. This is
+        /// the production entry point for NNRPD and NNTPD when <c>appsettings</c> supplies <c>ConnectionStrings:MainDB</c>
+        /// (see <c>Docs/nntp-authentication.md</c>).
+        /// </para>
+        /// <para>
+        /// <b>Fatal startup:</b> Missing <c>MainDB</c> throws during service registration so the host never starts with an
+        /// undefined auth database. Malformed or placeholder connection strings throw <see cref="ArgumentException"/> from
+        /// <see cref="MySqlAuthConnectionStringValidator"/> inside <see cref="MySqlAuthOptions"/> construction.
+        /// </para>
         /// </remarks>
-        /// <param name="services">Service collection.</param>
-        /// <param name="configuration">Root host configuration.</param>
-        /// <returns>The service collection for chaining.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> or <paramref name="configuration"/> is null.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when <c>ConnectionStrings:MainDB</c> is missing or blank.</exception>
         public static IServiceCollection AddNntpMySqlAuthFromHostConfiguration(
             this IServiceCollection services,
             IConfiguration configuration)
@@ -53,24 +83,51 @@ namespace Vector.NNTP.Auth.MySql.DependencyInjection
         }
 
         /// <summary>
-        /// Registers MySQL-backed <see cref="INntpCredentialValidator"/> and SASL credential store services.
+        /// Registers MySQL-backed NNTP authentication services for a validated connection string.
         /// </summary>
-        /// <param name="services">Service collection.</param>
-        /// <param name="connectionString">MySQL connection string for the <c>nntpusers</c> table.</param>
-        /// <returns>The service collection for chaining.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="connectionString"/> is invalid.</exception>
+        /// <param name="services">
+        /// Host service collection. Must not be <see langword="null"/>.
+        /// </param>
+        /// <param name="connectionString">
+        /// MySQL connection string for the <c>nntpusers</c> table. Validated by
+        /// <see cref="MySqlAuthConnectionStringValidator"/> when <see cref="MySqlAuthOptions"/> is constructed (non-empty
+        /// server and database, parseable builder, no placeholder credentials).
+        /// </param>
+        /// <returns><paramref name="services"/> for fluent chaining.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="services"/> is <see langword="null"/>.
+        /// </exception>
+        /// <exception cref="ArgumentException">
+        /// Thrown when <paramref name="connectionString"/> is blank, malformed, or contains placeholder credentials.
+        /// </exception>
         /// <remarks>
+        /// <para><b>Replaced registrations:</b> Removes any prior implementations of:</para>
+        /// <list type="bullet">
+        /// <item><description><see cref="INntpCredentialValidator"/></description></item>
+        /// <item><description><see cref="INntpSaslAccountAuthenticator"/></description></item>
+        /// <item><description><see cref="ICramMd5CredentialStore"/> and <see cref="IScramCredentialStore"/></description></item>
+        /// <item><description><see cref="INntpUserRecordStore"/>, <see cref="MySqlUserRecordStore"/>, <see cref="MySqlUserRecordCache"/>, <see cref="AuthMySqlMetrics"/></description></item>
+        /// </list>
+        /// <para><b>Singleton graph (production):</b></para>
+        /// <list type="number">
+        /// <item><description><see cref="MySqlAuthOptions"/> — validated connection string and default auth-cache TTL.</description></item>
+        /// <item><description><see cref="AuthMySqlMetrics"/> — OpenTelemetry counters and histograms for auth MySQL paths.</description></item>
+        /// <item><description><see cref="MySqlUserRecordCache"/> — burst deduplication cache (TTL from options).</description></item>
+        /// <item><description><see cref="MySqlUserRecordStore"/> — inner MySQL <c>nntpusers</c> lookups.</description></item>
+        /// <item><description><see cref="CachingMySqlUserRecordStore"/> as <see cref="INntpUserRecordStore"/> — read-through decorator.</description></item>
+        /// <item>
+        /// <description>
+        /// <see cref="MySqlNntpCredentialValidator"/> — concrete singleton; also exposed as <see cref="INntpCredentialValidator"/>
+        /// and <see cref="INntpSaslAccountAuthenticator"/> (same instance for both interfaces).
+        /// </description>
+        /// </item>
+        /// <item><description><see cref="MySqlCramMd5CredentialStore"/> as <see cref="ICramMd5CredentialStore"/>.</description></item>
+        /// <item><description><see cref="MySqlScramCredentialStore"/> as <see cref="IScramCredentialStore"/>.</description></item>
+        /// <item><description><see cref="MySqlAuthConnectivityValidator"/> as <see cref="Microsoft.Extensions.Hosting.IHostedService"/> — fail-fast <c>SELECT 1</c> at host start.</description></item>
+        /// </list>
         /// <para>
-        /// Replaces development authentication stubs from the sockets assembly and registers, as singletons:
-        /// <see cref="MySqlAuthOptions"/>, <see cref="AuthMySqlMetrics"/>, <see cref="MySqlUserRecordCache"/>,
-        /// <see cref="MySqlUserRecordStore"/>, <see cref="CachingMySqlUserRecordStore"/> as
-        /// <see cref="INntpUserRecordStore"/>, <see cref="MySqlNntpCredentialValidator"/> as both
-        /// <see cref="INntpCredentialValidator"/> and <see cref="INntpSaslAccountAuthenticator"/>,
-        /// <see cref="MySqlCramMd5CredentialStore"/>, and <see cref="MySqlScramCredentialStore"/>.
-        /// </para>
-        /// <para>
-        /// <see cref="MySqlAuthConnectivityValidator"/> is registered as a hosted service for fail-fast startup connectivity.
+        /// <b>Tests and tools:</b> Integration tests and harnesses may call this overload directly with an in-memory connection
+        /// string instead of binding <c>MainDB</c> from configuration.
         /// </para>
         /// </remarks>
         public static IServiceCollection AddNntpMySqlAuth(this IServiceCollection services, string connectionString)
