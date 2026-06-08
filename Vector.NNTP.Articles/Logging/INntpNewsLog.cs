@@ -13,27 +13,53 @@ namespace Vector.NNTP.Articles.Logging
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Transit spool components emit pipeline outcomes through this abstraction so storage and writer pumps stay
-    /// decoupled from Serilog and file layout. Production hosts register <see cref="NntpNewsLog"/> (file sink at
-    /// <c>{LogDir}/news</c>); unit tests and DI setups without <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>
-    /// receive <see cref="NullNntpNewsLog.Instance"/> from
-    /// <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpArticlesTransitSpool"/>.
+    /// <b>Role:</b> Decouples transit spool storage and writer pumps from Serilog, file layout, and INN line formatting.
+    /// Pipeline components depend on this abstraction rather than <see cref="NntpNewsLog"/> directly so unit tests can inject
+    /// <see cref="NullNntpNewsLog.Instance"/> without creating log files.
+    /// </para>
+    /// <para><b>Implementations:</b></para>
+    /// <list type="bullet">
+    /// <item>
+    /// <description>
+    /// <see cref="NntpNewsLog"/> — production Serilog rolling file at <c>{LogDir}/news-{yyyyMMdd}.log</c>. Validates
+    /// non-empty <c>messageId</c>, resolves feeds, formats lines, and writes at Information level. Also implements
+    /// <see cref="IDisposable"/> for sink flush on host shutdown (not part of this interface).
+    /// </description>
+    /// </item>
+    /// <item>
+    /// <description>
+    /// <see cref="NullNntpNewsLog"/> — no-op for tests and DI without
+    /// <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>. Never throws; ignores all parameters.
+    /// </description>
+    /// </item>
+    /// </list>
+    /// <para>
+    /// <b>Registration:</b> <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpArticlesTransitSpool"/>
+    /// registers <see cref="NntpNewsLog"/> when configuration is supplied, otherwise
+    /// <see cref="NullNntpNewsLog.Instance"/>.
     /// </para>
     /// <para><b>Call sites:</b></para>
     /// <list type="bullet">
     /// <item>
     /// <description>
-    /// <see cref="NntpSpoolTransitStorage"/> — minus lines for enqueue-time rejections (for example max article size and
+    /// <see cref="NntpSpoolTransitStorage"/> — <see cref="LogRejected"/> for enqueue-time rejections (max article size,
     /// queue full).
     /// </description>
     /// </item>
     /// <item>
     /// <description>
-    /// <see cref="NntpSpoolWriterPump"/> — minus lines for preprocess, postprocess, and spool write failures; plus and
-    /// optional cancel lines only after successful <see cref="FileIOUtilities.AtomicWriteAsync"/>.
+    /// <see cref="NntpSpoolWriterPump"/> — <see cref="LogRejected"/> for preprocess, postprocess, and write failures;
+    /// <see cref="LogAccepted"/> and optional <see cref="LogCancelProcessed"/> only after successful
+    /// <see cref="FileIOUtilities.AtomicWriteAsync"/>.
     /// </description>
     /// </item>
     /// </list>
+    /// <para>
+    /// <b>Metrics alignment:</b> On the pump path, <see cref="Metrics.NntpSpoolMetrics.RecordArticleAccepted"/> or
+    /// <see cref="Metrics.NntpSpoolMetrics.RecordArticleRejected"/> runs immediately before the matching
+    /// <see cref="LogAccepted"/> or <see cref="LogRejected"/> call so OpenTelemetry <c>feed</c> tags match the news line.
+    /// Cancel lines have no separate meter in v1.
+    /// </para>
     /// <para><b>Line prefixes (INN semantics):</b></para>
     /// <list type="bullet">
     /// <item><description><c>+</c> — accepted article after durable spool commit (<see cref="LogAccepted"/>).</description></item>
@@ -42,14 +68,14 @@ namespace Vector.NNTP.Articles.Logging
     /// <item><description><c>j</c> — article accepted into junk newsgroup (<see cref="LogJunked"/>; reserved in v1).</description></item>
     /// </list>
     /// <para>
-    /// Implementations log only final Articles pipeline outcomes. Accept and cancel lines are emitted after successful spool
-    /// commit, not on wire <c>239</c>/<c>235</c> responses. Rejections (including yEnc and spam postprocess failures) use
-    /// minus lines, not junk lines.
+    /// Implementations record final Articles pipeline outcomes only. Accept and cancel lines are emitted after successful
+    /// spool commit, not on wire <c>239</c> or <c>235</c> responses. Policy rejections (spam, yEnc, header syntax, and
+    /// similar) use minus lines via <see cref="LogRejected"/>, not junk lines.
     /// </para>
     /// <para>
-    /// Production formatting uses <see cref="NntpNewsLogFormatter"/> with event time
+    /// Production formatting (<see cref="NntpNewsLog"/>) uses <see cref="NntpNewsLogFormatter"/> with event time
     /// (<see cref="DateTimeOffset.Now"/> at call time) and feed resolution via
-    /// <see cref="NntpNewsFeedResolver"/>.
+    /// <see cref="NntpNewsFeedResolver.ResolveFeed"/>.
     /// </para>
     /// <para>
     /// <b>Thread safety:</b> Implementations must tolerate concurrent calls from multiple writer pump threads.
@@ -62,25 +88,36 @@ namespace Vector.NNTP.Articles.Logging
         /// Records an accepted article after durable spool write, producing an INN plus line.
         /// </summary>
         /// <param name="messageId">
-        /// Article Message-ID from the transit command or local POST. Callers must supply a non-empty value;
-        /// <see cref="NntpNewsLog"/> validates and throws when it is missing.
+        /// Article Message-ID from the transit command or local POST. Callers must supply a non-null, non-empty value.
+        /// <see cref="NntpNewsLog"/> throws <see cref="ArgumentException"/> when it is missing;
+        /// <see cref="NullNntpNewsLog"/> ignores invalid values.
         /// </param>
         /// <param name="origin">
-        /// <see cref="NntpSpoolArticleOrigin"/> captured at enqueue. Used to resolve the feed column (local post, transit peer
-        /// name, Path first hop, or peer hostname).
+        /// <see cref="NntpSpoolArticleOrigin"/> captured at enqueue. Passed to
+        /// <see cref="NntpNewsFeedResolver.ResolveFeed"/> for the feed column (local post, transit peer name, Path first
+        /// hop, peer hostname, or <see cref="NntpNewsLogFeedNames.UnknownFeed"/>).
         /// </param>
         /// <param name="articleBytes">
-        /// Committed article bytes after preprocessing and postprocessing. Supplies Path feed fallback when origin metadata is
-        /// insufficient and provides the byte count on the plus line.
+        /// Committed article bytes after preprocessing and postprocessing on the pump path
+        /// (<c>postprocessResult.ArticleBytes</c>). Supplies Path feed fallback when origin metadata is insufficient and
+        /// provides <c>articleBytes.Length</c> as the size column on the plus line. May include local <c>Path</c> hop
+        /// prepends from <see cref="Processing.ArticlePathHeaderMutator"/> when configured.
         /// </param>
         /// <remarks>
         /// <para>
-        /// Invoked from <see cref="NntpSpoolWriterPump"/> only after spool file write succeeds. Does not represent wire-level
-        /// acceptance responses.
+        /// Invoked from <see cref="NntpSpoolWriterPump"/> only after
+        /// <see cref="FileIOUtilities.AtomicWriteAsync"/> succeeds, immediately after
+        /// <see cref="Metrics.NntpSpoolMetrics.RecordArticleAccepted"/>. Does not represent wire-level <c>239</c>
+        /// acceptance.
         /// </para>
         /// <para>
-        /// When the committed article is a cancel control message, the pump also calls <see cref="LogCancelProcessed"/> after
-        /// this method (plus line first, then cancel line).
+        /// When postprocessing classified the article as a cancel
+        /// (<see cref="Classification.ArticleTypeFlags.Cancel"/>), the pump also calls <see cref="LogCancelProcessed"/>
+        /// for the same article immediately after this method (plus line first, then cancel line).
+        /// </para>
+        /// <para>
+        /// <see cref="NntpNewsLog"/> does not throw when <paramref name="articleBytes"/> is empty; size zero is logged if
+        /// supplied.
         /// </para>
         /// </remarks>
         public void LogAccepted(string messageId, in NntpSpoolArticleOrigin origin, ReadOnlySpan<byte> articleBytes);
@@ -89,29 +126,37 @@ namespace Vector.NNTP.Articles.Logging
         /// Records a rejected article, producing an INN minus line with a sanitized operator-facing reason.
         /// </summary>
         /// <param name="messageId">
-        /// Article Message-ID from the transit command or local POST. Callers must supply a non-empty value;
-        /// <see cref="NntpNewsLog"/> validates and throws when it is missing.
+        /// Article Message-ID from the transit command or local POST. Callers must supply a non-null, non-empty value.
+        /// <see cref="NntpNewsLog"/> throws <see cref="ArgumentException"/> when it is missing;
+        /// <see cref="NullNntpNewsLog"/> ignores invalid values.
         /// </param>
         /// <param name="origin">
-        /// Enqueue origin metadata for feed resolution via <see cref="NntpNewsFeedResolver"/>.
+        /// Enqueue origin metadata for feed resolution via <see cref="NntpNewsFeedResolver.ResolveFeed"/>.
         /// </param>
         /// <param name="articleBytes">
-        /// Article bytes available at rejection time for Path feed fallback. May be empty when rejection occurs before a full
-        /// payload is retained (for example early enqueue rejections in <see cref="NntpSpoolTransitStorage"/>).
+        /// Article bytes available at rejection time for Path feed fallback. Enqueue rejections in
+        /// <see cref="NntpSpoolTransitStorage"/> may pass empty bytes when no payload is retained. Preprocess failures in
+        /// <see cref="NntpSpoolWriterPump"/> pass original enqueued bytes; postprocess and write failures pass preprocess
+        /// output.
         /// </param>
         /// <param name="reason">
-        /// Operator-facing rejection text (preprocess failure, postprocess failure including spam and yEnc policy, queue full,
-        /// max size, or a brief write-failure label). <see cref="NntpNewsLog"/> passes this through
-        /// <see cref="NntpNewsLogFormatter.SanitizeReason"/> before formatting.
+        /// Operator-facing rejection text: preprocess failure, postprocess failure (including spam and yEnc policy), queue
+        /// full, max article size, or a brief write-failure label (often an exception type name). On
+        /// <see cref="NntpNewsLog"/>, passed through <see cref="NntpNewsLogFormatter.SanitizeReason"/> before formatting.
         /// </param>
         /// <remarks>
         /// <para>
         /// Called from <see cref="NntpSpoolTransitStorage"/> for enqueue rejections and from
-        /// <see cref="NntpSpoolWriterPump"/> for preprocess, postprocess, and spool write failures.
+        /// <see cref="NntpSpoolWriterPump"/> for preprocess, postprocess, and spool write failures, immediately after the
+        /// matching <see cref="Metrics.NntpSpoolMetrics.RecordArticleRejected"/> call on the pump path.
         /// </para>
         /// <para>
-        /// Null or whitespace reasons are formatted as the literal <c>Rejected</c> by
-        /// <see cref="NntpNewsLogFormatter.FormatRejected"/>.
+        /// Null or whitespace <paramref name="reason"/> values are formatted as the literal <c>Rejected</c> by
+        /// <see cref="NntpNewsLogFormatter.FormatRejected"/> on production implementations.
+        /// </para>
+        /// <para>
+        /// Rejection category for metrics (<see cref="Metrics.SpoolArticleRejectionClassifier"/>) is classified separately
+        /// before the news log call; this method receives only the human-readable reason string.
         /// </para>
         /// </remarks>
         public void LogRejected(
@@ -124,25 +169,29 @@ namespace Vector.NNTP.Articles.Logging
         /// Records a processed cancel control article after durable spool commit, producing an INN cancel line.
         /// </summary>
         /// <param name="messageId">
-        /// Cancel article Message-ID (the control message itself, not the target article). Callers must supply a non-empty
-        /// value; <see cref="NntpNewsLog"/> validates and throws when it is missing.
+        /// Cancel article Message-ID (the control message itself, not the target article). Callers must supply a non-null,
+        /// non-empty value. <see cref="NntpNewsLog"/> throws <see cref="ArgumentException"/> when it is missing;
+        /// <see cref="NullNntpNewsLog"/> ignores invalid values.
         /// </param>
         /// <param name="origin">
-        /// Enqueue origin metadata for feed resolution via <see cref="NntpNewsFeedResolver"/>.
+        /// Enqueue origin metadata for feed resolution via <see cref="NntpNewsFeedResolver.ResolveFeed"/>.
         /// </param>
         /// <param name="articleBytes">
-        /// Committed cancel article bytes used for Path feed fallback and for parsing the cancel target Message-ID from
-        /// <c>Control</c> headers via <see cref="CancelControlHeaderParser"/>.
+        /// Committed cancel article bytes after preprocessing and postprocessing. Used for Path feed fallback and for parsing
+        /// the cancelled target Message-ID via <see cref="CancelControlHeaderParser.TryParseCancelTarget"/>.
         /// </param>
         /// <remarks>
         /// <para>
-        /// Invoked from <see cref="NntpSpoolWriterPump"/> after successful spool write when postprocessing classified the
-        /// article as a cancel. The pump emits <see cref="LogAccepted"/> for the cancel article before this method.
+        /// Invoked from <see cref="NntpSpoolWriterPump"/> after successful spool write when postprocessing set
+        /// <see cref="Classification.ArticleTypeFlags.Cancel"/>. The pump emits <see cref="LogAccepted"/> for the same
+        /// article immediately before this method.
         /// </para>
         /// <para>
-        /// When the cancel target cannot be parsed, production formatting logs <c>Cancelling ?</c> using
-        /// <see cref="NntpNewsLogFeedNames.UnknownFeed"/> as the target token.
+        /// On <see cref="NntpNewsLog"/>, when <see cref="CancelControlHeaderParser.TryParseCancelTarget"/> returns
+        /// <see langword="false"/>, the implementation substitutes <see cref="NntpNewsLogFeedNames.UnknownFeed"/> so
+        /// <see cref="NntpNewsLogFormatter.FormatCancelProcessed"/> emits <c>Cancelling ?</c> without angle brackets.
         /// </para>
+        /// <para>There is no separate OpenTelemetry counter for cancel lines in v1.</para>
         /// </remarks>
         public void LogCancelProcessed(string messageId, in NntpSpoolArticleOrigin origin, ReadOnlySpan<byte> articleBytes);
 
@@ -150,14 +199,15 @@ namespace Vector.NNTP.Articles.Logging
         /// Records an article accepted into a junk newsgroup, producing an INN junk line.
         /// </summary>
         /// <param name="messageId">
-        /// Article Message-ID. Callers must supply a non-empty value; <see cref="NntpNewsLog"/> validates and throws when it
-        /// is missing.
+        /// Article Message-ID. Callers must supply a non-null, non-empty value. <see cref="NntpNewsLog"/> throws
+        /// <see cref="ArgumentException"/> when it is missing; <see cref="NullNntpNewsLog"/> ignores invalid values.
         /// </param>
         /// <param name="origin">
-        /// Enqueue origin metadata for feed resolution via <see cref="NntpNewsFeedResolver"/>.
+        /// Enqueue origin metadata for feed resolution via <see cref="NntpNewsFeedResolver.ResolveFeed"/>.
         /// </param>
         /// <param name="articleBytes">
-        /// Article bytes used for Path feed fallback and as the byte count on the junk line.
+        /// Article bytes used for Path feed fallback and as <c>articleBytes.Length</c> on the junk line when junk filing is
+        /// wired.
         /// </param>
         /// <remarks>
         /// <para>
@@ -165,8 +215,8 @@ namespace Vector.NNTP.Articles.Logging
         /// yEnc, and other policy rejections use <see cref="LogRejected"/> instead.
         /// </para>
         /// <para>
-        /// <see cref="NntpNewsLogFormatter.FormatJunked"/> is implemented and unit-tested so junk logging can be wired without
-        /// formatter changes later.
+        /// <see cref="NntpNewsLogFormatter.FormatJunked"/> and <see cref="NntpNewsLog.LogJunked"/> are implemented and
+        /// unit-tested so junk logging can be wired without formatter or contract changes later.
         /// </para>
         /// </remarks>
         public void LogJunked(string messageId, in NntpSpoolArticleOrigin origin, ReadOnlySpan<byte> articleBytes);

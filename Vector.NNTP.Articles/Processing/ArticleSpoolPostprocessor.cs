@@ -4,7 +4,6 @@
 // HOT PATH: deep header validation and filter checks after preprocessing, before durable spool writes.
 
 using System.Text;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Vector.NNTP.Articles.Classification;
 using Vector.NNTP.Articles.Scanning;
@@ -22,72 +21,138 @@ namespace Vector.NNTP.Articles.Processing
     /// Performs deep NNTP article header validation and filter-backed semantic checks on dequeued transit articles.
     /// </summary>
     /// <remarks>
-    /// <para><b>Role:</b> Invoked by <see cref="Storage.NntpSpoolWriterPump"/> after
+    /// <para>
+    /// <b>Role:</b> Invoked by <see cref="NntpSpoolWriterPump"/> after
     /// <see cref="ArticleSpoolPreprocessor"/> succeeds and before
     /// <see cref="Utilities.IO.FileIOUtilities.AtomicWriteAsync"/>. Failures return
     /// <see cref="ArticleSpoolPostprocessResult"/> so the writer loop can log, release HistoryDB reservations, and
-    /// continue draining.</para>
-    /// <para><b>Pipeline:</b></para>
+    /// continue draining without tearing down the pump.
+    /// </para>
+    /// <para>
+    /// <b>Scope boundary:</b> Shallow header <em>syntax</em> validation runs in
+    /// <see cref="ArticleSpoolPreprocessor"/>; this type performs parsing into filter-facing structures, per-field
+    /// semantic validation, Message-ID agreement with the transit command, canonical date resolution, configured style
+    /// rules, content classification, yEnc CRC verification, and optional SpamAssassin <c>CHECK</c>.
+    /// </para>
+    /// <para><b>Pipeline (in order):</b></para>
     /// <list type="number">
-    /// <item><description>Parse headers into <see cref="PostFilterParsedArticle"/> (ordered name/value pairs and body offset).</description></item>
-    /// <item><description>Validate each header name and unfolded body with <see cref="HeaderFieldValidation"/>.</description></item>
-    /// <item><description>Require a parsable <c>Message-ID</c> header that matches the transit command Message-ID.</description></item>
+    /// <item><description>Parse headers into <see cref="PostFilterParsedArticle"/> plus wire-order <see cref="ParsedTransitArticle.OrderedHeaders"/>.</description></item>
+    /// <item><description>Validate each unfolded header name and body with <see cref="HeaderFieldValidation"/>.</description></item>
+    /// <item><description>Require a syntactically valid <c>Message-ID</c> header matching the transit command token.</description></item>
     /// <item><description>Require a canonical date via <see cref="ArticleDateHeaderResolver"/> and <see cref="NewsDateParser"/>.</description></item>
-    /// <item><description>Apply <see cref="PostFilterStyleOptions"/> shape rules and <see cref="NntpServerOptions.MaxArtSize"/> from bound server options.</description></item>
-    /// <item><description>Classify content via <see cref="ArticleTypeClassifier"/>; validate yEnc CRC or run SpamAssassin on small non-yEnc articles.</description></item>
+    /// <item><description>Apply <see cref="PostFilterStyleOptions"/> forbidden headers and crosspost limits plus <see cref="NntpServerOptions.MaxArtSize"/>.</description></item>
+    /// <item><description>Classify via <see cref="ArticleTypeClassifier.Classify"/>; validate yEnc CRC when <see cref="ArticleTypeFlags.YEnc"/> is set.</description></item>
+    /// <item><description>Run SpamAssassin on non-yEnc articles under <see cref="SpamCheckMaxArticleBytes"/> (fail-open on spamd faults).</description></item>
     /// </list>
+    /// <para>
+    /// <b>Mutations:</b> Does not modify spool payload bytes. SpamAssassin uses a temporary scan copy from
+    /// <see cref="SpamdScanArticleBuilder"/> only.
+    /// </para>
     /// <para>
     /// <b>Registration:</b> Singleton registered by
     /// <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpArticlesTransitSpool"/>.
     /// </para>
+    /// <para>
+    /// <b>Logging partial:</b> Spamd fail-open warnings live in <c>ArticleSpoolPostprocessor.Logging.cs</c>. Semantic
+    /// rejections are returned to the pump without logging from this type.
+    /// </para>
+    /// <para><b>Threading:</b> Immutable dependency snapshots after construction; safe for concurrent writer pumps.</para>
     /// </remarks>
     internal sealed partial class ArticleSpoolPostprocessor
     {
         /// <summary>
-        /// Maximum number of distinct header fields accepted during parsing.
+        /// Maximum number of distinct header fields accepted during postprocess parsing.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Enforced in <see cref="TryCommitHeaderField"/> when committing parsed fields. Continuation lines do not
+        /// increment the count. Matches the preprocessor <c>MaxHeaderFieldCount</c> guard (256) so pathological
+        /// many-header articles are rejected consistently across both stages.
+        /// </para>
+        /// <para>
+        /// When exceeded, parsing fails with <c>Too many header fields (limit 256).</c>
+        /// </para>
+        /// </remarks>
         private const int MaxHeaderFieldCount = 256;
 
         /// <summary>
-        /// Maximum article size eligible for SpamAssassin <c>CHECK</c> on the transit spool path (128 KiB).
+        /// Maximum article size eligible for SpamAssassin <c>CHECK</c> on the transit spool path (131072 bytes / 128 KiB).
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Compared against <c>articleBytes.Length</c> in <see cref="PostprocessAsync"/> after style validation.
+        /// Articles at or above this size skip spamd even when not yEnc. yEnc articles never reach spamd regardless of
+        /// size.
+        /// </para>
+        /// </remarks>
         private const int SpamCheckMaxArticleBytes = 131_072;
 
         /// <summary>
-        /// Post-filter style options governing forbidden headers and crosspost limits.
+        /// Post-filter style options governing forbidden headers and newsgroup crosspost limits.
         /// </summary>
+        /// <remarks>
+        /// Snapshot of <see cref="PostFilterOptions.Style"/> captured at construction from
+        /// <see cref="IOptions{TOptions}.Value"/>; option monitor changes are not observed.
+        /// </remarks>
         private readonly PostFilterStyleOptions _styleOptions;
 
         /// <summary>
         /// Bound server options supplying <see cref="NntpServerOptions.MaxArtSize"/> and spamd scan header synthesis.
         /// </summary>
+        /// <remarks>
+        /// Snapshot captured at construction. <see cref="NntpServerOptions.MaxArtSize"/> is enforced in
+        /// <see cref="TryValidateStyleRules"/> when greater than zero. Identity fields are passed to
+        /// <see cref="SpamdScanArticleBuilder.BuildScanArticle"/> for synthetic <c>Received:</c> and <c>To:</c> headers.
+        /// </remarks>
         private readonly NntpServerOptions _serverOptions;
 
         /// <summary>
         /// Remote spamd client for non-yEnc articles under <see cref="SpamCheckMaxArticleBytes"/>.
         /// </summary>
+        /// <remarks>
+        /// Invoked from <see cref="TrySpamCheckAsync"/> via <see cref="ISpamAssassin.CheckAsync"/>. Protocol and
+        /// unexpected faults fail open; only a positive spam classification returns a rejection result.
+        /// </remarks>
         private readonly ISpamAssassin _spamAssassin;
 
         /// <summary>
         /// Builds temporary spamd scan articles without mutating spool payloads.
         /// </summary>
+        /// <remarks>
+        /// Called from <see cref="TrySpamCheckAsync"/> before each eligible <c>CHECK</c>. Scan synthesis faults are
+        /// logged and fail open (see logging partial).
+        /// </remarks>
         private readonly SpamdScanArticleBuilder _spamdScanBuilder;
 
         /// <summary>
-        /// Category logger for filter rejection and fail-open events.
+        /// Category logger for spamd fail-open diagnostics on the transit spool path.
         /// </summary>
+        /// <remarks>
+        /// Semantic validation and spam <em>classification</em> rejections are not logged here; they are returned in
+        /// <see cref="ArticleSpoolPostprocessResult"/> and logged by <see cref="NntpSpoolWriterPump"/>. Only
+        /// <c>TrySpamCheckAsync</c> fail-open paths emit warnings through the logging partial.
+        /// </remarks>
         private readonly ILogger<ArticleSpoolPostprocessor> _logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ArticleSpoolPostprocessor"/> class.
         /// </summary>
         /// <param name="postFilterOptions">
-        /// Bound post-filter options; only <see cref="PostFilterOptions.Style"/> is consulted on the transit spool path.
+        /// Bound post-filter options wrapper. Only <see cref="PostFilterOptions.Style"/> is consulted on the transit
+        /// spool path.
         /// </param>
-        /// <param name="serverOptions">Bound <c>NntpServer</c> options for spamd scan header synthesis.</param>
-        /// <param name="spamAssassin">spamd client for small non-yEnc articles.</param>
-        /// <param name="spamdScanBuilder">Temporary scan article builder.</param>
-        /// <param name="logger">Category logger.</param>
+        /// <param name="serverOptions">
+        /// Bound NNTP server options wrapper supplying <see cref="NntpServerOptions.MaxArtSize"/> and spamd scan
+        /// identity fields.
+        /// </param>
+        /// <param name="spamAssassin">spamd client for eligible non-yEnc articles.</param>
+        /// <param name="spamdScanBuilder">Temporary scan article builder used before each spamd <c>CHECK</c>.</param>
+        /// <param name="logger">Category logger for spamd fail-open events.</param>
+        /// <remarks>
+        /// Snapshots <paramref name="postFilterOptions"/> and <paramref name="serverOptions"/> values into readonly
+        /// fields so postprocessing behavior remains stable for the process lifetime unless the host is restarted with
+        /// new configuration.
+        /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when any dependency is <see langword="null"/>.</exception>
         public ArticleSpoolPostprocessor(
             IOptions<PostFilterOptions> postFilterOptions,
@@ -112,21 +177,41 @@ namespace Vector.NNTP.Articles.Processing
         /// Validates parsed header semantics and filter rules for a preprocessed transit article.
         /// </summary>
         /// <param name="item">
-        /// Dequeued spool item supplying the transit command Message-ID and peer origin metadata for spamd synthesis.
+        /// Dequeued spool item supplying the transit command <c>Message-ID</c>, peer
+        /// <see cref="NntpSpoolArticleOrigin"/> for spamd scan synthesis, and queue metadata. Must not be
+        /// <see langword="null"/>.
         /// </param>
         /// <param name="articleBytes">
-        /// Preprocessed article bytes (header-validated and optionally path-mutated). Must not be <see langword="null"/>.
+        /// Preprocessed article bytes (shallow-validated and optionally path-mutated by
+        /// <see cref="ArticleSpoolPreprocessor"/>). Must not be <see langword="null"/>. Not modified by this method.
         /// </param>
-        /// <param name="cancellationToken">Writer pump cancellation token.</param>
+        /// <param name="cancellationToken">
+        /// Writer pump cancellation token forwarded to <see cref="TrySpamCheckAsync"/>. Worker shutdown during an
+        /// in-flight spamd call propagates <see cref="OperationCanceledException"/> to the pump.
+        /// </param>
         /// <returns>
-        /// <see cref="ArticleSpoolPostprocessResult.Success"/> <see langword="true"/> when all checks pass; otherwise
-        /// <see langword="false"/> with a <see cref="ArticleSpoolPostprocessResult.FailureReason"/> suitable for operator logs.
+        /// A <see cref="ValueTask{TResult}"/> that completes with <see cref="ArticleSpoolPostprocessResult.Success"/>
+        /// <see langword="true"/>, unchanged <paramref name="articleBytes"/>, and populated
+        /// <see cref="ArticleSpoolPostprocessResult.ArticleType"/> when all checks pass; otherwise
+        /// <see langword="false"/> with the original <paramref name="articleBytes"/> reference and an operator-facing
+        /// <see cref="ArticleSpoolPostprocessResult.FailureReason"/>. Spamd faults fail open and yield success.
         /// </returns>
         /// <remarks>
-        /// Semantic validation failures do not throw. Spamd protocol and connectivity failures fail open (article accepted).
-        /// Only invalid <paramref name="item"/> or <paramref name="articleBytes"/> arguments throw before work begins.
+        /// <para>
+        /// Validation failures do not throw. Only <see langword="null"/> <paramref name="item"/> or
+        /// <paramref name="articleBytes"/> throw before work begins.
+        /// </para>
+        /// <para>
+        /// yEnc CRC failure uses the exact reason <c>yEnc section CRC validation failed.</c> Spam classification
+        /// failures include score and threshold text. All other failures originate from the private
+        /// <c>Try*</c> validation helpers called in pipeline order above.
+        /// </para>
         /// </remarks>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="item"/> or <paramref name="articleBytes"/> is <see langword="null"/>.</exception>
+        /// <exception cref="OperationCanceledException">
+        /// Thrown when <paramref name="cancellationToken"/> is canceled during an in-flight spamd
+        /// <c>CHECK</c>.
+        /// </exception>
         public async ValueTask<ArticleSpoolPostprocessResult> PostprocessAsync(
             NntpSpoolWriteItem item,
             byte[] articleBytes,
@@ -184,11 +269,23 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Validates yEnc CRC over the article body slice (isolated from async methods for C# span rules).
+        /// Validates yEnc CRC over the article body slice.
         /// </summary>
-        /// <param name="articleBytes">Full article bytes.</param>
-        /// <param name="bodyStart">Body offset after the header terminator.</param>
-        /// <returns><see langword="true"/> when CRC validation succeeds.</returns>
+        /// <param name="articleBytes">Full article bytes including headers and body.</param>
+        /// <param name="bodyStart">
+        /// First body octet offset from <see cref="PostFilterParsedArticle.BodyStart"/> after header parsing.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> when <see cref="YEncSectionCrc.Validate"/> succeeds over
+        /// <c>articleBytes[bodyStart..]</c>; otherwise <see langword="false"/>.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// Isolated in a synchronous static helper so <see cref="PostprocessAsync"/> can remain async without span
+        /// restrictions across <c>await</c> boundaries.
+        /// </para>
+        /// <para>Never throws; CRC faults are expressed as postprocess rejection results by the caller.</para>
+        /// </remarks>
         private static bool ValidateYEncBody(byte[] articleBytes, int bodyStart)
         {
             return YEncSectionCrc.Validate(articleBytes.AsSpan(bodyStart));
@@ -197,10 +294,34 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Runs SpamAssassin <c>CHECK</c> against a temporary scan copy; fails open on spamd errors.
         /// </summary>
-        /// <param name="item">Queue item supplying origin metadata.</param>
-        /// <param name="articleBytes">Original preprocessed article bytes.</param>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Failure result when classified as spam; <see langword="null"/> when accepted or fail-open.</returns>
+        /// <param name="item">
+        /// Queue item supplying <see cref="NntpSpoolWriteItem.Origin"/> and <see cref="NntpSpoolWriteItem.MessageId"/>
+        /// for scan synthesis.
+        /// </param>
+        /// <param name="articleBytes">Preprocessed article bytes; returned unchanged on spam rejection.</param>
+        /// <param name="cancellationToken">
+        /// Writer pump cancellation token. Honored by <see cref="ISpamAssassin.CheckAsync"/>; worker cancellation
+        /// rethrows without fail-open.
+        /// </param>
+        /// <returns>
+        /// A spam rejection <see cref="ArticleSpoolPostprocessResult"/> when classified as spam; otherwise
+        /// <see langword="null"/> meaning accept (including all fail-open fault paths).
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// Builds a scan copy via <see cref="SpamdScanArticleBuilder.BuildScanArticle"/> then calls
+        /// <see cref="ISpamAssassin.CheckAsync"/>. <see cref="SpamdProtocolException"/> is logged via
+        /// <c>LogSpamdFailedOpen</c>; other exceptions (including scan-build faults) via
+        /// <c>LogSpamdUnexpectedFailure</c>. Both paths return <see langword="null"/> so the article is accepted.
+        /// </para>
+        /// <para>
+        /// Eligibility is enforced by the caller: non-yEnc and length strictly less than
+        /// <see cref="SpamCheckMaxArticleBytes"/>.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="OperationCanceledException">
+        /// Thrown when <paramref name="cancellationToken"/> is canceled during the spamd call.
+        /// </exception>
         private async ValueTask<ArticleSpoolPostprocessResult?> TrySpamCheckAsync(
             NntpSpoolWriteItem item,
             byte[] articleBytes,
@@ -220,7 +341,7 @@ namespace Vector.NNTP.Articles.Processing
             }
             catch (SpamdProtocolException ex)
             {
-                LogSpamdFailedOpen(this._logger, ex, item.MessageId);
+                LogSpamdFailedOpen(_logger, ex, item.MessageId);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -228,7 +349,7 @@ namespace Vector.NNTP.Articles.Processing
             }
             catch (Exception ex)
             {
-                LogSpamdUnexpectedFailure(this._logger, ex, item.MessageId);
+                LogSpamdUnexpectedFailure(_logger, ex, item.MessageId);
             }
 
             return null;
@@ -238,14 +359,21 @@ namespace Vector.NNTP.Articles.Processing
         /// Parsed transit article retaining document-order headers for <see cref="ArticleDateHeaderResolver"/>.
         /// </summary>
         /// <param name="Article">
-        /// Filter-facing parsed article view built as <see cref="PostFilterParsedArticle"/> for downstream filter types.
+        /// Filter-facing parsed article view built as <see cref="PostFilterParsedArticle"/> for style rules, header
+        /// lookup, and body offset access.
         /// </param>
         /// <param name="OrderedHeaders">
-        /// Header fields in wire order (names preserve original casing) because the case-insensitive header map does not retain
-        /// ordering or duplicate fields.
+        /// Header fields in wire order with original name casing preserved. Required because the case-insensitive
+        /// <see cref="PostFilterParsedArticle.Headers"/> map does not retain ordering or duplicate fields.
         /// </param>
         /// <remarks>
+        /// <para>
         /// Internal to <see cref="ArticleSpoolPostprocessor"/> parsing only; not exposed outside the spool writer path.
+        /// </para>
+        /// <para>
+        /// Duplicate header names in the wire stream appear multiple times in <paramref name="OrderedHeaders"/>; the
+        /// header map retains the last committed value per case-insensitive name.
+        /// </para>
         /// </remarks>
         private sealed record ParsedTransitArticle(
             PostFilterParsedArticle Article,
@@ -254,14 +382,28 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Parses header fields and body offset from raw article bytes into <see cref="ParsedTransitArticle"/>.
         /// </summary>
-        /// <param name="articleBytes">Full article octets.</param>
-        /// <param name="parsed">When this method returns <see langword="true"/>, the parsed article view.</param>
-        /// <param name="failureReason">When this method returns <see langword="false"/>, an operator-facing reason.</param>
-        /// <returns><see langword="true"/> when parsing succeeds.</returns>
+        /// <param name="articleBytes">Full article octets including headers, separator, and optional body.</param>
+        /// <param name="parsed">
+        /// When this method returns <see langword="true"/>, the parsed article view; otherwise <see langword="null"/>.
+        /// </param>
+        /// <param name="failureReason">
+        /// When this method returns <see langword="false"/>, an operator-facing reason (for example missing header
+        /// terminator, unexpected continuation, invalid UTF-8, or too many fields); otherwise <see langword="null"/>.
+        /// </param>
+        /// <returns><see langword="true"/> when parsing and field commits succeed.</returns>
         /// <remarks>
+        /// <para>
         /// Header names and unfolded values are materialized as <see cref="string"/> because
-        /// <see cref="PostFilterParsedArticle"/> requires <see cref="IReadOnlyDictionary{TKey, TValue}"/> of decoded
-        /// strings for filter and date-resolution stages. Newline iteration uses <see cref="ArticleByteScanSimd"/>.
+        /// <see cref="PostFilterParsedArticle"/> requires a case-insensitive
+        /// <see cref="IReadOnlyDictionary{TKey, TValue}"/> of decoded strings for filter and date-resolution stages.
+        /// Newline iteration uses <see cref="ArticleByteScanSimd.FindHeaderEnd"/>,
+        /// <see cref="ArticleByteScanSimd.FindBodyStart"/>, and <see cref="ArticleByteScanSimd.IndexOfLineFeed"/>.
+        /// </para>
+        /// <para>
+        /// A continuation line before any field name produces <c>Unexpected header continuation at line {n}.</c> Lines
+        /// without a valid colon split fail via <see cref="TrySplitHeaderLine"/>.
+        /// </para>
+        /// <para>Never throws; malformed articles are expressed through <paramref name="failureReason"/>.</para>
         /// </remarks>
         private static bool TryParseArticle(byte[] articleBytes, out ParsedTransitArticle? parsed, out string? failureReason)
         {
@@ -285,13 +427,13 @@ namespace Vector.NNTP.Articles.Processing
                 }
             }
 
-            var orderedHeaders = new List<(string Name, string Value)>(32);
-            var headerMap = new Dictionary<string, string>(32, StringComparer.OrdinalIgnoreCase);
+            List<(string Name, string Value)> orderedHeaders = new(32);
+            Dictionary<string, string> headerMap = new(32, StringComparer.OrdinalIgnoreCase);
             int headerLineCount = 0;
             int headerFieldCount = 0;
 
             string? currentName = null;
-            var currentValue = new StringBuilder();
+            StringBuilder currentValue = new();
 
             int index = 0;
             while (index < headerEnd)
@@ -322,10 +464,10 @@ namespace Vector.NNTP.Articles.Processing
 
                     if (currentValue.Length > 0)
                     {
-                        currentValue.Append('\n');
+                        _ = currentValue.Append('\n');
                     }
 
-                    currentValue.Append(Encoding.UTF8.GetString(lineBytes));
+                    _ = currentValue.Append(Encoding.UTF8.GetString(lineBytes));
                     index = lineEnd + 1;
                     continue;
                 }
@@ -338,7 +480,7 @@ namespace Vector.NNTP.Articles.Processing
                     }
 
                     headerFieldCount++;
-                    currentValue.Clear();
+                    _ = currentValue.Clear();
                 }
 
                 if (!TrySplitHeaderLine(lineBytes, headerLineCount, out currentName, out string initialValue, out failureReason))
@@ -346,7 +488,7 @@ namespace Vector.NNTP.Articles.Processing
                     return false;
                 }
 
-                currentValue.Append(initialValue);
+                _ = currentValue.Append(initialValue);
                 index = lineEnd + 1;
             }
 
@@ -371,15 +513,24 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Commits a completed header field into the ordered list and case-insensitive header map.
         /// </summary>
-        /// <param name="name">Header field name.</param>
+        /// <param name="name">Decoded header field name (wire casing preserved in the ordered list).</param>
         /// <param name="value">Unfolded header field value.</param>
-        /// <param name="committedFieldCount">Number of fields committed before this one.</param>
-        /// <param name="orderedHeaders">Ordered header list for date resolution.</param>
-        /// <param name="headerMap">
-        /// Header map keyed by field name with <see cref="StringComparer.OrdinalIgnoreCase"/>; keys preserve wire casing.
+        /// <param name="committedFieldCount">
+        /// Number of fields already committed before this one; used to enforce <see cref="MaxHeaderFieldCount"/>.
         /// </param>
-        /// <param name="failureReason">Failure reason when this method returns <see langword="false"/>.</param>
+        /// <param name="orderedHeaders">Wire-order header list for date resolution and semantic validation walks.</param>
+        /// <param name="headerMap">
+        /// Header map keyed by field name with <see cref="StringComparer.OrdinalIgnoreCase"/>; keys preserve the casing
+        /// of the most recently committed field with that name.
+        /// </param>
+        /// <param name="failureReason">
+        /// When this method returns <see langword="false"/>, <c>Too many header fields (limit 256).</c>; otherwise
+        /// <see langword="null"/>.
+        /// </param>
         /// <returns><see langword="true"/> when the field is accepted.</returns>
+        /// <remarks>
+        /// Duplicate names overwrite the prior map entry while appending another ordered-list tuple. Never throws.
+        /// </remarks>
         private static bool TryCommitHeaderField(
             string name,
             string value,
@@ -404,11 +555,25 @@ namespace Vector.NNTP.Articles.Processing
         /// Splits a header line into field name and initial value at the first colon.
         /// </summary>
         /// <param name="lineBytes">Raw header line bytes without line terminator.</param>
-        /// <param name="lineNumber">1-based line number for diagnostics.</param>
-        /// <param name="name">Parsed header name when successful.</param>
-        /// <param name="initialValue">Parsed value portion when successful.</param>
-        /// <param name="failureReason">Failure reason when this method returns <see langword="false"/>.</param>
-        /// <returns><see langword="true"/> when the line contains a valid <c>name: value</c> split.</returns>
+        /// <param name="lineNumber">1-based physical line number for diagnostics.</param>
+        /// <param name="name">Parsed trimmed header name when successful; otherwise <see langword="null"/>.</param>
+        /// <param name="initialValue">
+        /// Parsed value portion when successful (leading single space after colon stripped when present).
+        /// </param>
+        /// <param name="failureReason">
+        /// When this method returns <see langword="false"/>, a line-specific parse reason; otherwise
+        /// <see langword="null"/>.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> when the line contains a non-empty UTF-8 name, colon, and valid UTF-8 value bytes.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// Does not require the RFC 5322 mandatory space after colon for the value to be non-empty; an empty value
+        /// after a valid <c>name: </c> split is accepted at this stage and may fail later in semantic body validation.
+        /// </para>
+        /// <para>Never throws.</para>
+        /// </remarks>
         private static bool TrySplitHeaderLine(
             ReadOnlySpan<byte> lineBytes,
             int lineNumber,
@@ -458,11 +623,21 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Validates unfolded header names and bodies using <see cref="HeaderFieldValidation"/>.
+        /// Validates unfolded header names and bodies using <see cref="HeaderFieldValidation"/> string overloads.
         /// </summary>
-        /// <param name="parsed">Parsed article.</param>
-        /// <param name="failureReason">Failure reason when this method returns <see langword="false"/>.</param>
-        /// <returns><see langword="true"/> when every header field passes semantic validation.</returns>
+        /// <param name="parsed">Parsed article with wire-order headers.</param>
+        /// <param name="failureReason">
+        /// When this method returns <see langword="false"/>, either <c>Invalid header field name '{name}'.</c> or
+        /// <c>Invalid header field body for '{name}'.</c>; otherwise <see langword="null"/>.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> when every entry in <see cref="ParsedTransitArticle.OrderedHeaders"/> passes
+        /// <see cref="HeaderFieldValidation.IsValidHeaderName(string?)"/> and
+        /// <see cref="HeaderFieldValidation.IsValidHeaderBody(string?)"/>.
+        /// </returns>
+        /// <remarks>
+        /// Walks ordered headers so duplicate field names are each validated independently. Never throws.
+        /// </remarks>
         private static bool TryValidateHeaderSemantics(ParsedTransitArticle parsed, out string? failureReason)
         {
             failureReason = null;
@@ -487,10 +662,27 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Validates that the article contains a syntactically valid <c>Message-ID</c> header matching the transit token.
         /// </summary>
-        /// <param name="messageId">Message identifier from the transit command.</param>
-        /// <param name="parsed">Parsed article.</param>
-        /// <param name="failureReason">Failure reason when this method returns <see langword="false"/>.</param>
-        /// <returns><see langword="true"/> when the header is present, valid, and matches <paramref name="messageId"/>.</returns>
+        /// <param name="messageId">
+        /// Message identifier from the transit command (<see cref="NntpSpoolWriteItem.MessageId"/>). Validated with
+        /// <see cref="MessageIdValidation.IsValidMessageId(string?, bool)"/> before comparison.
+        /// </param>
+        /// <param name="parsed">Parsed article supplying the <c>Message-ID</c> header via case-insensitive lookup.</param>
+        /// <param name="failureReason">
+        /// When this method returns <see langword="false"/>, a specific Message-ID fault message; otherwise
+        /// <see langword="null"/>.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> when the header is present, both tokens are valid NNTP Message-IDs, and trimmed
+        /// values match under ordinal equality.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// Header lookup uses <c>message-id</c> through <see cref="PostFilterParsedArticle.GetHeader(string)"/>.
+        /// Comparison applies <see cref="NormalizeMessageId"/> (whitespace trim only) after
+        /// <see cref="MessageIdValidation.IsValidMessageId(string?, bool)"/> with <c>stripSpaces: true</c>.
+        /// </para>
+        /// <para>Never throws.</para>
+        /// </remarks>
         private static bool TryValidateMessageIdHeader(string messageId, ParsedTransitArticle parsed, out string? failureReason)
         {
             failureReason = null;
@@ -528,9 +720,21 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Validates that a canonical article date can be resolved from candidate date headers.
         /// </summary>
-        /// <param name="parsed">Parsed article.</param>
-        /// <param name="failureReason">Failure reason when this method returns <see langword="false"/>.</param>
-        /// <returns><see langword="true"/> when <see cref="ArticleDateHeaderResolver"/> succeeds.</returns>
+        /// <param name="parsed">Parsed article supplying wire-order headers for date candidate scanning.</param>
+        /// <param name="failureReason">
+        /// When this method returns <see langword="false"/>, either <c>Required date header is missing or empty.</c> or
+        /// <c>Date header is not parseable ({reason}).</c>; otherwise <see langword="null"/>.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> when <see cref="ArticleDateHeaderResolver"/> resolves a canonical article date.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// Passes <see cref="ParsedTransitArticle.OrderedHeaders"/> so the resolver can honor header precedence and
+        /// document order. The resolved canonical instant is not persisted by this type.
+        /// </para>
+        /// <para>Never throws.</para>
+        /// </remarks>
         private static bool TryValidateArticleDate(ParsedTransitArticle parsed, out string? failureReason)
         {
             failureReason = null;
@@ -552,14 +756,27 @@ namespace Vector.NNTP.Articles.Processing
         /// Applies configured <see cref="PostFilterStyleOptions"/> shape checks and
         /// <see cref="NntpServerOptions.MaxArtSize"/> to the parsed article.
         /// </summary>
-        /// <param name="parsed">Parsed article.</param>
+        /// <param name="parsed">Parsed article for header presence checks.</param>
         /// <param name="articleByteLength">Total article byte length including headers and body.</param>
-        /// <param name="failureReason">Failure reason when this method returns <see langword="false"/>.</param>
-        /// <returns><see langword="true"/> when style rules pass.</returns>
+        /// <param name="failureReason">
+        /// When this method returns <see langword="false"/>, a size, forbidden-header, or crosspost limit message;
+        /// otherwise <see langword="null"/>.
+        /// </param>
+        /// <returns><see langword="true"/> when all enabled style rules pass.</returns>
         /// <remarks>
-        /// Article size is enforced with <see cref="NntpServerOptions.MaxArtSize"/> from the host <c>NntpServer</c>
-        /// configuration section — the same limit applied by transit command handlers and
-        /// <see cref="Storage.NntpSpoolTransitStorage"/>.
+        /// <para>
+        /// <see cref="NntpServerOptions.MaxArtSize"/> is enforced only when greater than zero — the same limit applied
+        /// by transit command handlers and <see cref="NntpSpoolTransitStorage"/>.
+        /// </para>
+        /// <para>
+        /// <see cref="PostFilterStyleOptions.ForbiddenHeaderNames"/> entries are trimmed and matched with
+        /// case-insensitive <see cref="PostFilterParsedArticle.Headers"/> keys. Empty configured names are skipped.
+        /// </para>
+        /// <para>
+        /// <see cref="PostFilterStyleOptions.MaxNewsgroupCrossposts"/> is enforced only when greater than zero. Group
+        /// counting uses <see cref="CountNewsgroups"/> on the <c>Newsgroups</c> header when present.
+        /// </para>
+        /// <para>Never throws.</para>
         /// </remarks>
         private bool TryValidateStyleRules(ParsedTransitArticle parsed, int articleByteLength, out string? failureReason)
         {
@@ -606,8 +823,13 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Counts distinct non-empty newsgroup tokens in a <c>Newsgroups</c> header value.
         /// </summary>
-        /// <param name="newsgroups">Raw <c>Newsgroups</c> header value.</param>
-        /// <returns>Number of comma-separated groups with non-whitespace content.</returns>
+        /// <param name="newsgroups">Raw <c>Newsgroups</c> header value (may contain commas and whitespace).</param>
+        /// <returns>
+        /// Number of comma-separated tokens with non-whitespace content after trimming whitespace on each token span.
+        /// </returns>
+        /// <remarks>
+        /// Empty tokens between commas are ignored. A trailing comma does not increment the count. Never throws.
+        /// </remarks>
         private static int CountNewsgroups(string newsgroups)
         {
             int count = 0;
@@ -633,14 +855,17 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Normalizes a Message-ID token by trimming surrounding whitespace.
+        /// Normalizes a Message-ID token for ordinal comparison after syntax validation.
         /// </summary>
-        /// <param name="messageId">Candidate Message-ID.</param>
-        /// <returns>Trimmed token.</returns>
+        /// <param name="messageId">Candidate Message-ID that has already passed <see cref="MessageIdValidation"/>.</param>
+        /// <returns>The input with leading and trailing whitespace removed.</returns>
+        /// <remarks>
+        /// Does not strip angle brackets or alter internal token text; <see cref="MessageIdValidation"/> handles syntax
+        /// before this helper is applied. Never throws.
+        /// </remarks>
         private static string NormalizeMessageId(string messageId)
         {
             return messageId.Trim();
         }
-
     }
 }

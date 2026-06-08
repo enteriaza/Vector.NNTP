@@ -12,9 +12,13 @@ namespace Vector.NNTP.Articles.Processing
     /// Static helper that prepends a transit hop token to the <c>Path:</c> header of a raw NNTP article byte buffer.
     /// </summary>
     /// <remarks>
-    /// <para><b>Caller:</b> Invoked from <see cref="ArticleSpoolPreprocessor.PreprocessAsync"/> when
-    /// <see cref="Sockets.Configuration.NntpServerOptions.PathAppend"/> is configured. Articles should already pass
-    /// header validation before mutation reaches this type.</para>
+    /// <para>
+    /// <b>Caller:</b> Invoked from <see cref="ArticleSpoolPreprocessor.PreprocessAsync"/> when
+    /// <see cref="Sockets.Configuration.NntpServerOptions.PathAppend"/> is non-empty whitespace after trimming. Shallow header syntax
+    /// validation should already have succeeded; exceptions from <see cref="PrependPathAppend"/> are caught by the
+    /// preprocessor and converted into <see cref="ArticleSpoolPreprocessResult"/> failures with message
+    /// <c>Path header mutation failed: …</c>.
+    /// </para>
     /// <para>
     /// <b>Existing <c>Path:</c>:</b> <see cref="PrependPathAppend"/> scans header lines and, on the first match from
     /// <see cref="IsPathHeaderLine"/>, prepends <c>{pathAppend}!</c> to that line's value via
@@ -23,16 +27,19 @@ namespace Vector.NNTP.Articles.Processing
     /// hop tracing.
     /// </para>
     /// <para>
-    /// <b>Missing <c>Path:</c>:</b> When no <c>Path</c> field is found, <see cref="InsertNewPathHeader"/> inserts
-    /// <c>Path: {pathAppend}</c> as the <em>first</em> header line (before <c>Message-ID</c>, <c>Newsgroups</c>, and
-    /// other fields), matching common INN/Diablo/Cyclone injection ordering. RFCs do not mandate header order, but
-    /// transit tooling often expects <c>Path</c> near the top of the block.
+    /// <b>Missing <c>Path:</c>:</b> When no <c>Path</c> field is found (including when <c>Path::</c> lookalikes are
+    /// rejected), <see cref="InsertNewPathHeader"/> inserts <c>Path: {pathAppend}</c> as the <em>first</em> header line
+    /// (before <c>Message-ID</c>, <c>Newsgroups</c>, and other fields), matching common INN/Diablo/Cyclone injection
+    /// ordering. RFCs do not mandate header order, but transit tooling often expects <c>Path</c> near the top of the
+    /// block.
     /// </para>
     /// <para>
-    /// <b>Allocations:</b> Always returns a new <see cref="byte"/> array. <see cref="RewriteExistingPath"/> assembles
-    /// replacement lines from UTF-8 spans and a single hop <see cref="Encoding.ASCII"/> encode without round-tripping
-    /// the existing path value through <see cref="string"/>.
+    /// <b>Allocations:</b> Always returns a new <see cref="byte"/> array on success paths and when no header terminator
+    /// is found (defensive copy). <see cref="RewriteExistingPath"/> assembles replacement lines from UTF-8 spans and a
+    /// single hop <see cref="Encoding.ASCII"/> encode without round-tripping the existing path value through
+    /// <see cref="string"/>. Body bytes and bytes outside the rewritten header region are copied verbatim.
     /// </para>
+    /// <para><b>Threading:</b> Stateless static methods; safe for concurrent writer pumps without synchronization.</para>
     /// </remarks>
     public static class ArticlePathHeaderMutator
     {
@@ -41,43 +48,60 @@ namespace Vector.NNTP.Articles.Processing
         /// </summary>
         /// <remarks>
         /// <see cref="PathFieldNameMatchBytes"/> and <see cref="CanonicalPathLinePrefixBytes"/> are derived from this
-        /// constant so the field name is defined in one place.
+        /// constant so the field name is defined in one place. Emitted on output as canonical <c>Path: </c> regardless
+        /// of source line casing.
         /// </remarks>
         private const string PathFieldName = "Path";
 
         /// <summary>
         /// Lowercase ASCII bytes of <see cref="PathFieldName"/> for case-insensitive header-line matching.
         /// </summary>
+        /// <remarks>
+        /// Initialized once at type load. Compared via <see cref="ArticleByteScanSimd.StartsWithAsciiIgnoreCase"/>
+        /// against physical header lines in <see cref="IsPathHeaderLine"/>.
+        /// </remarks>
         private static readonly byte[] PathFieldNameMatchBytes = Encoding.ASCII.GetBytes(PathFieldName.ToLowerInvariant());
 
         /// <summary>
-        /// Canonical <c>{PathFieldName}: </c> prefix bytes emitted when rewriting or replacing a <c>Path</c> line.
+        /// Canonical <c>{PathFieldName}: </c> prefix bytes emitted when rewriting or inserting a <c>Path</c> line.
         /// </summary>
+        /// <remarks>
+        /// Includes the required space after the colon. Used by <see cref="BuildPathInsertLineBytes"/> and
+        /// <see cref="RewriteExistingPath"/> so output lines normalize to <c>Path: </c> even when the source used
+        /// <c>PATH:</c> or <c>path:</c>.
+        /// </remarks>
         private static readonly byte[] CanonicalPathLinePrefixBytes = Encoding.ASCII.GetBytes($"{PathFieldName}: ");
 
         /// <summary>
         /// Prepends a path hop token into the article header block.
         /// </summary>
-        /// <param name="article">Raw article bytes including headers, separator, and body.</param>
+        /// <param name="article">
+        /// Raw article bytes including headers, separator, and body. Not modified in place; callers retain the original
+        /// buffer when mutation fails upstream.
+        /// </param>
         /// <param name="pathAppend">
         /// Hop token to record (for example a hostname or <c>host!alias</c> segment). Trimmed before use; must be
-        /// non-empty ASCII without embedded CR/LF.
+        /// non-empty and must not contain CR/LF. Encoded with <see cref="Encoding.ASCII"/> when written into the header
+        /// (callers should supply ASCII hop tokens consistent with transit <c>Path</c> conventions).
         /// </param>
         /// <returns>
         /// A new byte array containing the mutated article. When a <c>Path</c> line is rewritten, output uses the
-        /// canonical <c>Path: </c> prefix regardless of the source line's casing.
+        /// canonical <c>Path: </c> prefix regardless of the source line's casing. When no <c>Path</c> field exists, the
+        /// new line is prepended before all original bytes. When no header terminator is found, returns a defensive copy
+        /// of <paramref name="article"/> unchanged.
         /// </returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="pathAppend"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">
         /// Thrown when <paramref name="pathAppend"/> is empty or whitespace after trimming, or contains CR/LF
         /// delimiters. <see cref="ArticleSpoolPreprocessor"/> skips invocation when
-        /// <see cref="Sockets.Configuration.NntpServerOptions.PathAppend"/> is unset; an empty hop here indicates a
-        /// configuration or call-site mistake rather than a no-op.
+        /// <see cref="Sockets.Configuration.NntpServerOptions.PathAppend"/> is unset; an empty hop here indicates a configuration or call-site
+        /// mistake rather than a no-op.
         /// </exception>
         /// <remarks>
         /// <para>
-        /// Scans only the header region identified by <see cref="FindHeaderTerminator"/>. The first
-        /// <see cref="IsPathHeaderLine"/> match wins; later <c>Path</c> lines are not modified.
+        /// Scans only the header region bounded by <see cref="FindHeaderTerminator"/>. The first
+        /// <see cref="IsPathHeaderLine"/> match wins; later <c>Path</c> lines are not modified. Physical lines beginning
+        /// with space or tab are never considered <c>Path</c> fields (continuations of a prior line).
         /// </para>
         /// <para>
         /// When no <c>Path</c> field exists, <see cref="InsertNewPathHeader"/> prepends
@@ -85,7 +109,9 @@ namespace Vector.NNTP.Articles.Processing
         /// <see cref="FindHeaderTerminator"/> preserve the article's observed line-ending style for the inserted line.
         /// </para>
         /// <para>
-        /// When a header terminator cannot be found, returns a defensive copy of <paramref name="article"/> unchanged.
+        /// When an existing <c>Path</c> value is empty after the colon, the rewritten line is <c>Path: {hop}</c> without
+        /// a trailing <c>!</c>. Non-empty values become <c>Path: {hop}!{existing}</c> with existing bytes copied
+        /// verbatim from the source line.
         /// </para>
         /// </remarks>
         public static byte[] PrependPathAppend(ReadOnlySpan<byte> article, string pathAppend)
@@ -130,17 +156,21 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Inserts a new <c>Path:</c> line before the first byte of the original article.
         /// </summary>
-        /// <param name="article">Original article bytes.</param>
+        /// <param name="article">Original article bytes including headers, separator, and body.</param>
         /// <param name="pathHeaderBytes">
-        /// Prepared <c>Path:</c> header bytes including the line terminator (for example <c>Path: hop\r\n</c>).
+        /// Prepared <c>Path:</c> header bytes including the line terminator (for example <c>Path: hop\r\n</c>) from
+        /// <see cref="BuildPathInsertLineBytes"/>.
         /// </param>
         /// <returns>
         /// A new array whose first bytes are <paramref name="pathHeaderBytes"/> followed by the full original
-        /// <paramref name="article"/> content.
+        /// <paramref name="article"/> content unchanged.
         /// </returns>
         /// <remarks>
+        /// <para>
         /// Produces <c>Path: {hop}\r\nMessage-ID: …</c> rather than inserting <c>Path</c> after existing headers.
         /// Performs one allocation sized to the combined length.
+        /// </para>
+        /// <para>Never throws.</para>
         /// </remarks>
         private static byte[] InsertNewPathHeader(ReadOnlySpan<byte> article, ReadOnlySpan<byte> pathHeaderBytes)
         {
@@ -155,29 +185,34 @@ namespace Vector.NNTP.Articles.Processing
         /// </summary>
         /// <param name="article">Original article bytes.</param>
         /// <param name="lineStart">Matched <c>Path</c> line start index within <paramref name="article"/>.</param>
-        /// <param name="lineEnd">Matched line end index excluding the line-feed byte.</param>
-        /// <param name="hop">Trimmed hop token to insert before any existing path value.</param>
+        /// <param name="lineEnd">
+        /// Index of the line-feed byte terminating the matched line, or the end of the header span when the final header
+        /// line has no trailing LF within the scanned region.
+        /// </param>
+        /// <param name="hop">Trimmed ASCII hop token to insert before any existing path value.</param>
         /// <returns>
-        /// A new array with the matched line replaced by <c>Path: {hop}</c> or <c>Path: {hop}!{existing}</c>.
+        /// A new array with the matched physical line replaced by <c>Path: {hop}</c> or <c>Path: {hop}!{existing}</c>,
+        /// preserving the original line terminator and all bytes from <paramref name="lineEnd"/> onward (including folded
+        /// continuation lines).
         /// </returns>
         /// <remarks>
         /// <para>
         /// Existing value bytes after the field delimiter are taken from index <c>{PathFieldName.Length} + 1</c>
         /// onward (after <c>{PathFieldName}:</c>), with leading whitespace trimmed. The replacement is built from
-        /// <see cref="CanonicalPathLinePrefixBytes"/>, ASCII hop bytes, an optional
-        /// <c>!</c>, and the existing value span copied verbatim without decoding the existing path to
-        /// <see cref="string"/>.
+        /// <see cref="CanonicalPathLinePrefixBytes"/>, ASCII hop bytes, an optional <c>!</c>, and the existing value span
+        /// copied verbatim without decoding the existing path to <see cref="string"/>.
         /// </para>
         /// <para>
-        /// Bytes before <paramref name="lineStart"/> and from <paramref name="lineEnd"/> onward (including folded
-        /// continuation lines) are copied unchanged.
+        /// Bytes before <paramref name="lineStart"/> and from <paramref name="lineEnd"/> onward (including the line
+        /// terminator byte and any folded continuation lines) are copied unchanged.
         /// </para>
+        /// <para>Never throws.</para>
         /// </remarks>
         private static byte[] RewriteExistingPath(ReadOnlySpan<byte> article, int lineStart, int lineEnd, string hop)
         {
             ReadOnlySpan<byte> line = TrimTrailingCr(article[lineStart..lineEnd]);
             int valueStartIndex = PathFieldName.Length + 1;
-            ReadOnlySpan<byte> existing = line.Length > valueStartIndex ? line[valueStartIndex..] : ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> existing = line.Length > valueStartIndex ? line[valueStartIndex..] : [];
             while (!existing.IsEmpty && (existing[0] is (byte)' ' or (byte)'\t'))
             {
                 existing = existing[1..];
@@ -208,11 +243,17 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Assembles <c>Path: {hop}{newline}</c> bytes without a string round-trip.
+        /// Assembles <c>Path: {hop}{newline}</c> bytes without a string round-trip for the full line.
         /// </summary>
-        /// <param name="hop">Trimmed ASCII hop token.</param>
-        /// <param name="newlineBytes">Observed line ending (<c>\r\n</c> or <c>\n</c>).</param>
-        /// <returns>Single allocated buffer containing the new path header line.</returns>
+        /// <param name="hop">Trimmed ASCII hop token (already validated by <see cref="PrependPathAppend"/>).</param>
+        /// <param name="newlineBytes">
+        /// Observed line ending from <see cref="FindHeaderTerminator"/> (<c>\r\n</c> or <c>\n</c>).
+        /// </param>
+        /// <returns>
+        /// Single allocated buffer containing <see cref="CanonicalPathLinePrefixBytes"/>, ASCII hop bytes, and
+        /// <paramref name="newlineBytes"/>.
+        /// </returns>
+        /// <remarks>Never throws for hop tokens that fit in ASCII encoding.</remarks>
         private static byte[] BuildPathInsertLineBytes(string hop, ReadOnlySpan<byte> newlineBytes)
         {
             int hopByteCount = Encoding.ASCII.GetByteCount(hop);
@@ -231,7 +272,8 @@ namespace Vector.NNTP.Articles.Processing
         /// <param name="article">Full article bytes to scan.</param>
         /// <param name="newlineBytes">
         /// When a terminator is found, the line ending observed in the article (<c>\r\n</c> or <c>\n</c>). When no
-        /// terminator is found, defaults to <c>\r\n</c>.
+        /// terminator is found, defaults to <c>\r\n</c> for prepared insert lines (the insert path is not taken when
+        /// scanning fails).
         /// </param>
         /// <returns>
         /// Index within <paramref name="article"/> of the first byte of the header/body separator, or <c>-1</c> when no
@@ -240,11 +282,13 @@ namespace Vector.NNTP.Articles.Processing
         /// </returns>
         /// <remarks>
         /// <para>
-        /// For <c>\r\n\r\n</c>, returns the index of the first <c>\r</c> in the separator. For <c>\n\n</c>, returns
-        /// the index of the first <c>\n</c>. This differs from
-        /// <see cref="ArticleSpoolPreprocessor"/> header-end indexing, which points at the start of the blank line
-        /// within the separator; both approaches limit iteration to header field lines only.
+        /// Delegates to <see cref="ArticleByteScanSimd.FindHeaderSeparator"/> for SIMD-accelerated separator detection.
+        /// For <c>\r\n\r\n</c>, returns the index of the first <c>\r</c> in the separator. For <c>\n\n</c>, returns the
+        /// index of the first <c>\n</c> in the separator. This differs from
+        /// <see cref="ArticleByteScanSimd.FindHeaderEnd"/> indexing, which points at the start of the blank line within
+        /// the separator; both approaches limit iteration to header field lines only.
         /// </para>
+        /// <para>Never throws.</para>
         /// </remarks>
         private static int FindHeaderTerminator(ReadOnlySpan<byte> article, out ReadOnlySpan<byte> newlineBytes)
         {
@@ -276,6 +320,9 @@ namespace Vector.NNTP.Articles.Processing
         /// Index of the line-feed byte that terminates the line, or <paramref name="headerSpan"/>.<see cref="ReadOnlySpan{T}.Length"/>
         /// when the final header line has no trailing LF within the span.
         /// </returns>
+        /// <remarks>
+        /// Thin wrapper over <see cref="ArticleByteScanSimd.IndexOfLineFeed"/> scoped to the header region. Never throws.
+        /// </remarks>
         private static int FindNextLineEnd(ReadOnlySpan<byte> headerSpan, int lineStart)
         {
             return ArticleByteScanSimd.IndexOfLineFeed(headerSpan, lineStart, headerSpan.Length);
@@ -284,10 +331,13 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Removes a trailing carriage return from a physical line span.
         /// </summary>
-        /// <param name="line">Line content without the terminating line feed.</param>
+        /// <param name="line">Line content ending at (but not including) the line-feed byte.</param>
         /// <returns>
         /// <paramref name="line"/> shortened by one byte when it ends with <c>\r</c>; otherwise the original span.
         /// </returns>
+        /// <remarks>
+        /// Normalizes <c>\r\n</c>-terminated lines before field-name matching and value extraction. Never throws.
+        /// </remarks>
         private static ReadOnlySpan<byte> TrimTrailingCr(ReadOnlySpan<byte> line)
         {
             return line.Length > 0 && line[^1] == '\r' ? line[..^1] : line;
@@ -296,7 +346,7 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Determines whether a physical header line is a <c>Path</c> field rather than a lookalike such as <c>Path::</c>.
         /// </summary>
-        /// <param name="line">Physical header line without trailing CR/LF.</param>
+        /// <param name="line">Physical header line without trailing CR/LF (continuations are not passed here).</param>
         /// <returns>
         /// <see langword="true"/> when the line begins with <see cref="PathFieldName"/> case-insensitively, the delimiter
         /// colon sits at index <see cref="PathFieldName"/>.<see cref="string.Length"/>, and the following byte is not a
@@ -304,14 +354,16 @@ namespace Vector.NNTP.Articles.Processing
         /// </returns>
         /// <remarks>
         /// <para>
-        /// Compares normalized line bytes against <see cref="PathFieldNameMatchBytes"/>. Accepts <c>Path:</c>,
-        /// <c>PATH:</c>, and <c>path:</c>. Rejects <c>Path::</c> and lines shorter than
-        /// <c>{PathFieldName.Length} + 1</c> bytes.
+        /// Compares normalized line bytes against <see cref="PathFieldNameMatchBytes"/> via
+        /// <see cref="ArticleByteScanSimd.StartsWithAsciiIgnoreCase"/>. Accepts <c>Path:</c>, <c>PATH:</c>, and
+        /// <c>path:</c>. Rejects <c>Path::</c> and lines shorter than <c>{PathFieldName.Length} + 1</c> bytes.
         /// </para>
         /// <para>
         /// Malformed field names should already be rejected by <see cref="ArticleSpoolPreprocessor"/>; this guard
-        /// prevents rewriting lines that merely share a <c>Path:</c> prefix.
+        /// prevents rewriting lines that merely share a <c>Path</c> prefix (for example <c>Path:: bad</c>), causing
+        /// <see cref="PrependPathAppend"/> to insert a new top-level <c>Path</c> line instead.
         /// </para>
+        /// <para>Never throws.</para>
         /// </remarks>
         private static bool IsPathHeaderLine(ReadOnlySpan<byte> line)
         {

@@ -26,60 +26,102 @@ namespace Vector.NNTP.Articles.DependencyInjection
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Hosts call <see cref="AddNntpArticlesTransitSpool"/> after socket and history services are registered so
+    /// <b>Role:</b> Articles-layer composition root for MODE STREAM transit spool persistence. Hosts call
+    /// <see cref="AddNntpArticlesTransitSpool"/> after socket and history services are registered so
     /// <see cref="IOptions{NntpServerOptions}"/> and <see cref="HistoryDB.Abstractions.IHistoryDatabase"/> resolve for
     /// spool components. The NNTPD transit host wires this immediately after <c>AddNntpSocketsTransit</c> in
     /// <c>Program.Nntp.cs</c>.
     /// </para>
     /// <para>
-    /// This extension does not bind <see cref="NntpServerOptions"/> itself. Spool settings such as
-    /// <see cref="NntpServerOptions.SpoolDir"/>, <see cref="NntpServerOptions.SpoolQueueCapacity"/>, and
-    /// <see cref="NntpServerOptions.MaxQueuedBytes"/> must come from the host's existing options registration.
+    /// <b>Options ownership:</b> This extension does not bind <see cref="NntpServerOptions"/> itself. Spool settings such
+    /// as <see cref="NntpServerOptions.SpoolDir"/>, <see cref="NntpServerOptions.SpoolQueueCapacity"/>, and
+    /// <see cref="NntpServerOptions.MaxQueuedBytes"/> must come from the host's existing options registration. Rebidding
+    /// the shared <c>NntpServer</c> section here would duplicate collection properties and fail validation.
     /// </para>
+    /// <para><b>Nested types:</b> <see cref="NntpSpoolStartupConfigLogHostedService"/> is a private hosted service
+    /// registered only through <see cref="AddNntpArticlesTransitSpool"/>; its logging partial lives in
+    /// <c>NntpSpoolStartupConfigLogHostedService.Logging.cs</c> as <see cref="NntpSpoolStartupConfigLog"/>.</para>
     /// </remarks>
     public static class ServiceCollectionExtensions
     {
         /// <summary>
-        /// Registers the transit spool pipeline, production <see cref="INntpTransitStorage"/>, and hosted writer workers.
+        /// Registers the transit spool pipeline, production <see cref="INntpTransitStorage"/>, filter dependencies, and
+        /// hosted writer/metrics services.
         /// </summary>
-        /// <param name="services">Service collection to extend.</param>
-        /// <param name="configuration">Host configuration for <see cref="PostFilterOptions"/> and <see cref="SpamAssassinOptions"/>; pass <see langword="null"/> in tests.</param>
+        /// <param name="services">Service collection to extend. Must not be <see langword="null"/>.</param>
+        /// <param name="configuration">
+        /// Host configuration root. When non-<see langword="null"/>, binds <see cref="PostFilterOptions"/> and registers
+        /// production <see cref="NntpNewsLog"/> and <see cref="Filters.DependencyInjection.ServiceCollectionExtensions.AddSpamAssassin"/>.
+        /// Pass <see langword="null"/> in unit tests for lightweight stubs (<see cref="NullNntpNewsLog"/> and a minimal
+        /// in-process <see cref="SpamAssassin"/> client).
+        /// </param>
         /// <returns>The same <paramref name="services"/> instance for chaining.</returns>
         /// <exception cref="ArgumentNullException">
         /// Thrown when <paramref name="services"/> is <see langword="null"/>.
         /// </exception>
         /// <remarks>
-        /// <para><b>Prerequisites:</b></para>
+        /// <para><b>Prerequisites (host must register first):</b></para>
         /// <list type="bullet">
         /// <item>
         /// <description>
-        /// <see cref="IOptions{NntpServerOptions}"/> (or <see cref="IOptionsMonitor{NntpServerOptions}"/>) bound by the
-        /// host — for example via <c>AddNntpSocketsTransit</c>.
+        /// <see cref="IOptions{NntpServerOptions}"/> (or <see cref="IOptionsMonitor{NntpServerOptions}"/>) — typically via
+        /// <c>AddNntpSocketsTransit</c>.
         /// </description>
         /// </item>
         /// <item>
         /// <description>
-        /// <see cref="HistoryDB.Abstractions.IHistoryDatabase"/> from <c>AddNntpHistoryDatabase</c> — required by
-        /// <see cref="NntpSpoolWriterPump"/> for reservation release on preprocess/write failure.
+        /// <see cref="HistoryDB.Abstractions.IHistoryDatabase"/> from <c>AddNntpHistoryDatabase</c> —
+        /// <see cref="NntpSpoolWriterPump"/> releases HistoryDB reservations on preprocess/postprocess/write failure.
         /// </description>
         /// </item>
         /// <item><description>Host logging (<see cref="ILogger{T}"/> categories resolve automatically).</description></item>
         /// </list>
-        /// <para><b>Singleton registrations:</b></para>
+        /// <para><b>Configuration branch (<paramref name="configuration"/> is not <see langword="null"/>):</b></para>
         /// <list type="bullet">
-        /// <item><description><see cref="NntpSpoolMetrics"/> — OpenTelemetry counters and gauges for queue, writers, and article outcomes.</description></item>
-        /// <item><description><see cref="NntpSpoolWriteQueue"/> — bounded in-memory transit queue.</description></item>
-        /// <item><description><see cref="INntpNewsLog"/> — INN-style <c>pathlog/news</c> accept/reject logging.</description></item>
-        /// <item><description><see cref="ArticleSpoolPreprocessor"/> — fast header syntax validation and <c>Path</c> mutation.</description></item>
-        /// <item><description><see cref="ArticleSpoolPostprocessor"/> — deep header semantics, Message-ID, date, and style checks.</description></item>
-        /// <item><description><see cref="NntpSpoolWriterPump"/> — dequeue, preprocess, and atomic disk write loop.</description></item>
         /// <item>
         /// <description>
-        /// <see cref="ISpoolWriterScalingPolicy"/> → <see cref="ProcessorQueueSpoolWriterScalingPolicy"/> — queue-depth
-        /// writer scaling.
+        /// <see cref="PostFilterOptions"/> — bound from <see cref="PostFilterOptions.SectionName"/> with data annotations
+        /// and <c>ValidateOnStart</c> (used by <see cref="ArticleSpoolPostprocessor"/> for style rules).
         /// </description>
         /// </item>
-        /// <item><description><see cref="NntpSpoolWriterPool"/> — worker task lifecycle and scaling hysteresis.</description></item>
+        /// <item>
+        /// <description>
+        /// <see cref="SpamAssassinOptions"/> — registered through <see cref="Filters.DependencyInjection.ServiceCollectionExtensions.AddSpamAssassin"/>
+        /// with full validation and <c>ValidateOnStart</c>.
+        /// </description>
+        /// </item>
+        /// <item>
+        /// <description>
+        /// <see cref="INntpNewsLog"/> → <see cref="NntpNewsLog"/> factory using host configuration for
+        /// <c>Logging:LogDir</c>.
+        /// </description>
+        /// </item>
+        /// </list>
+        /// <para><b>Test branch (<paramref name="configuration"/> is <see langword="null"/>):</b></para>
+        /// <list type="bullet">
+        /// <item><description><see cref="PostFilterOptions"/> — default options instance without configuration binding.</description></item>
+        /// <item>
+        /// <description>
+        /// <see cref="SpamAssassinOptions"/> — default with <c>Host = 127.0.0.1</c> plus manual
+        /// <see cref="ISpamAssassin"/> / <see cref="SpamAssassin"/> singletons (no <c>ValidateOnStart</c>).
+        /// </description>
+        /// </item>
+        /// <item><description><see cref="INntpNewsLog"/> → <see cref="NullNntpNewsLog.Instance"/>.</description></item>
+        /// </list>
+        /// <para><b>Singleton registrations (both branches):</b></para>
+        /// <list type="bullet">
+        /// <item><description><see cref="NntpSpoolMetrics"/> — OpenTelemetry counters/gauges and minute throughput buckets.</description></item>
+        /// <item><description><see cref="NntpSpoolWriteQueue"/> — bounded in-memory transit queue.</description></item>
+        /// <item><description><see cref="ArticleSpoolPreprocessor"/> — header syntax validation and <c>Path</c> mutation.</description></item>
+        /// <item><description><see cref="SpamdScanArticleBuilder"/> — synthetic scan article bytes for SpamAssassin.</description></item>
+        /// <item><description><see cref="ArticleSpoolPostprocessor"/> — deep header checks, style rules, optional spam scan.</description></item>
+        /// <item><description><see cref="NntpSpoolWriterPump"/> — dequeue, preprocess/postprocess, atomic disk write.</description></item>
+        /// <item>
+        /// <description>
+        /// <see cref="ISpoolWriterScalingPolicy"/> → <see cref="ProcessorQueueSpoolWriterScalingPolicy"/>.
+        /// </description>
+        /// </item>
+        /// <item><description><see cref="NntpSpoolWriterPool"/> — writer worker lifecycle and scaling hysteresis.</description></item>
         /// <item>
         /// <description>
         /// <see cref="INntpTransitStorage"/> → <see cref="NntpSpoolTransitStorage"/> — production spool admission for
@@ -88,29 +130,15 @@ namespace Vector.NNTP.Articles.DependencyInjection
         /// </item>
         /// </list>
         /// <para>
-        /// <see cref="INntpTransitStorage"/> is registered with
-        /// <see cref="ServiceCollectionServiceExtensions.AddSingleton{TService, TImplementation}(IServiceCollection)"/>
-        /// so production spool storage wins over any later development-stub fallback registrations in the same collection.
+        /// <see cref="INntpTransitStorage"/> uses explicit implementation registration so production spool storage wins
+        /// over any later development-stub fallback registrations in the same service collection.
         /// </para>
         /// <para><b>Hosted services:</b></para>
         /// <list type="bullet">
-        /// <item>
-        /// <description>
-        /// <see cref="NntpSpoolWriterHostedService"/> — starts the writer pool and runs the one-second scaling loop.
-        /// </description>
-        /// </item>
-        /// <item>
-        /// <description>
-        /// <see cref="NntpSpoolStartupConfigLogHostedService"/> — logs resolved spool paths and queue limits once at
-        /// startup (EventId 1).
-        /// </description>
-        /// </item>
+        /// <item><description><see cref="NntpSpoolWriterHostedService"/> — pool start and one-second writer scaling loop.</description></item>
+        /// <item><description><see cref="NntpSpoolStartupConfigLogHostedService"/> — one-shot spool configuration log (EventId 1).</description></item>
+        /// <item><description><see cref="NntpSpoolThroughputLogHostedService"/> — minute throughput summaries to the host log.</description></item>
         /// </list>
-        /// <para>
-        /// <b>Options binding:</b> Do not bind <see cref="NntpServerOptions"/> again in this method. A second
-        /// <c>Bind</c> or <c>BindConfiguration</c> pass against the shared <c>NntpServer</c> section appends collection
-        /// properties such as <see cref="NntpServerOptions.TransitPeers"/> and fails duplicate-name validation.
-        /// </para>
         /// <example>
         /// <code>
         /// builder.Services.AddNntpHistoryDatabase(builder.Configuration);
@@ -164,17 +192,20 @@ namespace Vector.NNTP.Articles.DependencyInjection
         }
 
         /// <summary>
-        /// <see cref="IHostedService"/> that emits one information log with resolved transit spool configuration at host
-        /// startup.
+        /// Private <see cref="IHostedService"/> that emits one Information log with resolved transit spool configuration at
+        /// host startup.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Registered privately by <see cref="AddNntpArticlesTransitSpool"/> so operators can confirm effective spool
-        /// paths and queue limits without reading raw configuration files. Does not create directories or mutate options.
+        /// Registered only by <see cref="AddNntpArticlesTransitSpool"/> so operators can confirm effective spool paths and
+        /// queue limits without reading raw configuration files. Does not create directories, mutate options, or re-log on
+        /// options monitor changes.
         /// </para>
         /// <para>
-        /// <see cref="StartAsync"/> resolves paths through <see cref="SpoolDirectoryUtilities"/> (canonical absolute
-        /// spool root and <see cref="SpoolDirectoryUtilities.IncomingSubdirectory"/>). <see cref="StopAsync"/> is a no-op.
+        /// <see cref="StartAsync"/> resolves paths through
+        /// <see cref="SpoolDirectoryUtilities"/> and delegates formatting to
+        /// <see cref="NntpSpoolStartupConfigLog.SpoolConfigured"/>. <see cref="StopAsync"/>
+        /// is a no-op.
         /// </para>
         /// </remarks>
         private sealed class NntpSpoolStartupConfigLogHostedService : IHostedService
@@ -183,21 +214,25 @@ namespace Vector.NNTP.Articles.DependencyInjection
             /// Snapshot of bound <see cref="NntpServerOptions"/> captured at construction for startup logging.
             /// </summary>
             /// <remarks>
-            /// Taken from <see cref="IOptions{TOptions}.Value"/> once; later options monitor changes are not re-logged by
-            /// this service.
+            /// Taken from <see cref="IOptions{TOptions}.Value"/> once in the constructor. Later
+            /// <see cref="IOptionsMonitor{TOptions}"/> changes are not reflected in a second startup log event.
             /// </remarks>
             private readonly NntpServerOptions _options;
 
             /// <summary>
-            /// Category logger for the startup configuration event.
+            /// Category logger for the startup configuration event (EventId <c>1</c>).
             /// </summary>
             private readonly ILogger<NntpSpoolStartupConfigLogHostedService> _logger;
 
             /// <summary>
             /// Initializes a new instance of the <see cref="NntpSpoolStartupConfigLogHostedService"/> class.
             /// </summary>
-            /// <param name="options">Bound server options supplying spool directory and queue settings.</param>
-            /// <param name="logger">Logger for the startup information event.</param>
+            /// <param name="options">
+            /// Bound server options supplying <see cref="NntpServerOptions.SpoolDir"/>,
+            /// <see cref="NntpServerOptions.SpoolQueueCapacity"/>, <see cref="NntpServerOptions.MaxQueuedBytes"/>, and
+            /// <see cref="NntpServerOptions.PathAppend"/>.
+            /// </param>
+            /// <param name="logger">Logger for <see cref="NntpSpoolStartupConfigLog.SpoolConfigured"/>.</param>
             /// <exception cref="ArgumentNullException">
             /// Thrown when <paramref name="options"/> or <paramref name="logger"/> is <see langword="null"/>.
             /// </exception>
@@ -214,20 +249,30 @@ namespace Vector.NNTP.Articles.DependencyInjection
             /// <summary>
             /// Logs resolved spool root, incoming directory, queue capacity, byte budget, and path-append token once.
             /// </summary>
-            /// <param name="cancellationToken">Host startup cancellation token (unused).</param>
-            /// <returns><see cref="Task.CompletedTask"/> after the information log is written.</returns>
+            /// <param name="cancellationToken">
+            /// Host startup cancellation token. Unused; work is synchronous and completes before returning.
+            /// </param>
+            /// <returns><see cref="Task.CompletedTask"/> after the Information log is written.</returns>
             /// <remarks>
             /// <para>
-            /// Delegates to <see cref="NntpSpoolStartupConfigLog.SpoolConfigured"/> at <see cref="LogLevel.Information"/>
-            /// (EventId 1) with:
+            /// Invokes <see cref="NntpSpoolStartupConfigLog.SpoolConfigured"/> at <see cref="LogLevel.Information"/>
+            /// (EventId <c>1</c>) with:
             /// </para>
             /// <list type="bullet">
             /// <item><description><see cref="SpoolDirectoryUtilities.ResolveSpoolDirectory"/> output for spool root.</description></item>
             /// <item><description><see cref="SpoolDirectoryUtilities.GetIncomingDirectory"/> output for incoming path.</description></item>
             /// <item><description><see cref="NntpServerOptions.SpoolQueueCapacity"/>.</description></item>
             /// <item><description><see cref="NntpServerOptions.MaxQueuedBytes"/>.</description></item>
-            /// <item><description><see cref="NntpServerOptions.PathAppend"/> (may be empty).</description></item>
+            /// <item>
+            /// <description>
+            /// <see cref="NntpServerOptions.PathAppend"/> (may be null or empty when path mutation is disabled).
+            /// </description>
+            /// </item>
             /// </list>
+            /// <para>
+            /// Runs during host startup before <see cref="NntpSpoolWriterHostedService"/> begins dequeuing. Never throws
+            /// for normal options and path resolution inputs.
+            /// </para>
             /// </remarks>
             public Task StartAsync(CancellationToken cancellationToken)
             {
@@ -247,8 +292,9 @@ namespace Vector.NNTP.Articles.DependencyInjection
             /// <summary>
             /// No-op host stop hook; startup logging requires no teardown.
             /// </summary>
-            /// <param name="cancellationToken">Host stop cancellation token (unused).</param>
+            /// <param name="cancellationToken">Host stop cancellation token. Unused.</param>
             /// <returns><see cref="Task.CompletedTask"/>.</returns>
+            /// <remarks>Does not dispose log sinks or alter spool directories.</remarks>
             public Task StopAsync(CancellationToken cancellationToken)
             {
                 _ = cancellationToken;

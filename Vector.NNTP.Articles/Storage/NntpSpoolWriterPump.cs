@@ -18,21 +18,31 @@ using Vector.NNTP.Utilities.IO;
 namespace Vector.NNTP.Articles.Storage
 {
     /// <summary>
-    /// Drains queued transit articles, preprocesses and postprocesses them, and atomically writes a single payload file per Message-ID.
+    /// Drains queued transit articles, preprocesses and postprocesses them, and atomically writes one spool payload file
+    /// per Message-ID digest under the configured spool root.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>Role:</b> Singleton worker engine registered by
+    /// <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpArticlesTransitSpool"/>.
+    /// <see cref="NntpSpoolWriterPool"/> starts one or more concurrent <see cref="RunAsync"/> tasks against the same
+    /// instance; each task competes for <see cref="NntpSpoolWriteQueue.Reader"/> items and shares directory-creation
+    /// state in <see cref="_knownDirectories"/>.
+    /// </para>
     /// <para><b>Per-item pipeline:</b></para>
     /// <list type="number">
     /// <item><description>Dequeue a <see cref="NntpSpoolWriteItem"/> from <see cref="NntpSpoolWriteQueue.Reader"/>.</description></item>
     /// <item>
     /// <description>
-    /// Run fast header validation and optional path-hop mutation via <see cref="ArticleSpoolPreprocessor"/>.
+    /// Run fast header syntax validation and optional <c>PathAppend</c> hop mutation via
+    /// <see cref="ArticleSpoolPreprocessor.PreprocessAsync"/> (synchronous work today; no worker cancellation token).
     /// </description>
     /// </item>
     /// <item>
     /// <description>
-    /// Run deep header semantics, Message-ID, date, and filter style checks via
-    /// <see cref="ArticleSpoolPostprocessor"/>.
+    /// Run deep header semantics, Message-ID and date validation, filter style rules, optional yEnc CRC, and optional
+    /// SpamAssassin checks via <see cref="ArticleSpoolPostprocessor.PostprocessAsync"/> (honors the worker
+    /// <see cref="CancellationToken"/>).
     /// </description>
     /// </item>
     /// <item>
@@ -43,80 +53,121 @@ namespace Vector.NNTP.Articles.Storage
     /// </item>
     /// <item>
     /// <description>
-    /// On preprocess, postprocess, or write failure, release the HistoryDB reservation with
-    /// <see cref="IHistoryDatabase.TryReleaseAsync"/> so peers may re-offer the article.
+    /// On successful write, record acceptance metrics, emit <see cref="INntpNewsLog.LogAccepted"/>, optionally
+    /// <see cref="INntpNewsLog.LogCancelProcessed"/> for cancel articles, and commit history with
+    /// <see cref="TryCommitHistoryReservationAsync"/>.
     /// </description>
     /// </item>
     /// <item>
     /// <description>
-    /// On successful <see cref="FileIOUtilities.AtomicWriteAsync"/>, commit the digest with
-    /// <see cref="IHistoryDatabase.TryRecordAsync"/> (idempotent when TAKETHIS/IHAVE already reserved) and retain the
-    /// reservation — there is no release on the success path.
+    /// On preprocess, postprocess, or write failure, record rejection metrics, emit
+    /// <see cref="INntpNewsLog.LogRejected"/>, and release the HistoryDB reservation with
+    /// <see cref="TryReleaseHistoryReservationAsync"/> so peers may re-offer the article.
     /// </description>
     /// </item>
     /// <item>
     /// <description>
     /// Decrement queue depth and byte gauges via <see cref="NntpSpoolWriteQueue.NotifyDequeued(int)"/> in a
-    /// <c>finally</c> block so metrics include preprocessing and I/O still in flight.
+    /// <c>finally</c> block using the original enqueued <see cref="NntpSpoolWriteItem.ArticleBytes"/> length so metrics
+    /// include preprocessing and I/O still in flight.
     /// </description>
     /// </item>
     /// </list>
     /// <para>
-    /// <see cref="NntpSpoolWriterPool"/> may run multiple concurrent <see cref="RunAsync"/> tasks against one pump
-    /// singleton. The channel reader serializes dequeue; <see cref="_knownDirectories"/> coordinates directory
-    /// creation across workers.
+    /// <b>Concurrency:</b> The bounded channel reader serializes dequeue per competing worker, but postprocess, disk I/O,
+    /// and history calls for different items may overlap across workers. <see cref="_knownDirectories"/> coordinates leaf
+    /// directory creation so each fan-out path triggers at most one <see cref="Directory.CreateDirectory(string)"/> per
+    /// pump instance.
     /// </para>
     /// <para>
     /// <b>History reservation invariant:</b> TAKETHIS/IHAVE call <see cref="IHistoryDatabase.TryRecordAsync"/> before body
     /// transfer; the pump commits again after successful spool persistence so history aligns with news-log <c>+</c>
     /// lines. <see cref="TryReleaseHistoryReservationAsync"/> runs only on preprocess, postprocess, write failure, or
-    /// worker cancellation during an in-flight write. A completed atomic write keeps the reservation so duplicate CHECK
-    /// rejections remain correct for the persisted article.
+    /// worker cancellation during an in-flight atomic write. A completed atomic write keeps the reservation so duplicate
+    /// <c>CHECK</c> rejections remain correct for the persisted article.
     /// </para>
     /// <para>
-    /// Source-generated log helpers live in the logging partial class file (EventIds 1-5).
+    /// <b>Observability:</b> Per-article failure logs (EventIds 1-7) live in the logging partial
+    /// (<c>NntpSpoolWriterPump.Logging.cs</c>). Acceptance and rejection rollups use <see cref="NntpSpoolMetrics"/> and
+    /// <see cref="INntpNewsLog"/>; successful spool writes do not emit Information-level pump logs.
     /// </para>
+    /// <para><b>Threading:</b> Instance fields are read-only after construction and safe for concurrent
+    /// <see cref="RunAsync"/> workers without external locking on the pump itself.</para>
     /// </remarks>
     internal sealed partial class NntpSpoolWriterPump
     {
         /// <summary>
         /// Bounded spool queue supplying the channel reader and dequeue metric updates.
         /// </summary>
+        /// <remarks>
+        /// Shared singleton written by transit socket threads via <see cref="NntpSpoolTransitStorage"/> and read by all
+        /// <see cref="NntpSpoolWriterPool"/> workers. <see cref="NntpSpoolWriteQueue.NotifyDequeued(int)"/> is invoked
+        /// from <see cref="RunAsync"/> <c>finally</c> so scaling policy depth includes in-flight items.
+        /// </remarks>
         private readonly NntpSpoolWriteQueue _queue;
 
         /// <summary>
         /// Preprocessor that validates NNTP header syntax and applies <c>PathAppend</c> hop mutation before postprocessing.
         /// </summary>
+        /// <remarks>
+        /// Invoked synchronously through <see cref="ArticleSpoolPreprocessor.PreprocessAsync"/> for every dequeued item.
+        /// Failures short-circuit before postprocess and disk I/O.
+        /// </remarks>
         private readonly ArticleSpoolPreprocessor _preprocessor;
 
         /// <summary>
-        /// Postprocessor that validates header semantics, Message-ID, date headers, and filter style rules before disk write.
+        /// Postprocessor that validates header semantics, Message-ID, date headers, filter style rules, yEnc CRC, and spam policy.
         /// </summary>
+        /// <remarks>
+        /// Invoked from <see cref="RunAsync"/> with the worker <see cref="CancellationToken"/>. May perform asynchronous
+        /// SpamAssassin I/O on eligible articles. Failures short-circuit before disk I/O.
+        /// </remarks>
         private readonly ArticleSpoolPostprocessor _postprocessor;
 
         /// <summary>
-        /// History store used to release digest reservations when spool preprocessing, postprocessing, or persistence fails.
+        /// History store used to release digest reservations on failure and commit reservations after successful spool writes.
         /// </summary>
+        /// <remarks>
+        /// <see cref="TryReleaseHistoryReservationAsync"/> and <see cref="TryCommitHistoryReservationAsync"/> both call
+        /// with <see cref="CancellationToken.None"/> so history cleanup completes even when the worker token is canceled.
+        /// </remarks>
         private readonly IHistoryDatabase _historyDatabase;
 
         /// <summary>
-        /// Spool queue and writer counters updated on preprocess/postprocess failure, write success/failure, and history release faults.
+        /// Spool observability recorder updated on preprocess/postprocess failure, write success/failure, article types, and history faults.
         /// </summary>
+        /// <remarks>
+        /// Shared singleton with <see cref="NntpSpoolWriteQueue"/> and <see cref="NntpSpoolWriterPool"/>. Rejection
+        /// categories are classified through <see cref="SpoolArticleRejectionClassifier"/> before
+        /// <see cref="NntpSpoolMetrics.RecordArticleRejected"/>.
+        /// </remarks>
         private readonly NntpSpoolMetrics _metrics;
 
         /// <summary>
-        /// Logger consumed by source-generated <c>Log*</c> methods on the logging partial.
+        /// Category logger passed to source-generated <c>Log*</c> helpers on the logging partial.
         /// </summary>
+        /// <remarks>
+        /// Emits Warning and Error entries for preprocess, postprocess, write, and history repair paths only.
+        /// </remarks>
         private readonly ILogger<NntpSpoolWriterPump> _logger;
 
         /// <summary>
-        /// INN-style news log for spool commit and writer-path rejections.
+        /// INN-style news log writer for spool acceptance, rejection, and cancel-processed lines.
         /// </summary>
+        /// <remarks>
+        /// <see cref="INntpNewsLog.LogAccepted"/> and <see cref="INntpNewsLog.LogCancelProcessed"/> run only after
+        /// successful atomic write. <see cref="INntpNewsLog.LogRejected"/> runs on preprocess, postprocess, and write
+        /// failure paths before history release.
+        /// </remarks>
         private readonly INntpNewsLog _newsLog;
 
         /// <summary>
-        /// Absolute spool root resolved once from <see cref="NntpServerOptions.SpoolDir"/> at construction.
+        /// Absolute spool root directory resolved once from <see cref="NntpServerOptions.SpoolDir"/> at construction.
         /// </summary>
+        /// <remarks>
+        /// Passed to <see cref="SpoolDirectoryUtilities.GetArticleFilePath"/> with each item's
+        /// <see cref="NntpSpoolWriteItem.MessageIdDigestHex"/> to build <c>Incoming/{aa}/{bb}/{digest}</c> paths.
+        /// </remarks>
         private readonly string _spoolDirectory;
 
         /// <summary>
@@ -133,20 +184,45 @@ namespace Vector.NNTP.Articles.Storage
         /// <see cref="SpoolDirectoryUtilities.GetArticleFilePath"/> validates lowercase hexadecimal digests
         /// only; fan-out directory names are therefore case-stable on Linux as well as Windows.
         /// </para>
+        /// <para>
+        /// Values are unused placeholders; only key presence matters.
+        /// </para>
         /// </remarks>
         private readonly ConcurrentDictionary<string, byte> _knownDirectories = new(StringComparer.Ordinal);
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NntpSpoolWriterPump"/> class.
         /// </summary>
-        /// <param name="queue">Bounded in-memory queue written by transit socket threads.</param>
-        /// <param name="preprocessor">Fast header syntax validator and path mutator for queued article bytes.</param>
-        /// <param name="postprocessor">Deep header and filter validator for preprocessed article bytes.</param>
-        /// <param name="historyDatabase">History database for releasing failed spool reservations.</param>
-        /// <param name="metrics">Spool observability recorder shared with the queue and writer pool.</param>
-        /// <param name="options">Bound <see cref="NntpServerOptions"/> supplying spool root and <c>PathAppend</c>.</param>
-        /// <param name="newsLog">INN news log writer for commit and rejection events.</param>
-        /// <param name="logger">Category logger for writer pump diagnostics.</param>
+        /// <param name="queue">
+        /// Bounded in-memory queue written by transit socket threads. Must be the same singleton instance registered for
+        /// <see cref="NntpSpoolTransitStorage"/> and <see cref="NntpSpoolWriterPool"/>.
+        /// </param>
+        /// <param name="preprocessor">
+        /// Fast header syntax validator and <c>PathAppend</c> path mutator for raw queued article bytes.
+        /// </param>
+        /// <param name="postprocessor">
+        /// Deep header, filter, yEnc, and spam validator producing the byte payload written to disk on success.
+        /// </param>
+        /// <param name="historyDatabase">
+        /// History database for releasing failed reservations and committing digests after successful spool persistence.
+        /// </param>
+        /// <param name="metrics">
+        /// Spool observability recorder shared with the queue, transit storage, and writer pool.
+        /// </param>
+        /// <param name="options">
+        /// Bound <see cref="NntpServerOptions"/> supplying <see cref="NntpServerOptions.SpoolDir"/> resolved to
+        /// <see cref="_spoolDirectory"/> via <see cref="SpoolDirectoryUtilities.ResolveSpoolDirectory"/>.
+        /// </param>
+        /// <param name="newsLog">
+        /// INN news log writer for acceptance, rejection, and cancel-processed events on the writer path.
+        /// </param>
+        /// <param name="logger">
+        /// Category logger for source-generated pump failure diagnostics (EventIds 1-7).
+        /// </param>
+        /// <remarks>
+        /// Resolves and caches the spool root once; invalid <see cref="NntpServerOptions.SpoolDir"/> configuration fails
+        /// at construction time through <see cref="SpoolDirectoryUtilities.ResolveSpoolDirectory"/>.
+        /// </remarks>
         /// <exception cref="ArgumentNullException">
         /// Thrown when any dependency parameter is <see langword="null"/>.
         /// </exception>
@@ -180,16 +256,35 @@ namespace Vector.NNTP.Articles.Storage
         }
 
         /// <summary>
-        /// Runs the worker loop until the queue completes, the worker token is canceled, or a fatal read error occurs.
+        /// Runs the worker loop until the queue completes, the worker token is canceled, or the reader closes.
         /// </summary>
         /// <param name="cancellationToken">
-        /// Per-worker token linked to host shutdown and pool scale-down. Passed to queue reads and atomic writes.
+        /// Per-worker token linked to host shutdown and pool scale-down. Passed to queue reads, postprocessing, and
+        /// atomic writes. History release and commit helpers intentionally use <see cref="CancellationToken.None"/>
+        /// instead.
         /// </param>
         /// <returns>
-        /// A task that completes normally when the reader is closed or cancellation is requested; does not fault on
-        /// expected worker cancellation.
+        /// A task that completes normally when the channel reader closes or cancellation is observed on queue read or
+        /// during an in-flight atomic write. Does not fault on those expected exit paths. An unexpected exception from
+        /// postprocessing (other than write-path cancellation handling) may fault the returned task after
+        /// <see cref="NntpSpoolWriteQueue.NotifyDequeued(int)"/> runs in <c>finally</c>.
         /// </returns>
         /// <remarks>
+        /// <para><b>Success path (per item):</b></para>
+        /// <list type="number">
+        /// <item><description>Record article type flags from postprocessing.</description></item>
+        /// <item><description>Resolve path, ensure leaf directory, atomic write postprocessed bytes.</description></item>
+        /// <item><description>Record write success and acceptance metrics; log news <c>+</c> line.</description></item>
+        /// <item><description>Emit cancel-processed news line when <see cref="ArticleTypeFlags.Cancel"/> is set.</description></item>
+        /// <item><description>Commit history via <see cref="TryCommitHistoryReservationAsync"/>.</description></item>
+        /// </list>
+        /// <para><b>Failure path (per item):</b></para>
+        /// <list type="number">
+        /// <item><description>Record stage-specific failure metric and structured pump log.</description></item>
+        /// <item><description>Classify and record rejection metric; emit news <c>-</c> line.</description></item>
+        /// <item><description>Release history via <see cref="TryReleaseHistoryReservationAsync"/>.</description></item>
+        /// <item><description>Continue the loop without terminating the worker (write exceptions are caught locally).</description></item>
+        /// </list>
         /// <para><b>Exit paths:</b></para>
         /// <list type="bullet">
         /// <item>
@@ -211,8 +306,8 @@ namespace Vector.NNTP.Articles.Storage
         /// </item>
         /// </list>
         /// <para>
-        /// Preprocess, postprocess, and write failures are logged, release history best-effort, and continue the loop.
-        /// Unexpected write exceptions do not terminate the worker.
+        /// <see cref="NntpSpoolWriterPool"/> starts each worker through <see cref="Task.Run(Func{Task}, CancellationToken)"/>
+        /// and observes task completion during scale-down or host stop.
         /// </para>
         /// </remarks>
         public async Task RunAsync(CancellationToken cancellationToken)
@@ -336,12 +431,16 @@ namespace Vector.NNTP.Articles.Storage
         /// </summary>
         /// <param name="articleDirectory">
         /// Absolute directory path (for example <c>{SpoolRoot}/Incoming/ab/cd</c>) containing the article payload file.
+        /// Must be non-empty; callers pass the parent of the digest file path from
+        /// <see cref="SpoolDirectoryUtilities.GetArticleFilePath"/>.
         /// </param>
         /// <remarks>
         /// <para>
-        /// Concurrent workers may race on <see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/>; losers skip creation
-        /// because the winner already created the directory. <see cref="Directory.CreateDirectory(string)"/> is idempotent
-        /// when the directory already exists.
+        /// Invoked from <see cref="RunAsync"/> immediately before
+        /// <see cref="FileIOUtilities.AtomicWriteAsync"/>. Concurrent workers may race on
+        /// <see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/>; losers skip creation because the winner already
+        /// created the directory. <see cref="Directory.CreateDirectory(string)"/> is idempotent when the directory
+        /// already exists.
         /// </para>
         /// <para>
         /// When <see cref="Directory.CreateDirectory(string)"/> throws after a successful <c>TryAdd</c>, the path is
@@ -372,20 +471,25 @@ namespace Vector.NNTP.Articles.Storage
         }
 
         /// <summary>
-        /// Releases a HistoryDB reservation after spool preprocessing, postprocessing, or write failure.
+        /// Releases a HistoryDB reservation after spool preprocessing, postprocessing, write failure, or write cancellation.
         /// </summary>
-        /// <param name="messageId">NNTP Message-ID whose digest reservation should be removed.</param>
-        /// <returns>A task that completes after the release attempt and any failure logging.</returns>
+        /// <param name="messageId">NNTP <c>Message-ID</c> whose digest reservation should be removed.</param>
+        /// <returns>
+        /// A task that completes after the release attempt finishes. Never throws; failures are logged through the
+        /// logging partial and counted in metrics.
+        /// </returns>
         /// <remarks>
         /// <para>
         /// Uses <see cref="CancellationToken.None"/> so cleanup completes even when the worker token is already canceled.
-        /// Invoked only from failure and cancellation paths — successful writes intentionally retain the reservation.
+        /// Invoked from <see cref="RunAsync"/> failure paths and from the atomic-write cancellation handler. Successful
+        /// writes intentionally retain the reservation and call <see cref="TryCommitHistoryReservationAsync"/> instead.
         /// </para>
         /// <para>
         /// <see cref="HistoryReleaseResult.Released"/> and <see cref="HistoryReleaseResult.NotFound"/> are treated as
-        /// success. <see cref="HistoryReleaseResult.TryAgainLater"/> and <see cref="HistoryReleaseResult.Unavailable"/>
-        /// increment failure metrics and emit warning logs. Exceptions are logged and swallowed so the worker loop
-        /// continues.
+        /// success. <see cref="HistoryReleaseResult.TryAgainLater"/> and
+        /// <see cref="HistoryReleaseResult.Unavailable"/> increment failure metrics and emit warning logs via
+        /// <c>LogHistoryReleaseOutcome</c>. Exceptions increment failure metrics and emit error logs via
+        /// <c>LogHistoryReleaseFailed</c>.
         /// </para>
         /// </remarks>
         private async Task TryReleaseHistoryReservationAsync(string messageId)
@@ -411,16 +515,22 @@ namespace Vector.NNTP.Articles.Storage
         /// <summary>
         /// Commits a HistoryDB digest reservation after successful spool persistence.
         /// </summary>
-        /// <param name="messageId">NNTP Message-ID whose digest should remain in all history tiers.</param>
-        /// <returns>A task that completes after the commit attempt and any failure logging.</returns>
+        /// <param name="messageId">NNTP <c>Message-ID</c> whose digest should remain in all history tiers.</param>
+        /// <returns>
+        /// A task that completes after the commit attempt finishes. Never throws; failures are logged through the
+        /// logging partial and counted in metrics.
+        /// </returns>
         /// <remarks>
         /// <para>
         /// Uses <see cref="CancellationToken.None"/> so commit completes even when the worker token is already canceled.
-        /// Invoked only after <see cref="FileIOUtilities.AtomicWriteAsync"/> succeeds. When TAKETHIS/IHAVE already
-        /// reserved the digest, <see cref="HistoryRecordResult.Duplicate"/> is treated as success.
+        /// Invoked only from <see cref="RunAsync"/> after <see cref="FileIOUtilities.AtomicWriteAsync"/> succeeds. When
+        /// TAKETHIS/IHAVE already reserved the digest, <see cref="HistoryRecordResult.Duplicate"/> is treated as success.
         /// </para>
         /// <para>
-        /// Non-success outcomes increment failure metrics and emit warning logs; the spool file is retained.
+        /// <see cref="HistoryRecordResult.Recorded"/> and <see cref="HistoryRecordResult.Duplicate"/> are success.
+        /// <see cref="HistoryRecordResult.TryAgainLater"/> and <see cref="HistoryRecordResult.Unavailable"/> increment
+        /// failure metrics and emit warning logs via <c>LogHistoryCommitOutcome</c>. Exceptions increment failure metrics
+        /// and emit error logs via <c>LogHistoryCommitFailed</c>. The spool file is always retained on commit failure.
         /// </para>
         /// </remarks>
         private async Task TryCommitHistoryReservationAsync(string messageId)

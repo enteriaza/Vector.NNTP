@@ -7,32 +7,56 @@ namespace Vector.NNTP.Articles.Metrics
 {
     /// <summary>
     /// Maps preprocess, postprocess, enqueue, and write failure reasons to
-    /// <see cref="SpoolArticleRejectionCategory"/> buckets.
+    /// <see cref="SpoolArticleRejectionCategory"/> buckets for outcome metrics and minute throughput logs.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Called from <see cref="Storage.NntpSpoolWriterPump"/> and <see cref="Storage.NntpSpoolTransitStorage"/> when
-    /// recording <see cref="NntpSpoolMetrics.RecordArticleRejected"/>. Classification uses stable substring checks against
-    /// operator-facing reason strings produced by <see cref="Processing.ArticleSpoolPreprocessor"/> and
-    /// <see cref="Processing.ArticleSpoolPostprocessor"/>.
+    /// <b>Role:</b> Translates operator-facing rejection text into a coarse bucket immediately before
+    /// <see cref="NntpSpoolMetrics.RecordArticleRejected"/>. The same bucket drives OpenTelemetry
+    /// <c>nntp.spool.article.rejected</c> tags via <see cref="SpoolArticleRejectionMetricsTags"/> and per-feed minute
+    /// counters via <see cref="SpoolFeedOutcomeCounters.RecordRejected"/>.
     /// </para>
-    /// <para><b>Thread safety:</b> Static and stateless; safe for concurrent writer pumps.</para>
+    /// <para><b>Call sites:</b></para>
+    /// <list type="bullet">
+    /// <item><description><see cref="Storage.NntpSpoolWriterPump"/> — <see cref="ClassifyPreprocessFailure"/>, <see cref="ClassifyPostprocessFailure"/>, and <see cref="ClassifyWriteFailure"/>.</description></item>
+    /// <item><description><see cref="Storage.NntpSpoolTransitStorage"/> — <see cref="ClassifyEnqueueFailure"/> on max-size and queue-full paths.</description></item>
+    /// </list>
+    /// <para>
+    /// Classification is intentionally string-heuristic for postprocess failures (substring checks) so metrics stay
+    /// stable without coupling to exception types. Preprocess, enqueue, and write classifiers are fixed buckets today.
+    /// </para>
+    /// <para><b>Threading:</b> Stateless static methods; safe for concurrent writer pumps and socket threads.</para>
     /// </remarks>
     internal static class SpoolArticleRejectionClassifier
     {
         /// <summary>
         /// Exact postprocess failure reason emitted when yEnc CRC validation fails.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Literal <c>yEnc section CRC validation failed.</c> Must remain byte-identical to the string returned by
+        /// <see cref="Processing.ArticleSpoolPostprocessor"/> on yEnc CRC rejection so
+        /// <see cref="ClassifyPostprocessFailure"/> can map the failure to <see cref="SpoolArticleRejectionCategory.Crc"/>
+        /// via exact match before substring heuristics run.
+        /// </para>
+        /// </remarks>
         internal const string YEncCrcFailureReason = "yEnc section CRC validation failed.";
 
         /// <summary>
-        /// Classifies a preprocess failure reason.
+        /// Classifies a preprocess failure reason from the spool writer pump.
         /// </summary>
-        /// <param name="reason">Failure reason from <see cref="Processing.ArticleSpoolPreprocessResult"/>.</param>
+        /// <param name="reason">
+        /// Failure reason from <see cref="Processing.ArticleSpoolPreprocessResult.FailureReason"/>. Content is not
+        /// inspected; all preprocess faults are header/path syntax failures today.
+        /// </param>
         /// <returns>
-        /// Always <see cref="SpoolArticleRejectionCategory.HeaderSyntax"/> — preprocess validates header syntax and path
-        /// mutation only.
+        /// Always <see cref="SpoolArticleRejectionCategory.HeaderSyntax"/> — preprocess validates header syntax and
+        /// optional <c>Path</c> hop mutation only.
         /// </returns>
+        /// <remarks>
+        /// Called from <see cref="Storage.NntpSpoolWriterPump"/> when
+        /// <see cref="Processing.ArticleSpoolPreprocessor.PreprocessAsync"/> returns a failed result. Never throws.
+        /// </remarks>
         internal static SpoolArticleRejectionCategory ClassifyPreprocessFailure(string? reason)
         {
             _ = reason;
@@ -40,47 +64,56 @@ namespace Vector.NNTP.Articles.Metrics
         }
 
         /// <summary>
-        /// Classifies a postprocess failure reason.
+        /// Classifies a postprocess failure reason from the spool writer pump.
         /// </summary>
-        /// <param name="reason">Failure reason from <see cref="Processing.ArticleSpoolPostprocessResult"/>.</param>
+        /// <param name="reason">
+        /// Failure reason from <see cref="Processing.ArticleSpoolPostprocessResult.FailureReason"/>; may be
+        /// <see langword="null"/> when the postprocessor did not supply text.
+        /// </param>
         /// <returns>
-        /// <see cref="SpoolArticleRejectionCategory.Crc"/> for yEnc CRC failures;
-        /// <see cref="SpoolArticleRejectionCategory.Crosspost"/> for Newsgroups limit violations;
-        /// <see cref="SpoolArticleRejectionCategory.HeaderSyntax"/> for header, Message-ID, and date validation failures;
-        /// otherwise <see cref="SpoolArticleRejectionCategory.Other"/> (spam, size, and unknown reasons).
+        /// A coarse bucket determined by the evaluation order documented in <see cref="ClassifyPostprocessFailure"/>
+        /// remarks.
         /// </returns>
+        /// <remarks>
+        /// <para><b>Evaluation order:</b></para>
+        /// <list type="number">
+        /// <item><description><see langword="null"/> or whitespace → <see cref="SpoolArticleRejectionCategory.Other"/>.</description></item>
+        /// <item><description>Exact match on <see cref="YEncCrcFailureReason"/> → <see cref="SpoolArticleRejectionCategory.Crc"/>.</description></item>
+        /// <item><description><see cref="IsCrosspostFailure"/> → <see cref="SpoolArticleRejectionCategory.Crosspost"/>.</description></item>
+        /// <item><description><see cref="IsHeaderSyntaxPostprocessFailure"/> → <see cref="SpoolArticleRejectionCategory.HeaderSyntax"/>.</description></item>
+        /// <item><description>Otherwise → <see cref="SpoolArticleRejectionCategory.Other"/> (spam scores, configured max article size, parse edge cases, and unknown text).</description></item>
+        /// </list>
+        /// <para>
+        /// Called from <see cref="Storage.NntpSpoolWriterPump"/> when
+        /// <see cref="Processing.ArticleSpoolPostprocessor.PostprocessAsync"/> returns a failed result. Never throws.
+        /// </para>
+        /// </remarks>
         internal static SpoolArticleRejectionCategory ClassifyPostprocessFailure(string? reason)
         {
-            if (string.IsNullOrWhiteSpace(reason))
-            {
-                return SpoolArticleRejectionCategory.Other;
-            }
-
-            if (reason == YEncCrcFailureReason)
-            {
-                return SpoolArticleRejectionCategory.Crc;
-            }
-
-            if (IsCrosspostFailure(reason))
-            {
-                return SpoolArticleRejectionCategory.Crosspost;
-            }
-
-            if (IsHeaderSyntaxPostprocessFailure(reason))
-            {
-                return SpoolArticleRejectionCategory.HeaderSyntax;
-            }
-
-            return SpoolArticleRejectionCategory.Other;
+            return string.IsNullOrWhiteSpace(reason)
+                ? SpoolArticleRejectionCategory.Other
+                : reason == YEncCrcFailureReason
+                ? SpoolArticleRejectionCategory.Crc
+                : IsCrosspostFailure(reason)
+                ? SpoolArticleRejectionCategory.Crosspost
+                : IsHeaderSyntaxPostprocessFailure(reason) ? SpoolArticleRejectionCategory.HeaderSyntax : SpoolArticleRejectionCategory.Other;
         }
 
         /// <summary>
-        /// Classifies an enqueue-time rejection from transit storage.
+        /// Classifies an enqueue-time rejection from transit storage before the writer pump dequeues the item.
         /// </summary>
-        /// <param name="reason">Operator-facing reason passed to <see cref="Logging.INntpNewsLog.LogRejected"/>.</param>
+        /// <param name="reason">
+        /// Operator-facing reason passed to <see cref="Logging.INntpNewsLog.LogRejected"/> (for example
+        /// <c>Article exceeds local limit of … bytes</c> or <c>Queue full</c>). Content is not inspected in v1.
+        /// </param>
         /// <returns>
-        /// Always <see cref="SpoolArticleRejectionCategory.Other"/> for max-size and queue-full rejections in v1.
+        /// Always <see cref="SpoolArticleRejectionCategory.Other"/> for max-size and queue-full rejections in the
+        /// current implementation.
         /// </returns>
+        /// <remarks>
+        /// Called from <see cref="Storage.NntpSpoolTransitStorage"/> on
+        /// <see cref="Storage.NntpSpoolTransitStorage.TakeThisAsync"/> size and enqueue failures. Never throws.
+        /// </remarks>
         internal static SpoolArticleRejectionCategory ClassifyEnqueueFailure(string reason)
         {
             _ = reason;
@@ -90,7 +123,15 @@ namespace Vector.NNTP.Articles.Metrics
         /// <summary>
         /// Classifies a spool disk write failure after postprocessing succeeded.
         /// </summary>
-        /// <returns>Always <see cref="SpoolArticleRejectionCategory.Other"/>.</returns>
+        /// <returns>
+        /// Always <see cref="SpoolArticleRejectionCategory.Other"/> — I/O and directory preparation faults are not
+        /// subdivided on the minute throughput path today.
+        /// </returns>
+        /// <remarks>
+        /// Called from <see cref="Storage.NntpSpoolWriterPump"/> when
+        /// <see cref="Utilities.IO.FileIOUtilities.AtomicWriteAsync"/> or digest directory preparation throws after a
+        /// successful postprocess result. Never throws.
+        /// </remarks>
         internal static SpoolArticleRejectionCategory ClassifyWriteFailure()
         {
             return SpoolArticleRejectionCategory.Other;
@@ -99,11 +140,16 @@ namespace Vector.NNTP.Articles.Metrics
         /// <summary>
         /// Detects Newsgroups crosspost limit failures from postprocessor style rules.
         /// </summary>
-        /// <param name="reason">Postprocess failure reason text.</param>
+        /// <param name="reason">Postprocess failure reason text from <see cref="Processing.ArticleSpoolPostprocessor"/>.</param>
         /// <returns>
-        /// <see langword="true"/> when the reason matches the
-        /// <c>Newsgroups header lists … (limit …)</c> pattern from style validation.
+        /// <see langword="true"/> when <paramref name="reason"/> contains both
+        /// <c>Newsgroups header lists</c> and <c>(limit </c> substrings, matching failures such as
+        /// <c>Newsgroups header lists 12 groups (limit 8).</c>
         /// </returns>
+        /// <remarks>
+        /// Evaluated in <see cref="ClassifyPostprocessFailure"/> after the yEnc CRC exact match and before header-syntax
+        /// heuristics. Never throws.
+        /// </remarks>
         private static bool IsCrosspostFailure(string reason)
         {
             return reason.Contains("Newsgroups header lists", StringComparison.Ordinal) &&
@@ -111,10 +157,30 @@ namespace Vector.NNTP.Articles.Metrics
         }
 
         /// <summary>
-        /// Detects header, Message-ID, date, and forbidden-header failures from postprocess validation.
+        /// Detects header, Message-ID, date, and forbidden-header failures from postprocess validation text.
         /// </summary>
-        /// <param name="reason">Postprocess failure reason text.</param>
-        /// <returns><see langword="true"/> when the reason describes header semantics rather than spam or size policy.</returns>
+        /// <param name="reason">Postprocess failure reason text from <see cref="Processing.ArticleSpoolPostprocessor"/>.</param>
+        /// <returns>
+        /// <see langword="true"/> when <paramref name="reason"/> contains any of the configured semantic header markers;
+        /// otherwise <see langword="false"/> so spam, size, and unknown reasons fall through to
+        /// <see cref="SpoolArticleRejectionCategory.Other"/>.
+        /// </returns>
+        /// <remarks>
+        /// <para><b>Matched substrings</b> (case sensitivity as implemented):</para>
+        /// <list type="bullet">
+        /// <item><description><c>Header</c> (ordinal)</description></item>
+        /// <item><description><c>Message-ID</c> (ordinal)</description></item>
+        /// <item><description><c>header line</c>, <c>header field</c>, <c>header continuation</c>, <c>header name</c>, <c>header value</c>, <c>header terminator</c> (ordinal ignore case)</description></item>
+        /// <item><description><c>Forbidden header</c> (ordinal)</description></item>
+        /// <item><description><c>Transit command Message-ID</c> (ordinal)</description></item>
+        /// <item><description><c>Date</c> (ordinal) — matches date header parse failures such as <c>Date header is not parseable …</c></description></item>
+        /// </list>
+        /// <para>
+        /// Heuristic matching can classify any reason containing <c>Header</c> or <c>Date</c> as header syntax, including
+        /// some parse failures from <c>TryParseArticle</c>. Spam and size policy strings are expected to miss these
+        /// markers. Never throws.
+        /// </para>
+        /// </remarks>
         private static bool IsHeaderSyntaxPostprocessFailure(string reason)
         {
             return reason.Contains("Header", StringComparison.Ordinal) ||

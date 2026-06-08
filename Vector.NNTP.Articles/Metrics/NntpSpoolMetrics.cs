@@ -13,23 +13,31 @@ using Vector.NNTP.Utilities.Diagnostics;
 namespace Vector.NNTP.Articles.Metrics
 {
     /// <summary>
-    /// OpenTelemetry <see cref="Meter"/> instruments for transit spool queue admission, writer throughput, and worker
-    /// pool observability.
+    /// OpenTelemetry <see cref="Meter"/> instruments for transit spool queue admission, writer throughput, article
+    /// outcomes, and worker pool observability.
     /// </summary>
     /// <remarks>
     /// <para><b>Producers:</b></para>
     /// <list type="bullet">
-    /// <item><description><see cref="Storage.NntpSpoolWriteQueue"/> — enqueue, reject, and dequeue counters/gauges.</description></item>
-    /// <item><description><see cref="Storage.NntpSpoolWriterPump"/> — preprocess/postprocess failure, write success/failure, payload bytes, HistoryDB release and commit failures.</description></item>
-    /// <item><description><see cref="Storage.NntpSpoolWriterPool"/> — active writer gauge via <see cref="SetActiveWriters"/>.</description></item>
-    /// <item><description><see cref="Storage.NntpSpoolWriterPump"/> and <see cref="Storage.NntpSpoolTransitStorage"/> — categorized article accept/reject outcome counters and minute throughput snapshots.</description></item>
+    /// <item><description><see cref="NntpSpoolWriteQueue"/> — <see cref="RecordEnqueued"/>, <see cref="RecordEnqueueRejected"/>, and <see cref="RecordDequeued"/>.</description></item>
+    /// <item><description><see cref="NntpSpoolWriterPump"/> — preprocess/postprocess/write failures, successful writes, article types, accept/reject outcomes, and HistoryDB cleanup faults.</description></item>
+    /// <item><description><see cref="NntpSpoolWriterPool"/> — <see cref="SetActiveWriters"/> for the active worker gauge.</description></item>
+    /// <item><description><see cref="NntpSpoolTransitStorage"/> — enqueue-time <see cref="RecordArticleRejected"/> on max-size and queue-full paths.</description></item>
+    /// <item><description><see cref="Hosting.NntpSpoolThroughputLogHostedService"/> — reader of <see cref="TakeMinuteSnapshotAndReset"/> (not a writer).</description></item>
     /// </list>
     /// <para>
+    /// <b>Two rejection planes:</b> <c>nntp.spool.queue.rejected</c> counts admission failures inside
+    /// <see cref="NntpSpoolWriteQueue.TryEnqueue"/> (depth/byte budget or closed channel). Tagged
+    /// <c>nntp.spool.article.rejected</c> counts final article rejections with <c>feed</c> and <c>category</c> dimensions
+    /// aligned with <see cref="INntpNewsLog.LogRejected"/>. A transit queue-full path may increment both when
+    /// <see cref="NntpSpoolTransitStorage.TakeThisAsync"/> records an article rejection after
+    /// <see cref="RecordEnqueueRejected"/> runs inside the queue.
+    /// </para>
+    /// <para>
     /// <b>Gauge model:</b> <see cref="_queueDepth"/> and <see cref="_queuedBytes"/> mirror
-    /// <see cref="Storage.NntpSpoolWriteQueue"/> accounting (including in-flight items not yet
-    /// <see cref="Storage.NntpSpoolWriteQueue.NotifyDequeued"/>). Observable gauges read them with
-    /// <see cref="M:System.Threading.Volatile.Read(System.Int64@)"/>; writers publish with
-    /// <see cref="M:System.Threading.Interlocked.Exchange(System.Int64@,System.Int64)"/>.
+    /// <see cref="NntpSpoolWriteQueue"/> accounting (including in-flight items not yet
+    /// <see cref="NntpSpoolWriteQueue.NotifyDequeued"/>). Observable gauges read them with
+    /// <see cref="Volatile"/> reads; writers publish with <see cref="Interlocked.Exchange(ref long, long)"/>.
     /// </para>
     /// <para>
     /// <b>Registration:</b> Singleton via
@@ -44,85 +52,138 @@ namespace Vector.NNTP.Articles.Metrics
         /// </summary>
         /// <remarks>
         /// Named <c>Vector.NNTP.Articles</c> with version <see cref="AssemblyInfoUtilities.ApplicationVersion"/>.
-        /// All instances of <see cref="NntpSpoolMetrics"/> register instruments on this meter.
+        /// All instances of <see cref="NntpSpoolMetrics"/> register instruments on this static meter exactly once per
+        /// process.
         /// </remarks>
         private static readonly Meter Meter = new("Vector.NNTP.Articles", AssemblyInfoUtilities.ApplicationVersion);
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.queue.enqueued</c> incremented on successful
-        /// <see cref="Storage.NntpSpoolWriteQueue.TryEnqueue"/>.
+        /// Counter instrument <c>nntp.spool.queue.enqueued</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordEnqueued"/> on each successful <see cref="NntpSpoolWriteQueue.TryEnqueue"/>.
+        /// </remarks>
         private readonly Counter<long> _queueEnqueued;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.queue.rejected</c> incremented when
-        /// <see cref="Storage.NntpSpoolWriteQueue.TryEnqueue"/> rejects admission.
+        /// Counter instrument <c>nntp.spool.queue.rejected</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordEnqueueRejected"/> when <see cref="NntpSpoolWriteQueue.TryEnqueue"/>
+        /// rejects admission. Does not carry feed or rejection-category tags.
+        /// </remarks>
         private readonly Counter<long> _queueRejected;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.queue.dequeued</c> incremented on each
-        /// <see cref="Storage.NntpSpoolWriteQueue.NotifyDequeued"/>.
+        /// Counter instrument <c>nntp.spool.queue.dequeued</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordDequeued"/> once per completed pump item after
+        /// <see cref="NntpSpoolWriteQueue.NotifyDequeued"/>.
+        /// </remarks>
         private readonly Counter<long> _queueDequeued;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.write.success</c> incremented on successful atomic payload writes.
+        /// Counter instrument <c>nntp.spool.write.success</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordWriteSuccess"/> once per successful
+        /// <see cref="Utilities.IO.FileIOUtilities.AtomicWriteAsync"/> on the writer path.
+        /// </remarks>
         private readonly Counter<long> _writesSucceeded;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.write.failure</c> incremented when disk write fails after preprocessing.
+        /// Counter instrument <c>nntp.spool.write.failure</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordWriteFailure"/> when disk write or digest directory preparation fails after
+        /// postprocessing succeeded.
+        /// </remarks>
         private readonly Counter<long> _writesFailed;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.preprocess.failure</c> incremented when
-        /// <see cref="Processing.ArticleSpoolPreprocessor"/> returns a failed result.
+        /// Counter instrument <c>nntp.spool.preprocess.failure</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordPreprocessFailure"/> when
+        /// <see cref="Processing.ArticleSpoolPreprocessor.PreprocessAsync"/> returns a failed result.
+        /// </remarks>
         private readonly Counter<long> _preprocessFailed;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.postprocess.failure</c> incremented when
-        /// <see cref="Processing.ArticleSpoolPostprocessor"/> returns a failed result.
+        /// Counter instrument <c>nntp.spool.postprocess.failure</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordPostprocessFailure"/> when
+        /// <see cref="Processing.ArticleSpoolPostprocessor.PostprocessAsync"/> returns a failed result (including spam
+        /// classification rejections). Spamd fail-open faults do not increment this counter.
+        /// </remarks>
         private readonly Counter<long> _postprocessFailed;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.history.release_failure</c> incremented when HistoryDB release after spool
-        /// failure does not complete successfully.
+        /// Counter instrument <c>nntp.spool.history.release_failure</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordHistoryReleaseFailure"/> when HistoryDB reservation release after a spool
+        /// failure does not complete successfully.
+        /// </remarks>
         private readonly Counter<long> _historyReleaseFailed;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.history.commit_failure</c> incremented when HistoryDB commit after spool
-        /// write does not complete successfully.
+        /// Counter instrument <c>nntp.spool.history.commit_failure</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordHistoryCommitFailure"/> when HistoryDB reservation commit after a successful
+        /// spool write does not complete successfully.
+        /// </remarks>
         private readonly Counter<long> _historyCommitFailed;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.payload.bytes_written</c> tracking cumulative successful payload bytes.
+        /// Counter instrument <c>nntp.spool.payload.bytes_written</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordWriteSuccess"/> with the written payload size (bytes throughput, not article
+        /// count).
+        /// </remarks>
         private readonly Counter<long> _payloadBytesWritten;
 
         /// <summary>
-        /// Counter instrument <c>article_type_total</c> tagged by classified article content and control types.
+        /// Counter instrument <c>article_type_total</c> tagged by <c>type</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordArticleTypes"/> for each mapped <see cref="ArticleTypeFlags"/> bit on
+        /// accepted articles.
+        /// </remarks>
         private readonly Counter<long> _articleTypeTotal;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.article.accepted</c> tagged by incoming feed name.
+        /// Counter instrument <c>nntp.spool.article.accepted</c> tagged by <c>feed</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordArticleAccepted"/> on successful spool commits aligned with
+        /// <see cref="INntpNewsLog.LogAccepted"/>.
+        /// </remarks>
         private readonly Counter<long> _articleAccepted;
 
         /// <summary>
-        /// Counter instrument <c>nntp.spool.article.rejected</c> tagged by feed and rejection category.
+        /// Counter instrument <c>nntp.spool.article.rejected</c> tagged by <c>feed</c> and <c>category</c>.
         /// </summary>
+        /// <remarks>
+        /// Incremented by <see cref="RecordArticleRejected"/> on final rejections aligned with
+        /// <see cref="INntpNewsLog.LogRejected"/>.
+        /// </remarks>
         private readonly Counter<long> _articleRejected;
 
         /// <summary>
-        /// Per-feed accept/reject buckets reset by <see cref="TakeMinuteSnapshotAndReset"/>.
+        /// Per-feed accept/reject minute buckets drained by <see cref="TakeMinuteSnapshotAndReset"/>.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Keys are feed names from <see cref="NntpNewsFeedResolver"/> using <see cref="StringComparer.Ordinal"/>. Entries
+        /// are created lazily by <see cref="GetFeedCounters"/> and are not removed after idle windows — the dictionary
+        /// grows with the set of distinct feeds observed over process lifetime.
+        /// </para>
+        /// </remarks>
         private readonly ConcurrentDictionary<string, SpoolFeedOutcomeCounters> _feedOutcomeBuckets = new(StringComparer.Ordinal);
 
         /// <summary>
@@ -130,8 +191,7 @@ namespace Vector.NNTP.Articles.Metrics
         /// </summary>
         /// <remarks>
         /// Updated by <see cref="RecordEnqueued"/>, <see cref="RecordEnqueueRejected"/>, and
-        /// <see cref="RecordDequeued"/> via
-        /// <see cref="M:System.Threading.Interlocked.Exchange(System.Int64@,System.Int64)"/>.
+        /// <see cref="RecordDequeued"/> via <see cref="Interlocked.Exchange(ref long, long)"/>.
         /// </remarks>
         private long _queueDepth;
 
@@ -139,7 +199,8 @@ namespace Vector.NNTP.Articles.Metrics
         /// Backing value for observable gauge <c>nntp.spool.queue.bytes</c>.
         /// </summary>
         /// <remarks>
-        /// Sum of queued article payload bytes corresponding to <see cref="_queueDepth"/>.
+        /// Sum of queued article payload bytes corresponding to <see cref="_queueDepth"/>, published by the same record
+        /// methods.
         /// </remarks>
         private long _queuedBytes;
 
@@ -147,7 +208,8 @@ namespace Vector.NNTP.Articles.Metrics
         /// Backing value for observable gauge <c>nntp.spool.writers.active</c>.
         /// </summary>
         /// <remarks>
-        /// Published by <see cref="SetActiveWriters"/> when <see cref="Storage.NntpSpoolWriterPool"/> adjusts worker count.
+        /// Published by <see cref="SetActiveWriters"/> when <see cref="NntpSpoolWriterPool"/> adjusts worker
+        /// count during startup, scale-up, scale-down, or shutdown.
         /// </remarks>
         private long _activeWriters;
 
@@ -172,7 +234,8 @@ namespace Vector.NNTP.Articles.Metrics
         /// <item><description><c>nntp.spool.article.rejected</c> (tagged by <c>feed</c> and <c>category</c>)</description></item>
         /// </list>
         /// <para><b>Observable gauges:</b> <c>nntp.spool.queue.depth</c>, <c>nntp.spool.queue.bytes</c>,
-        /// <c>nntp.spool.writers.active</c>.</para>
+        /// <c>nntp.spool.writers.active</c> — sampled via callbacks that read backing fields with
+        /// <see cref="Volatile"/> reads.</para>
         /// </remarks>
         public NntpSpoolMetrics()
         {
@@ -208,14 +271,16 @@ namespace Vector.NNTP.Articles.Metrics
         /// Records a successful spool queue enqueue and refreshes queue depth gauges.
         /// </summary>
         /// <param name="depth">
-        /// New queued item count after enqueue, typically <see cref="Storage.NntpSpoolWriteQueue.Depth"/>.
+        /// New queued item count after enqueue, typically <see cref="NntpSpoolWriteQueue.Depth"/> under the queue
+        /// lock.
         /// </param>
         /// <param name="queuedBytes">
-        /// New queued payload byte total after enqueue, typically <see cref="Storage.NntpSpoolWriteQueue.QueuedBytes"/>.
+        /// New queued payload byte total after enqueue, typically <see cref="NntpSpoolWriteQueue.QueuedBytes"/>.
         /// </param>
         /// <remarks>
         /// Increments <c>nntp.spool.queue.enqueued</c> by one and publishes <paramref name="depth"/> and
-        /// <paramref name="queuedBytes"/> to observable gauges.
+        /// <paramref name="queuedBytes"/> to observable gauges. Called only from
+        /// <see cref="NntpSpoolWriteQueue.TryEnqueue"/> after a successful channel write. Never throws.
         /// </remarks>
         internal void RecordEnqueued(long depth, long queuedBytes)
         {
@@ -234,8 +299,14 @@ namespace Vector.NNTP.Articles.Metrics
         /// Queued byte total at rejection time.
         /// </param>
         /// <remarks>
+        /// <para>
         /// Increments <c>nntp.spool.queue.rejected</c> by one. Gauge values are still published so observers sampling
         /// after a reject see consistent depth/byte totals.
+        /// </para>
+        /// <para>
+        /// Does not increment <c>nntp.spool.article.rejected</c> by itself — article-level rejection metrics are recorded
+        /// separately by <see cref="NntpSpoolTransitStorage"/> when appropriate. Never throws.
+        /// </para>
         /// </remarks>
         internal void RecordEnqueueRejected(long depth, long queuedBytes)
         {
@@ -248,14 +319,16 @@ namespace Vector.NNTP.Articles.Metrics
         /// Records completion of spool queue accounting for a processed item and refreshes queue depth gauges.
         /// </summary>
         /// <param name="depth">
-        /// New queued item count after <see cref="Storage.NntpSpoolWriteQueue.NotifyDequeued"/>, typically reduced by one.
+        /// New queued item count after <see cref="NntpSpoolWriteQueue.NotifyDequeued"/>, typically reduced by
+        /// one from the pre-dequeue value.
         /// </param>
         /// <param name="queuedBytes">
         /// New queued byte total after dequeue accounting.
         /// </param>
         /// <remarks>
-        /// Increments <c>nntp.spool.queue.dequeued</c> by one. Invoked from pump <c>finally</c> blocks after
-        /// preprocessing and write attempts complete.
+        /// Increments <c>nntp.spool.queue.dequeued</c> by one. Invoked from
+        /// <see cref="NntpSpoolWriterPump"/> <c>finally</c> blocks after preprocessing, postprocessing, and write
+        /// attempts complete so in-flight work remains visible in queue gauges until processing ends. Never throws.
         /// </remarks>
         internal void RecordDequeued(long depth, long queuedBytes)
         {
@@ -268,13 +341,19 @@ namespace Vector.NNTP.Articles.Metrics
         /// Records a successful atomic spool payload write.
         /// </summary>
         /// <param name="payloadBytes">
-        /// Written article byte count (typically preprocessed payload length). Values <c>&lt;= 0</c> increment only the
+        /// Written article byte count (typically postprocessed payload length). Values <c>&lt;= 0</c> increment only the
         /// success counter, not <c>nntp.spool.payload.bytes_written</c>.
         /// </param>
         /// <remarks>
+        /// <para>
         /// Increments <c>nntp.spool.write.success</c> by one (article count) and, when <paramref name="payloadBytes"/>
         /// is positive, adds the same value to <c>nntp.spool.payload.bytes_written</c> (throughput). Operators can derive
         /// articles/sec from the success counter and bytes/sec from the payload counter.
+        /// </para>
+        /// <para>
+        /// Called after <see cref="Utilities.IO.FileIOUtilities.AtomicWriteAsync"/> succeeds. Pair with
+        /// <see cref="RecordArticleAccepted"/> for outcome metrics. Never throws.
+        /// </para>
         /// </remarks>
         internal void RecordWriteSuccess(int payloadBytes)
         {
@@ -289,8 +368,12 @@ namespace Vector.NNTP.Articles.Metrics
         /// Records a failed spool payload write after postprocessing succeeded.
         /// </summary>
         /// <remarks>
-        /// Increments <c>nntp.spool.write.failure</c> by one. Typically followed by operator error logs and a HistoryDB
-        /// release attempt from <see cref="Storage.NntpSpoolWriterPump"/>.
+        /// <para>
+        /// Increments <c>nntp.spool.write.failure</c> by one. Typically followed by operator error logs, an article
+        /// rejection outcome via <see cref="RecordArticleRejected"/>, and a HistoryDB release attempt from
+        /// <see cref="NntpSpoolWriterPump"/>.
+        /// </para>
+        /// <para>Never throws.</para>
         /// </remarks>
         internal void RecordWriteFailure()
         {
@@ -301,8 +384,13 @@ namespace Vector.NNTP.Articles.Metrics
         /// Records an <see cref="Processing.ArticleSpoolPreprocessor"/> failure for a dequeued item.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Increments <c>nntp.spool.preprocess.failure</c> by one. Does not affect queue depth gauges — dequeue
         /// accounting still runs in the pump <c>finally</c> block.
+        /// </para>
+        /// <para>
+        /// Pair with <see cref="RecordArticleRejected"/> and news-log rejection on the pump path. Never throws.
+        /// </para>
         /// </remarks>
         internal void RecordPreprocessFailure()
         {
@@ -313,8 +401,14 @@ namespace Vector.NNTP.Articles.Metrics
         /// Records an <see cref="Processing.ArticleSpoolPostprocessor"/> failure for a dequeued item.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Increments <c>nntp.spool.postprocess.failure</c> by one. Does not affect queue depth gauges — dequeue
         /// accounting still runs in the pump <c>finally</c> block.
+        /// </para>
+        /// <para>
+        /// Includes spam classification rejections. Spamd protocol/connectivity fail-open paths do not call this method.
+        /// Pair with <see cref="RecordArticleRejected"/> on rejection. Never throws.
+        /// </para>
         /// </remarks>
         internal void RecordPostprocessFailure()
         {
@@ -322,11 +416,15 @@ namespace Vector.NNTP.Articles.Metrics
         }
 
         /// <summary>
-        /// Records a HistoryDB reservation release failure after spool preprocess or write failure.
+        /// Records a HistoryDB reservation release failure after spool preprocess, postprocess, or write failure.
         /// </summary>
         /// <remarks>
-        /// Increments <c>nntp.spool.history.release_failure</c> when <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryReleaseAsync"/>
-        /// returns a non-success outcome or throws.
+        /// <para>
+        /// Increments <c>nntp.spool.history.release_failure</c> when
+        /// <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryReleaseAsync"/> returns a non-success outcome or throws
+        /// during pump cleanup.
+        /// </para>
+        /// <para>Never throws.</para>
         /// </remarks>
         internal void RecordHistoryReleaseFailure()
         {
@@ -337,8 +435,12 @@ namespace Vector.NNTP.Articles.Metrics
         /// Records a HistoryDB reservation commit failure after successful spool persistence.
         /// </summary>
         /// <remarks>
-        /// Increments <c>nntp.spool.history.commit_failure</c> when <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryRecordAsync"/>
-        /// returns a non-success outcome or throws after <see cref="Utilities.IO.FileIOUtilities.AtomicWriteAsync"/>.
+        /// <para>
+        /// Increments <c>nntp.spool.history.commit_failure</c> when
+        /// <see cref="HistoryDB.Abstractions.IHistoryDatabase.TryRecordAsync"/> returns a non-success outcome or throws
+        /// after <see cref="Utilities.IO.FileIOUtilities.AtomicWriteAsync"/> succeeded.
+        /// </para>
+        /// <para>Never throws.</para>
         /// </remarks>
         internal void RecordHistoryCommitFailure()
         {
@@ -349,13 +451,12 @@ namespace Vector.NNTP.Articles.Metrics
         /// Publishes the current active spool writer worker count to the observable gauge.
         /// </summary>
         /// <param name="writers">
-        /// Active worker count, typically from <see cref="Storage.NntpSpoolWriterPool.ActiveWriterCount"/> after pool
-        /// startup, scaling, or shutdown adjustments.
+        /// Active worker count, typically from <see cref="NntpSpoolWriterPool"/> after pool startup, scaling, or
+        /// shutdown adjustments.
         /// </param>
         /// <remarks>
-        /// Updates <see cref="_activeWriters"/> via
-        /// <see cref="M:System.Threading.Interlocked.Exchange(System.Int64@,System.Int64)"/>. Negative values are not expected
-        /// from callers.
+        /// Updates <see cref="_activeWriters"/> via <see cref="Interlocked.Exchange(ref long, long)"/>. Negative values
+        /// are not expected from callers. Never throws.
         /// </remarks>
         internal void SetActiveWriters(int writers)
         {
@@ -363,17 +464,20 @@ namespace Vector.NNTP.Articles.Metrics
         }
 
         /// <summary>
-        /// Records <see cref="Classification.ArticleTypeFlags"/> for a successfully postprocessed article.
+        /// Records <see cref="ArticleTypeFlags"/> for a successfully postprocessed article that will be or was written.
         /// </summary>
-        /// <param name="articleType">Classification flags from <see cref="Processing.ArticleSpoolPostprocessor"/>.</param>
+        /// <param name="articleType">
+        /// Classification flags from <see cref="Processing.ArticleSpoolPostprocessor"/> on the success path before disk
+        /// write.
+        /// </param>
         /// <remarks>
         /// <para>
         /// Increments <c>article_type_total</c> once per mapped flag bit set on <paramref name="articleType"/>. When no
         /// mapped flag is present, increments <c>type="default"</c> once so plain-text volume is visible on dashboards.
         /// </para>
         /// <para>
-        /// Tag names are defined by <see cref="ArticleTypeMetricsTags"/> and include values such as
-        /// <c>yenc</c>, <c>archive</c>, <c>video</c>, and <c>text</c>.
+        /// Tag names are defined by <see cref="ArticleTypeMetricsTags"/> (for example <c>yenc</c>, <c>archive</c>,
+        /// <c>video</c>, <c>text</c>). Multiple flags on one article emit multiple increments. Never throws.
         /// </para>
         /// </remarks>
         internal void RecordArticleTypes(ArticleTypeFlags articleType)
@@ -397,13 +501,19 @@ namespace Vector.NNTP.Articles.Metrics
         }
 
         /// <summary>
-        /// Records a spool commit accept outcome aligned with <see cref="Logging.INntpNewsLog.LogAccepted"/>.
+        /// Records a spool commit accept outcome aligned with <see cref="INntpNewsLog.LogAccepted"/>.
         /// </summary>
         /// <param name="origin">Enqueue origin metadata for feed resolution.</param>
-        /// <param name="articleBytes">Committed article bytes used for Path feed fallback.</param>
+        /// <param name="articleBytes">Committed article bytes used for <c>Path</c> feed fallback in <see cref="NntpNewsFeedResolver"/>.</param>
         /// <remarks>
-        /// Increments <c>nntp.spool.article.accepted</c> and the per-feed minute bucket. Feed names match
-        /// <see cref="NntpNewsFeedResolver"/>.
+        /// <para>
+        /// Increments <c>nntp.spool.article.accepted</c> with a <c>feed</c> tag and the per-feed minute accept bucket via
+        /// <see cref="SpoolFeedOutcomeCounters.RecordAccepted"/>. Feed names match <see cref="NntpNewsFeedResolver"/>.
+        /// </para>
+        /// <para>
+        /// Called from <see cref="NntpSpoolWriterPump"/> only after a successful durable write, not merely after
+        /// postprocess success. Never throws.
+        /// </para>
         /// </remarks>
         internal void RecordArticleAccepted(in NntpSpoolArticleOrigin origin, ReadOnlySpan<byte> articleBytes)
         {
@@ -413,14 +523,21 @@ namespace Vector.NNTP.Articles.Metrics
         }
 
         /// <summary>
-        /// Records a final spool rejection outcome aligned with <see cref="Logging.INntpNewsLog.LogRejected"/>.
+        /// Records a final spool rejection outcome aligned with <see cref="INntpNewsLog.LogRejected"/>.
         /// </summary>
         /// <param name="origin">Enqueue origin metadata for feed resolution.</param>
-        /// <param name="articleBytes">Article bytes available at rejection time for Path feed fallback.</param>
+        /// <param name="articleBytes">Article bytes available at rejection time for <c>Path</c> feed fallback.</param>
         /// <param name="category">Coarse rejection bucket from <see cref="SpoolArticleRejectionClassifier"/>.</param>
         /// <remarks>
-        /// Increments <c>nntp.spool.article.rejected</c> with <c>feed</c> and <c>category</c> tags and the per-feed minute
-        /// bucket.
+        /// <para>
+        /// Increments <c>nntp.spool.article.rejected</c> with <c>feed</c> and <c>category</c> tags (category string from
+        /// <see cref="SpoolArticleRejectionMetricsTags.GetTag"/>) and the matching per-feed minute rejection bucket via
+        /// <see cref="SpoolFeedOutcomeCounters.RecordRejected"/>.
+        /// </para>
+        /// <para>
+        /// Called from <see cref="NntpSpoolWriterPump"/> on preprocess/postprocess/write failures and from
+        /// <see cref="NntpSpoolTransitStorage"/> on enqueue-time size and queue-full rejections. Never throws.
+        /// </para>
         /// </remarks>
         internal void RecordArticleRejected(
             in NntpSpoolArticleOrigin origin,
@@ -440,16 +557,23 @@ namespace Vector.NNTP.Articles.Metrics
         /// Captures per-feed accept/reject deltas since the previous call and resets minute buckets to zero.
         /// </summary>
         /// <returns>
-        /// A snapshot with a global rollup and alphabetically sorted per-feed rows omitting feeds with zero processed
-        /// articles in the window.
+        /// A <see cref="SpoolThroughputMinuteSnapshot"/> with a global rollup row and alphabetically sorted per-feed rows
+        /// omitting feeds with zero <see cref="SpoolThroughputFeedCounts.Processed"/> in the window. Idle feed buckets
+        /// remain in <see cref="_feedOutcomeBuckets"/> for future activity.
         /// </returns>
         /// <remarks>
-        /// Called once per minute by <see cref="Hosting.NntpSpoolThroughputLogHostedService"/>. Thread-safe under concurrent
-        /// writer pumps recording outcomes while the snapshot is taken.
+        /// <para>
+        /// Called once per minute by <see cref="Hosting.NntpSpoolThroughputLogHostedService"/>. Drains every entry in
+        /// <see cref="_feedOutcomeBuckets"/> via <see cref="SpoolFeedOutcomeCounters.TakeSnapshotAndReset"/>, sums active
+        /// rows into the global rollup, and sorts feed rows ordinally. Concurrent
+        /// <see cref="RecordArticleAccepted"/> / <see cref="RecordArticleRejected"/> calls during the drain accrue in the
+        /// next window.
+        /// </para>
+        /// <para>Never throws.</para>
         /// </remarks>
         internal SpoolThroughputMinuteSnapshot TakeMinuteSnapshotAndReset()
         {
-            var feedRows = new List<SpoolThroughputFeedCounts>();
+            List<SpoolThroughputFeedCounts> feedRows = [];
             long accepted = 0;
             long headerSyntax = 0;
             long crc = 0;
@@ -489,7 +613,13 @@ namespace Vector.NNTP.Articles.Metrics
         /// Gets or creates the lock-free counter bucket for a feed name.
         /// </summary>
         /// <param name="feed">Resolved feed token from <see cref="NntpNewsFeedResolver"/>.</param>
-        /// <returns>Mutable counter bucket for the feed.</returns>
+        /// <returns>
+        /// Mutable <see cref="SpoolFeedOutcomeCounters"/> bucket for <paramref name="feed"/>, created on first outcome
+        /// recorded for that feed name.
+        /// </returns>
+        /// <remarks>
+        /// Uses lazy <c>GetOrAdd</c> on <see cref="_feedOutcomeBuckets"/> with ordinal feed keys. Never throws.
+        /// </remarks>
         private SpoolFeedOutcomeCounters GetFeedCounters(string feed)
         {
             return _feedOutcomeBuckets.GetOrAdd(feed, static _ => new SpoolFeedOutcomeCounters());

@@ -3,60 +3,118 @@
 // </copyright>
 // EventId 1 (transit spool startup configuration snapshot).
 
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
+using Vector.NNTP.Sockets.Configuration;
+
 namespace Vector.NNTP.Articles.DependencyInjection
 {
     /// <summary>
-    /// Source-generated <see cref="LoggerMessageAttribute"/> helper for the transit spool startup configuration log.
+    /// Source-generated <see cref="LoggerMessageAttribute"/> helper that formats the one-shot transit spool configuration
+    /// snapshot for the host application log.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <see cref="SpoolConfigured"/> is invoked once per host start from the private startup hosted service registered by
-    /// <see cref="ServiceCollectionExtensions.AddNntpArticlesTransitSpool"/>. It confirms effective paths and queue
-    /// limits after <see cref="Diagnostics.SpoolDirectoryUtilities"/> normalization — not raw configuration strings.
+    /// <b>Role:</b> Logging partial paired with the private startup <see cref="IHostedService"/> nested inside
+    /// <see cref="ServiceCollectionExtensions"/> and registered by
+    /// <see cref="ServiceCollectionExtensions.AddNntpArticlesTransitSpool"/>. Emits a single
+    /// <see cref="LogLevel.Information"/> line so operators can confirm effective spool paths and queue admission limits
+    /// after <see cref="Diagnostics.SpoolDirectoryUtilities"/> normalization — not raw configuration strings from JSON.
     /// </para>
     /// <para>
-    /// Steady-state spool failures and writer scaling are logged elsewhere (<see cref="Storage.NntpSpoolWriterPump"/>,
-    /// <see cref="Storage.NntpSpoolWriterPool"/>). This type emits only the startup snapshot.
+    /// <b>Log destination:</b> Writes through the injected host <see cref="ILogger"/> pipeline (for example
+    /// <c>NNTPD-.log</c> and console). Does not use <see cref="Logging.INntpNewsLog"/> or the dedicated INN
+    /// <c>news-{date}.log</c> Serilog sink.
     /// </para>
+    /// <para><b>Event identifiers:</b></para>
+    /// <list type="bullet">
+    /// <item>
+    /// <description>
+    /// EventId <c>1</c> — startup configuration snapshot (<see cref="SpoolConfigured"/>). Scoped to the startup hosted
+    /// service logger category; unrelated to EventId <c>1</c> on
+    /// <see cref="Hosting.NntpSpoolThroughputLogHostedService"/> (minute throughput rollup).
+    /// </description>
+    /// </item>
+    /// </list>
+    /// <para>
+    /// <b>Steady-state logging:</b> Writer pump failures, queue backpressure, and scaling decisions are logged by
+    /// <see cref="Storage.NntpSpoolWriterPump"/>, <see cref="Storage.NntpSpoolWriterPool"/>, and
+    /// <see cref="Hosting.NntpSpoolThroughputLogHostedService"/> — not by this type.
+    /// </para>
+    /// <para><b>Threading:</b> Static helpers; invoked synchronously once from the hosted service <c>StartAsync</c> hook.</para>
     /// </remarks>
     internal static partial class NntpSpoolStartupConfigLog
     {
         /// <summary>
-        /// Emits a single information log with resolved transit spool paths and queue admission limits.
+        /// Emits a single Information log with resolved transit spool paths and queue admission limits.
         /// </summary>
         /// <param name="logger">
-        /// Category logger from the startup hosted service (typically
-        /// <c>ILogger&lt;NntpSpoolStartupConfigLogHostedService&gt;</c>).
+        /// Category logger for the startup hosted service (typically
+        /// <c>ILogger&lt;ServiceCollectionExtensions.NntpSpoolStartupConfigLogHostedService&gt;</c> at runtime). Must not be
+        /// <see langword="null"/>.
         /// </param>
         /// <param name="spoolRoot">
         /// Canonical absolute spool root from <see cref="Diagnostics.SpoolDirectoryUtilities.ResolveSpoolDirectory"/>.
+        /// Rendered as <c>Root=</c> in the message template. Never <see langword="null"/> when supplied by the hosted
+        /// service caller.
         /// </param>
         /// <param name="incoming">
         /// Incoming article directory from <see cref="Diagnostics.SpoolDirectoryUtilities.GetIncomingDirectory"/>,
-        /// typically <c>{spoolRoot}/Incoming</c>.
+        /// typically <c>{spoolRoot}/Incoming</c>. Rendered as <c>Incoming=</c> in the message template. Never
+        /// <see langword="null"/> when supplied by the hosted service caller.
         /// </param>
         /// <param name="queueCapacity">
-        /// Bounded queue item cap from <see cref="Sockets.Configuration.NntpServerOptions.SpoolQueueCapacity"/>.
+        /// Bounded queue item cap from <see cref="NntpServerOptions.SpoolQueueCapacity"/>. Rendered as
+        /// <c>QueueCapacity=</c> in the message template.
         /// </param>
         /// <param name="maxQueuedBytes">
-        /// Bounded queued-byte budget from <see cref="Sockets.Configuration.NntpServerOptions.MaxQueuedBytes"/>.
+        /// Bounded queued-byte budget from <see cref="NntpServerOptions.MaxQueuedBytes"/>. Rendered
+        /// as <c>MaxQueuedBytes=</c> in the message template.
         /// </param>
         /// <param name="pathAppend">
-        /// Configured <c>Path</c> header append token from <see cref="Sockets.Configuration.NntpServerOptions.PathAppend"/>.
-        /// May be empty when path mutation is disabled.
+        /// Configured <c>Path</c> header append token from <see cref="NntpServerOptions.PathAppend"/>.
+        /// Rendered inside single quotes as <c>PathAppend='…'</c>. May be <see langword="null"/> or empty when path
+        /// mutation is disabled (default options use <see cref="string.Empty"/>).
         /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="logger"/> is <see langword="null"/> (enforced by the source-generated
+        /// <see cref="LoggerMessageAttribute"/> implementation).
+        /// </exception>
         /// <remarks>
         /// <para>
-        /// <b>Event:</b> EventId <c>1</c>, <see cref="LogLevel.Information"/>. Message template:
+        /// Source-generated by <see cref="LoggerMessageAttribute"/> at EventId <c>1</c>,
+        /// <see cref="LogLevel.Information"/>. Message template:
         /// <c>NNTP transit spool configured: Root={SpoolRoot}, Incoming={Incoming}, QueueCapacity={QueueCapacity}, MaxQueuedBytes={MaxQueuedBytes}, PathAppend='{PathAppend}'.</c>
         /// </para>
+        /// <para><b>Caller flow:</b></para>
+        /// <list type="number">
+        /// <item>
+        /// <description>
+        /// The private startup hosted service in <see cref="ServiceCollectionExtensions"/> resolves
+        /// <paramref name="spoolRoot"/> and <paramref name="incoming"/> via
+        /// <see cref="Diagnostics.SpoolDirectoryUtilities"/> during <c>StartAsync</c>.
+        /// </description>
+        /// </item>
+        /// <item>
+        /// <description>
+        /// Queue limits and <paramref name="pathAppend"/> are taken from a one-time <see cref="NntpServerOptions"/> snapshot
+        /// captured at construction via <see cref="IOptions{NntpServerOptions}"/>.
+        /// </description>
+        /// </item>
+        /// <item>
+        /// <description>
+        /// This helper formats and writes the line; it does not create directories or validate that paths exist on disk.
+        /// </description>
+        /// </item>
+        /// </list>
         /// <para>
-        /// <b>Timing:</b> Called synchronously from the hosted service <c>StartAsync</c> hook before writer workers begin
-        /// dequeuing. Options changes after startup are not re-logged by this event.
+        /// <b>Timing:</b> Runs once per process start before <see cref="Hosting.NntpSpoolWriterHostedService"/> writer
+        /// workers begin dequeuing. Later <see cref="IOptionsMonitor{NntpServerOptions}"/> changes
+        /// are not re-logged by this event.
         /// </para>
         /// <para>
-        /// <b>Implementation:</b> Body is source-generated by <see cref="LoggerMessageAttribute"/>; callers should not
-        /// add a manual implementation.
+        /// <b>Implementation:</b> Method body is source-generated; callers must not add a manual implementation in this
+        /// partial class.
         /// </para>
         /// </remarks>
         [LoggerMessage(

@@ -15,26 +15,37 @@ using Vector.NNTP.Sockets.Configuration;
 namespace Vector.NNTP.Articles.Processing
 {
     /// <summary>
-    /// Builds a temporary spamd scan article with programmatic NNTP-flavored headers while preserving the original body.
+    /// Builds a temporary spamd scan article with programmatic NNTP-flavored headers while preserving the original body
+    /// bytes verbatim.
     /// </summary>
     /// <remarks>
-    /// <para><b>Tier:</b> Invoked only for non-yEnc articles under the spam size gate in
-    /// <see cref="ArticleSpoolPostprocessor"/> — not on every ingested article.</para>
+    /// <para>
+    /// <b>Role:</b> Singleton registered by
+    /// <see cref="DependencyInjection.ServiceCollectionExtensions.AddNntpArticlesTransitSpool"/> and invoked from
+    /// <see cref="ArticleSpoolPostprocessor"/> only for non-yEnc articles under the
+    /// <c>SpamCheckMaxArticleBytes</c> (131072) size gate. yEnc payloads and oversized articles skip spamd entirely.
+    /// </para>
     /// <para>
     /// Mutations apply only to the scan copy returned by <see cref="BuildScanArticle"/>. Spool writes continue to use
-    /// the original article bytes from the transit queue.
+    /// the original preprocessed article bytes from the transit queue. A malformed header terminator in
+    /// <see cref="BuildScanArticle"/> throws <see cref="InvalidOperationException"/>; the postprocessor catches that
+    /// (and other scan-build faults) and fails open so the article is still accepted when spamd synthesis cannot run.
     /// </para>
     /// <para>
     /// Header scanning uses <see cref="ArticleByteScanSimd"/>; output is assembled with
-    /// <see cref="ArrayBufferWriter{T}"/> to avoid <see cref="MemoryStream"/> overhead.
+    /// <see cref="ArrayBufferWriter{T}"/> to avoid <see cref="MemoryStream"/> overhead. The returned array is a new
+    /// allocation sized to the rewritten header block plus the original body slice.
     /// </para>
-    /// <para>
-    /// <b>Output header order:</b> synthetic <c>Received:</c> and <c>To:</c>; optional
-    /// <c>X-Usenet-Newsgroups:</c> when the original carried <c>Newsgroups:</c>; synthetic <c>Date:</c> only when the
-    /// original lacked one; then preserved original headers (including <c>Newsgroups:</c> when present); then
-    /// <c>\r\n</c> and the unmodified body slice.
-    /// </para>
-    /// <para><b>Threading:</b> Instance carries no mutable state; safe for concurrent writer pumps.</para>
+    /// <para><b>Output header order:</b></para>
+    /// <list type="number">
+    /// <item><description>Synthetic <c>Received:</c> (peer metadata + Message-ID + reception date from origin).</description></item>
+    /// <item><description>Synthetic <c>To:</c> (<c>usenet@{fqdn}</c> from server options).</description></item>
+    /// <item><description>Optional <c>X-Usenet-Newsgroups:</c> when the original carried <c>Newsgroups:</c>.</description></item>
+    /// <item><description>Synthetic <c>Date:</c> only when the original lacked <c>Date:</c> (uses build-time UTC, not origin time).</description></item>
+    /// <item><description>Preserved original headers (including <c>Newsgroups:</c> when present, minus operational fields).</description></item>
+    /// <item><description><c>\r\n</c> separator and unmodified body octets from the resolved body offset.</description></item>
+    /// </list>
+    /// <para><b>Threading:</b> Instance carries no mutable fields after construction; safe for concurrent writer pumps.</para>
     /// </remarks>
     internal sealed class SpamdScanArticleBuilder
     {
@@ -43,9 +54,11 @@ namespace Vector.NNTP.Articles.Processing
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Matched case-insensitively via <see cref="IsRemovedHeaderName"/> on raw name bytes and via
-        /// <see cref="IsRemovedHeader"/> after UTF-8 decode. Fields include transit tracing and posting metadata that
-        /// spamd does not need and that would duplicate synthesized <c>Received:</c> context.
+        /// Members: <c>xref</c>, <c>injection-info</c>, <c>x-trace</c>, <c>x-complaints-to</c>,
+        /// <c>nntp-posting-host</c>, and <c>path</c>. Matched case-insensitively via
+        /// <see cref="IsRemovedHeaderName"/> on raw name bytes and via <see cref="IsRemovedHeader"/> after UTF-8 decode.
+        /// These transit tracing and posting metadata fields are omitted because spamd does not need them and they would
+        /// duplicate synthesized <c>Received:</c> context.
         /// </para>
         /// </remarks>
         private static readonly string[] RemovedHeaderNames =
@@ -59,29 +72,35 @@ namespace Vector.NNTP.Articles.Processing
         ];
 
         /// <summary>
-        /// Builds a spamd scan article with synthetic <c>Received:</c> and <c>To:</c> headers.
+        /// Builds a spamd scan article with synthetic <c>Received:</c> and <c>To:</c> headers ahead of preserved fields.
         /// </summary>
-        /// <param name="originalArticleBytes">Original preprocessed article bytes (headers plus body).</param>
+        /// <param name="originalArticleBytes">
+        /// Original preprocessed article bytes (headers plus body) from the spool writer path. Not modified by this
+        /// method.
+        /// </param>
         /// <param name="origin">
         /// Peer address, optional resolved host name, and UTC reception timestamp from
         /// <see cref="NntpSpoolWriteItem.Origin"/> for honest <c>Received:</c> synthesis.
         /// </param>
         /// <param name="serverOptions">
-        /// Local server identity from <see cref="Sockets.Configuration.NntpServerIdentityExtensions.GetServerReceivedByClause"/> and
-        /// <see cref="Sockets.Configuration.NntpServerIdentityExtensions.GetSpamScanToAddress"/>.
+        /// Local server identity supplying <see cref="NntpServerIdentityExtensions.GetServerReceivedByClause"/> and
+        /// <see cref="NntpServerIdentityExtensions.GetSpamScanToAddress"/> for synthetic headers.
         /// </param>
         /// <param name="messageId">
-        /// Validated transit Message-ID for the article, included verbatim as the <c>id</c> token in the synthetic
-        /// <c>Received:</c> header. May be bracketed or unbracketed; <see cref="NormalizeReceivedMessageId"/> normalizes
-        /// it to the <c>&lt;token&gt;</c> form.
+        /// Validated transit Message-ID for the article, normalized into the <c>Received:</c> <c>id</c> clause via
+        /// <see cref="NormalizeReceivedMessageId"/>. Typically <see cref="NntpSpoolWriteItem.MessageId"/> from the
+        /// postprocessor. Empty or whitespace yields an empty <c>id</c> token.
         /// </param>
         /// <returns>
         /// A newly allocated byte array containing rewritten headers and the identical original body octets starting at
         /// the resolved body offset.
         /// </returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="serverOptions"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when <paramref name="serverOptions"/> is <see langword="null"/>.
+        /// </exception>
         /// <exception cref="InvalidOperationException">
-        /// Thrown when <see cref="ArticleByteScanSimd.FindHeaderEnd"/> cannot locate a header/body separator.
+        /// Thrown when <see cref="ArticleByteScanSimd.FindHeaderEnd"/> cannot locate a header/body separator in
+        /// <paramref name="originalArticleBytes"/>.
         /// </exception>
         /// <remarks>
         /// <para>
@@ -90,14 +109,16 @@ namespace Vector.NNTP.Articles.Processing
         /// </para>
         /// <para>
         /// Operational headers listed in <see cref="RemovedHeaderNames"/> are omitted from the preserved set. A
-        /// present <c>Newsgroups:</c> field is copied to <c>X-Usenet-Newsgroups:</c> and may also remain in the
-        /// preserved header list under its original name.
+        /// present <c>Newsgroups:</c> field is copied to <c>X-Usenet-Newsgroups:</c> and also retained in the
+        /// preserved header list under its original name when not stripped.
         /// </para>
         /// <para>
-        /// The synthetic <c>Received:</c> field uses the full four-clause form:
-        /// <c>from … by {fqdn} ({ident}) with NNTP id {msgid}; {date}</c>.
-        /// The <c>by</c> clause includes <see cref="NntpServerOptions.ServerIdentification"/> in parentheses when set,
-        /// matching the same identification string exposed in the NNTP greeting and <c>CAPABILITIES IMPLEMENTATION</c>.
+        /// The synthetic <c>Received:</c> field uses the folded four-clause form:
+        /// <c>from … by {fqdn} [(ident)] with NNTP id &lt;msgid&gt;; {date}</c>. The <c>by</c> clause includes
+        /// <see cref="NntpServerOptions.ServerIdentification"/> in parentheses when configured, matching the NNTP greeting
+        /// and <c>CAPABILITIES IMPLEMENTATION</c> string. The <c>Received:</c> date uses
+        /// <see cref="NntpSpoolArticleOrigin.ReceivedUtc"/>; a missing original <c>Date:</c> header is filled with
+        /// <see cref="DateTimeOffset.UtcNow"/> at build time instead.
         /// </para>
         /// </remarks>
         public byte[] BuildScanArticle(
@@ -125,13 +146,13 @@ namespace Vector.NNTP.Articles.Processing
                 }
             }
 
-            var preservedHeaders = new List<(string Name, string Value)>(16);
+            List<(string Name, string Value)> preservedHeaders = new(16);
             string? newsgroupsValue = null;
             bool hasDate = false;
 
             ParseHeaders(originalArticleBytes[..headerEnd], preservedHeaders, ref newsgroupsValue, ref hasDate);
 
-            var output = new ArrayBufferWriter<byte>(originalArticleBytes.Length + 512);
+            ArrayBufferWriter<byte> output = new(originalArticleBytes.Length + 512);
             WriteHeader(output, "Received", BuildReceivedHeader(origin, serverOptions, messageId));
             WriteHeader(output, "To", serverOptions.GetSpamScanToAddress());
 
@@ -160,9 +181,12 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Parses original headers, preserving non-operational fields and collecting values needed for synthesis.
+        /// Parses original header bytes, preserving non-operational fields and collecting synthesis side channels.
         /// </summary>
-        /// <param name="headerBytes">Header section bytes without the terminating blank line.</param>
+        /// <param name="headerBytes">
+        /// Header section bytes without the terminating blank line (slice ending at
+        /// <see cref="ArticleByteScanSimd.FindHeaderEnd"/>).
+        /// </param>
         /// <param name="preservedHeaders">
         /// Output list populated with decoded name/value pairs that are not in <see cref="RemovedHeaderNames"/>.
         /// </param>
@@ -176,11 +200,13 @@ namespace Vector.NNTP.Articles.Processing
         /// <para>
         /// Iterates header lines using <see cref="ArticleByteScanSimd.IndexOfLineFeed"/>. Continuation lines (leading
         /// space or tab) are unfolded into the current field with embedded line feeds. Lines without a colon before the
-        /// first non-whitespace byte are skipped without failing the scan build.
+        /// first non-whitespace byte are skipped without failing the scan build. Stops at the first zero-length line
+        /// within <paramref name="headerBytes"/>.
         /// </para>
         /// <para>
         /// Removed header names are detected on ASCII name bytes via <see cref="IsRemovedHeaderName"/> before UTF-8
-        /// value decoding to avoid allocating strings for stripped fields.
+        /// value decoding to avoid allocating strings for stripped fields. Values are decoded with
+        /// <see cref="Encoding.UTF8"/>.
         /// </para>
         /// </remarks>
         private static void ParseHeaders(
@@ -191,7 +217,7 @@ namespace Vector.NNTP.Articles.Processing
         {
             int index = 0;
             string? currentName = null;
-            var currentValue = new StringBuilder();
+            StringBuilder currentValue = new();
 
             while (index < headerBytes.Length)
             {
@@ -203,7 +229,7 @@ namespace Vector.NNTP.Articles.Processing
                     contentEnd--;
                 }
 
-                ReadOnlySpan<byte> line = headerBytes.Slice(index, contentEnd - index);
+                ReadOnlySpan<byte> line = headerBytes[index..contentEnd];
                 if (line.Length == 0)
                 {
                     break;
@@ -215,10 +241,10 @@ namespace Vector.NNTP.Articles.Processing
                     {
                         if (currentValue.Length > 0)
                         {
-                            currentValue.Append('\n');
+                            _ = currentValue.Append('\n');
                         }
 
-                        currentValue.Append(Encoding.UTF8.GetString(line));
+                        _ = currentValue.Append(Encoding.UTF8.GetString(line));
                     }
 
                     index = lineEnd + 1;
@@ -228,7 +254,7 @@ namespace Vector.NNTP.Articles.Processing
                 if (currentName is not null)
                 {
                     CommitHeader(currentName, currentValue.ToString(), preservedHeaders, ref newsgroupsValue, ref hasDate);
-                    currentValue.Clear();
+                    currentValue.Length = 0;
                 }
 
                 int colon = line.IndexOf((byte)':');
@@ -254,8 +280,8 @@ namespace Vector.NNTP.Articles.Processing
                     valueBytes = valueBytes[1..];
                 }
 
-                currentValue.Clear();
-                currentValue.Append(Encoding.UTF8.GetString(valueBytes));
+                currentValue.Length = 0;
+                _ = currentValue.Append(Encoding.UTF8.GetString(valueBytes));
                 index = lineEnd + 1;
             }
 
@@ -268,10 +294,11 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Commits one parsed header into preserved output or synthesis side channels.
         /// </summary>
-        /// <param name="name">Decoded header field name.</param>
+        /// <param name="name">Decoded header field name (original casing preserved).</param>
         /// <param name="value">Unfolded header field value.</param>
         /// <param name="preservedHeaders">
-        /// Output list; receives <paramref name="name"/> and <paramref name="value"/> unless the name is removed.
+        /// Output list; receives <paramref name="name"/> and <paramref name="value"/> unless the lowercase name is
+        /// removed.
         /// </param>
         /// <param name="newsgroupsValue">
         /// Updated when <paramref name="name"/> is <c>newsgroups</c> (case-insensitive); otherwise unchanged.
@@ -283,7 +310,11 @@ namespace Vector.NNTP.Articles.Processing
         /// <para>
         /// Uses <see cref="string.ToLowerInvariant"/> once per committed field to match
         /// <see cref="RemovedHeaderNames"/> with ordinal equality. Fields already stripped at the byte layer in
-        /// <see cref="ParseHeaders"/> should not reach this method.
+        /// <see cref="ParseHeaders"/> should not reach this method with removed names.
+        /// </para>
+        /// <para>
+        /// <c>Newsgroups</c> is both captured for <c>X-Usenet-Newsgroups:</c> synthesis and appended to
+        /// <paramref name="preservedHeaders"/> under its original field name.
         /// </para>
         /// </remarks>
         private static void CommitHeader(
@@ -315,14 +346,14 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Returns whether raw header name bytes match a removed field before UTF-8 string materialization.
         /// </summary>
-        /// <param name="nameBytes">Header name bytes before the colon (may include surrounding whitespace).</param>
+        /// <param name="nameBytes">Header name bytes before the colon (may include surrounding ASCII whitespace).</param>
         /// <returns>
         /// <see langword="true"/> when the trimmed name equals a member of <see cref="RemovedHeaderNames"/> under ASCII
         /// case-insensitive comparison.
         /// </returns>
         /// <remarks>
-        /// Compares against the same literals as <see cref="IsRemovedHeader"/> but on raw bytes so UTF-8 name
-        /// materialization is skipped for stripped fields.
+        /// Compares against the same literals as <see cref="IsRemovedHeader"/> but on raw bytes via
+        /// <see cref="MatchesRemovedName"/> so UTF-8 name strings are not allocated for stripped fields.
         /// </remarks>
         private static bool IsRemovedHeaderName(ReadOnlySpan<byte> nameBytes)
         {
@@ -339,13 +370,13 @@ namespace Vector.NNTP.Articles.Processing
         /// Tests exact-length ASCII case-insensitive equality against a removed header literal.
         /// </summary>
         /// <param name="name">Trimmed header name bytes.</param>
-        /// <param name="literal">Lowercase removed header literal.</param>
+        /// <param name="literal">Lowercase removed header literal from <see cref="RemovedHeaderNames"/>.</param>
         /// <returns>
         /// <see langword="true"/> when <paramref name="name"/> and <paramref name="literal"/> have equal length and
         /// match under <see cref="ArticleByteScanSimd.StartsWithAsciiIgnoreCase"/>.
         /// </returns>
         /// <remarks>
-        /// Equal-length guard ensures the match is exact rather than a prefix of a longer field name.
+        /// The equal-length guard ensures the match is exact rather than a prefix of a longer field name.
         /// </remarks>
         private static bool MatchesRemovedName(ReadOnlySpan<byte> name, ReadOnlySpan<byte> literal)
         {
@@ -356,9 +387,11 @@ namespace Vector.NNTP.Articles.Processing
         /// <summary>
         /// Trims ASCII horizontal whitespace from a header field name span.
         /// </summary>
-        /// <param name="nameBytes">Candidate name bytes.</param>
+        /// <param name="nameBytes">Candidate name bytes from a header line.</param>
         /// <returns>Slice of <paramref name="nameBytes"/> without leading or trailing space/tab bytes.</returns>
-        /// <remarks>Does not trim other Unicode whitespace; header names are expected to use ASCII WSP only.</remarks>
+        /// <remarks>
+        /// Does not trim other Unicode whitespace; NNTP header names are expected to use ASCII WSP only. Never throws.
+        /// </remarks>
         private static ReadOnlySpan<byte> TrimHeaderFieldName(ReadOnlySpan<byte> nameBytes)
         {
             int start = 0;
@@ -385,8 +418,8 @@ namespace Vector.NNTP.Articles.Processing
         /// <see cref="RemovedHeaderNames"/> using <see cref="StringComparison.Ordinal"/>.
         /// </returns>
         /// <remarks>
-        /// Secondary guard after <see cref="IsRemovedHeaderName"/> for fields decoded before the byte fast path runs
-        /// or when commit paths receive already-materialized names.
+        /// Secondary guard after <see cref="IsRemovedHeaderName"/> for fields decoded before the byte fast path runs or
+        /// when commit paths receive already-materialized names from <see cref="CommitHeader"/>.
         /// </remarks>
         private static bool IsRemovedHeader(string lowerName)
         {
@@ -402,25 +435,24 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Builds a single honest NNTP-flavored <c>Received:</c> header value.
+        /// Builds a single honest NNTP-flavored <c>Received:</c> header value with folded CRLF continuations.
         /// </summary>
-        /// <param name="origin">Peer and reception metadata.</param>
-        /// <param name="serverOptions">Local server identity.</param>
+        /// <param name="origin">Peer and reception metadata from the queued article.</param>
+        /// <param name="serverOptions">Local server identity and optional software identification token.</param>
         /// <param name="messageId">
-        /// Validated transit Message-ID placed in the <c>id</c> clause. Normalized to <c>&lt;token&gt;</c> form via
+        /// Transit Message-ID placed in the <c>id</c> clause. Normalized to <c>&lt;token&gt;</c> form via
         /// <see cref="NormalizeReceivedMessageId"/>.
         /// </param>
         /// <returns>
-        /// Folded <c>Received:</c> field body using CRLF continuations. When
-        /// <see cref="NntpSpoolArticleOrigin.PeerHostName"/> is present, emits
-        /// <c>from host (host [ip])</c>; otherwise <c>from [ip]</c> (IPv6 bracketed via <see cref="FormatPeerIp"/>).
-        /// The <c>by</c> clause uses <see cref="NntpServerIdentityExtensions.GetServerReceivedByClause"/> to include
-        /// the optional server identification in parentheses. The <c>id</c> clause carries the normalized Message-ID
-        /// followed by a semicolon; the date is on its own folded line.
+        /// Folded <c>Received:</c> field body. When <see cref="NntpSpoolArticleOrigin.PeerHostName"/> is present, emits
+        /// <c>from host (host [ip])</c>; otherwise <c>from [ip]</c> with IPv6 bracketed via
+        /// <see cref="FormatPeerIp"/>. Includes <c>by {clause}</c>, <c>with NNTP</c>, <c>id &lt;msgid&gt;;</c>, and a
+        /// final folded date line.
         /// </returns>
         /// <remarks>
-        /// Reception time comes from <see cref="NntpSpoolArticleOrigin.ReceivedUtc"/>; local identity from
-        /// <paramref name="serverOptions"/>. Never throws.
+        /// Reception time in the <c>Received:</c> clause comes from <see cref="NntpSpoolArticleOrigin.ReceivedUtc"/> via
+        /// <see cref="FormatMailDate"/>; the <c>by</c> clause comes from
+        /// <see cref="NntpServerIdentityExtensions.GetServerReceivedByClause"/>. Never throws.
         /// </remarks>
         private static string BuildReceivedHeader(NntpSpoolArticleOrigin origin, NntpServerOptions serverOptions, string messageId)
         {
@@ -444,11 +476,12 @@ namespace Vector.NNTP.Articles.Processing
         /// <param name="messageId">Raw Message-ID, which may or may not carry outer angle brackets.</param>
         /// <returns>
         /// The Message-ID wrapped in a single pair of angle brackets with surrounding whitespace removed, for example
-        /// <c>&lt;scan@example.com&gt;</c>.
+        /// <c>&lt;scan@example.com&gt;</c>. Empty or whitespace input returns an empty string (yielding
+        /// <c>id ;</c> in the <c>Received:</c> clause).
         /// </returns>
         /// <remarks>
         /// If the input is already bracketed, the existing brackets are stripped and a fresh pair is applied so the
-        /// output never contains doubled brackets. An empty or whitespace input returns an empty string.
+        /// output never contains doubled brackets. Never throws.
         /// </remarks>
         private static string NormalizeReceivedMessageId(string messageId)
         {
@@ -467,13 +500,15 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Formats a peer IP for mail-style <c>Received:</c> clauses (brackets for IPv6).
+        /// Formats a peer IP for mail-style <c>Received:</c> <c>from</c> clauses (brackets for IPv6).
         /// </summary>
-        /// <param name="address">Peer address.</param>
+        /// <param name="address">Peer IP address from <see cref="NntpSpoolArticleOrigin.PeerAddress"/>.</param>
         /// <returns>
         /// Dotted IPv4 text, or bracketed IPv6 text (for example <c>[2001:db8::1]</c>) suitable for mail-style clauses.
         /// </returns>
-        /// <remarks>Never throws; assumes <paramref name="address"/> is a valid <see cref="IPAddress"/> instance.</remarks>
+        /// <remarks>
+        /// Never throws; assumes <paramref name="address"/> is a valid <see cref="IPAddress"/> instance.
+        /// </remarks>
         private static string FormatPeerIp(IPAddress address)
         {
             return address.AddressFamily == AddressFamily.InterNetworkV6
@@ -482,16 +517,16 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Formats a UTC timestamp in RFC 5322 mail date form.
+        /// Formats a UTC timestamp in RFC 5322 mail date form with a fixed <c>+0000</c> offset suffix.
         /// </summary>
-        /// <param name="timestamp">UTC reception instant.</param>
+        /// <param name="timestamp">Instant to format (converted to UTC before rendering).</param>
         /// <returns>
-        /// Mail date string in invariant culture with a fixed <c>+0000</c> offset (for example
-        /// <c>Sun, 07 Jun 2026 18:42:17 +0000</c>).
+        /// Mail date string in invariant culture (for example <c>Sun, 07 Jun 2026 18:42:17 +0000</c>).
         /// </returns>
         /// <remarks>
-        /// Converts <paramref name="timestamp"/> to UTC before formatting. Used for synthetic
-        /// <c>Date:</c> headers and <c>Received:</c> clauses.
+        /// Used for the <c>Received:</c> date line (<see cref="NntpSpoolArticleOrigin.ReceivedUtc"/>) and for synthetic
+        /// <c>Date:</c> headers when the original article lacked <c>Date:</c> (build-time
+        /// <see cref="DateTimeOffset.UtcNow"/>). Never throws.
         /// </remarks>
         private static string FormatMailDate(DateTimeOffset timestamp)
         {
@@ -499,9 +534,9 @@ namespace Vector.NNTP.Articles.Processing
         }
 
         /// <summary>
-        /// Writes one header field with CRLF line endings into a buffer writer.
+        /// Writes one header field with CRLF line endings into a buffer writer as UTF-8.
         /// </summary>
-        /// <param name="output">Output buffer writer.</param>
+        /// <param name="output">Output buffer writer receiving encoded bytes.</param>
         /// <param name="name">Header field name.</param>
         /// <param name="value">
         /// Header field value. May contain embedded <c>\r\n</c> pairs for folded fields such as
@@ -509,7 +544,8 @@ namespace Vector.NNTP.Articles.Processing
         /// </param>
         /// <remarks>
         /// Encodes <c>{name}: {value}\r\n</c> as UTF-8 into <paramref name="output"/> using
-        /// <see cref="Encoding.GetMaxByteCount(int)"/> to size the writer span. Does not fold long lines.
+        /// <see cref="Encoding.GetMaxByteCount(int)"/> to size the writer span. Does not perform additional RFC 5322
+        /// folding beyond what is already embedded in <paramref name="value"/>. Never throws for normal string inputs.
         /// </remarks>
         private static void WriteHeader(ArrayBufferWriter<byte> output, string name, string value)
         {
@@ -524,9 +560,10 @@ namespace Vector.NNTP.Articles.Processing
         /// Appends raw bytes to a buffer writer without encoding conversion.
         /// </summary>
         /// <param name="output">Output buffer writer receiving the copy.</param>
-        /// <param name="bytes">Bytes to append (for example header/body separator or body slice).</param>
+        /// <param name="bytes">Bytes to append (for example the header/body separator or body slice).</param>
         /// <remarks>
         /// Used for the blank line before the body and for copying the original body span verbatim into the scan copy.
+        /// Never throws when <paramref name="bytes"/> fits in the writer's remaining capacity growth policy.
         /// </remarks>
         private static void AppendBytes(ArrayBufferWriter<byte> output, ReadOnlySpan<byte> bytes)
         {
