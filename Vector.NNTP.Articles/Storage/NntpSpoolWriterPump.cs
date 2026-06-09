@@ -342,7 +342,7 @@ namespace Vector.NNTP.Articles.Storage
                     _metrics.RecordPreprocessDuration(preprocessStopwatch.Elapsed.TotalMilliseconds);
                     if (!preprocessResult.Success)
                     {
-                        preprocessActivity?.SetStatus(ActivityStatusCode.Error, "preprocess rejected");
+                        _ = (preprocessActivity?.SetStatus(ActivityStatusCode.Error, "preprocess rejected"));
                         _metrics.RecordPreprocessFailure();
                         LogPreprocessFailed(_logger, item.MessageId, preprocessResult.FailureReason);
                         _metrics.RecordArticleRejected(
@@ -371,7 +371,7 @@ namespace Vector.NNTP.Articles.Storage
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
-                        postprocessActivity?.SetStatus(ActivityStatusCode.Error, "postprocess canceled");
+                        _ = (postprocessActivity?.SetStatus(ActivityStatusCode.Error, "postprocess canceled"));
                         await TryReleaseHistoryReservationAsync(item.MessageId).ConfigureAwait(false);
                         return;
                     }
@@ -380,7 +380,7 @@ namespace Vector.NNTP.Articles.Storage
                     _metrics.RecordPostprocessDuration(postprocessStopwatch.Elapsed.TotalMilliseconds);
                     if (!postprocessResult.Success)
                     {
-                        postprocessActivity?.SetStatus(ActivityStatusCode.Error, "postprocess rejected");
+                        _ = (postprocessActivity?.SetStatus(ActivityStatusCode.Error, "postprocess rejected"));
                         _metrics.RecordPostprocessFailure();
                         LogPostprocessFailed(_logger, item.MessageId, postprocessResult.FailureReason);
                         _metrics.RecordArticleRejected(
@@ -536,14 +536,14 @@ namespace Vector.NNTP.Articles.Storage
                     .ConfigureAwait(false);
                 if (releaseResult is not (HistoryReleaseResult.Released or HistoryReleaseResult.NotFound))
                 {
-                    activity?.SetStatus(ActivityStatusCode.Error, releaseResult.ToString());
+                    _ = (activity?.SetStatus(ActivityStatusCode.Error, releaseResult.ToString()));
                     _metrics.RecordHistoryReleaseFailure();
                     LogHistoryReleaseOutcome(_logger, releaseResult, messageId);
                 }
             }
             catch (Exception ex)
             {
-                activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
+                _ = (activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name));
                 _metrics.RecordHistoryReleaseFailure();
                 LogHistoryReleaseFailed(_logger, ex, messageId, ex.GetType().Name);
             }
@@ -582,14 +582,14 @@ namespace Vector.NNTP.Articles.Storage
                     .ConfigureAwait(false);
                 if (recordResult is not (HistoryRecordResult.Recorded or HistoryRecordResult.Duplicate))
                 {
-                    activity?.SetStatus(ActivityStatusCode.Error, recordResult.ToString());
+                    _ = (activity?.SetStatus(ActivityStatusCode.Error, recordResult.ToString()));
                     _metrics.RecordHistoryCommitFailure();
                     LogHistoryCommitOutcome(_logger, recordResult, messageId);
                 }
             }
             catch (Exception ex)
             {
-                activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
+                _ = (activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name));
                 _metrics.RecordHistoryCommitFailure();
                 LogHistoryCommitFailed(_logger, ex, messageId, ex.GetType().Name);
             }

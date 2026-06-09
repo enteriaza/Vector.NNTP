@@ -515,7 +515,7 @@ namespace Vector.NNTP.Articles.Metrics
         /// </summary>
         /// <param name="durationMs">Elapsed milliseconds from preprocess start to completion.</param>
         /// <remarks>
-        /// Observed by <see cref="Storage.NntpSpoolWriterPump"/> after
+        /// Observed by <see cref="NntpSpoolWriterPump"/> after
         /// <see cref="Processing.ArticleSpoolPreprocessor.PreprocessAsync"/> returns. Never throws.
         /// </remarks>
         internal void RecordPreprocessDuration(double durationMs)
@@ -531,7 +531,7 @@ namespace Vector.NNTP.Articles.Metrics
         /// </summary>
         /// <param name="durationMs">Elapsed milliseconds from postprocess start to completion.</param>
         /// <remarks>
-        /// Observed by <see cref="Storage.NntpSpoolWriterPump"/> after
+        /// Observed by <see cref="NntpSpoolWriterPump"/> after
         /// <see cref="Processing.ArticleSpoolPostprocessor.PostprocessAsync"/> returns. Never throws.
         /// </remarks>
         internal void RecordPostprocessDuration(double durationMs)
@@ -547,7 +547,7 @@ namespace Vector.NNTP.Articles.Metrics
         /// </summary>
         /// <param name="durationMs">Elapsed milliseconds for digest directory preparation and atomic write.</param>
         /// <remarks>
-        /// Observed by <see cref="Storage.NntpSpoolWriterPump"/> around disk I/O. Never throws.
+        /// Observed by <see cref="NntpSpoolWriterPump"/> around disk I/O. Never throws.
         /// </remarks>
         internal void RecordWriteDuration(double durationMs)
         {
@@ -593,7 +593,7 @@ namespace Vector.NNTP.Articles.Metrics
         /// </summary>
         /// <param name="direction">Literal <c>up</c> or <c>down</c> matching pool scaling direction.</param>
         /// <remarks>
-        /// Incremented by <see cref="Storage.NntpSpoolWriterPool"/> when worker count changes. Never throws.
+        /// Incremented by <see cref="NntpSpoolWriterPool"/> when worker count changes. Never throws.
         /// </remarks>
         internal void RecordWriterScale(string direction)
         {
@@ -604,7 +604,7 @@ namespace Vector.NNTP.Articles.Metrics
         /// Records a rate-limited operator visibility event when enqueue reject pressure is elevated.
         /// </summary>
         /// <remarks>
-        /// Incremented by <see cref="Storage.NntpSpoolTransitStorage"/> when sustained queue-full or max-size rejections
+        /// Incremented by <see cref="NntpSpoolTransitStorage"/> when sustained queue-full or max-size rejections
         /// trigger a warning log. Never throws.
         /// </remarks>
         internal void RecordQueueSaturationLog()
